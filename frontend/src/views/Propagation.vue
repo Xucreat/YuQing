@@ -226,12 +226,12 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.propagation { height: 100%; }
-.prop-layout { height: 100%; }
-.prop-layout > .el-col { height: 100%; }
-.event-list-card { height: 100%; display: flex; flex-direction: column; }
-.event-list-card :deep(.el-card__body) { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-.event-list { flex: 1; overflow-y: auto; }
+.propagation { height: 100%; overflow: hidden; }
+.prop-layout { height: 100%; overflow: hidden; }
+.prop-layout > .el-col { height: 100%; display: flex; flex-direction: column; }
+.event-list-card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.event-list-card :deep(.el-card__body) { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.event-list { flex: 1; overflow-y: auto; min-height: 0; max-height: 100%; padding-right: 2px; }
 .search-input { margin-bottom: 10px; }
 .event-item { padding: 10px 12px; border-radius: 12px; cursor: pointer; margin-bottom: 4px; border: 1px solid transparent; transition: all 0.2s; }
 .event-item:hover { background: #e8f1fd; }
@@ -240,7 +240,7 @@ onBeforeUnmount(() => {
 .ei-meta { display: flex; align-items: center; gap: 8px; }
 .ei-count, .ei-nodes { font-size: 12px; color: #86868b; }
 .no-selection { display: flex; align-items: center; justify-content: center; height: 100%; }
-.detail-panel { height: 100%; overflow-y: auto; }
+.detail-panel { height: 100%; overflow-y: auto; max-height: calc(100vh - 140px); }
 .detail-header { display: flex; align-items: center; justify-content: space-between; }
 .dh-title { font-size: 16px; font-weight: 600; color: #1d1d1f; }
 .graph-box { width: 100%; height: 320px; }
