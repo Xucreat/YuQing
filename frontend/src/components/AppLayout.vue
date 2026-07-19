@@ -1,64 +1,62 @@
 ﻿<template>
-  <el-container class="app-layout">
-    <el-aside width="220px" class="app-aside">
-      <div class="logo">
-        <span class="logo-title">舆情监测研判平台</span>
-        <span class="logo-sub">大厂县公安</span>
-      </div>
-      <el-menu
-        :default-active="activeMenu"
-        router
-        class="app-menu"
-        background-color="#1f2d3d"
-        text-color="#c0ccda"
-        active-text-color="#ffd04b"
-      >
-        <el-menu-item index="/dashboard">
-          <span class="menu-ico">▤</span><span>驾驶舱</span>
-        </el-menu-item>
-        <el-menu-item index="/opinions">
-          <span class="menu-ico">☰</span><span>舆情列表</span>
-        </el-menu-item>
-        <el-menu-item index="/events">
-          <span class="menu-ico">⚠</span><span>事件中心</span>
-        </el-menu-item>
-        <el-menu-item index="/alerts">
-          <span class="menu-ico">🔔</span><span>预警中心</span>
-        </el-menu-item>
-        <el-menu-item index="/propagation">
-          <span class="menu-ico">📡</span><span>传播溯源</span>
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
-
-    <el-container>
-      <el-header class="app-header">
-        <div class="header-left">
-          <span class="header-title">互联网舆情监测研判平台</span>
-          <el-button type="primary" size="small" :loading="collecting" @click="handleCollect"
-            style="margin-left: 16px;">
-            采集数据
-          </el-button>
+  <div class="app-shell">
+    <!-- Light sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">YQ</div>
+        <div class="brand-name">
+          舆情监测研判平台
+          <small>大厂县公安</small>
         </div>
-        <el-dropdown @command="handleCommand">
-          <span class="user-dropdown">
-            <span class="user-ico">👤</span>
-            <span class="username">{{ authStore.username || 'admin' }}</span>
-            <span class="caret">▾</span>
-          </span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </el-header>
+      </div>
 
-      <el-main class="app-main">
-        <router-view />
-      </el-main>
-    </el-container>
-  </el-container>
+      <nav class="nav">
+        <router-link to="/dashboard" class="nav-item" :class="{ active: activeMenu === '/dashboard' }">
+          <span class="ico">▤</span><span>驾驶舱</span>
+        </router-link>
+        <router-link to="/opinions" class="nav-item" :class="{ active: activeMenu === '/opinions' }">
+          <span class="ico">☰</span><span>舆情列表</span>
+        </router-link>
+        <router-link to="/events" class="nav-item" :class="{ active: activeMenu === '/events' }">
+          <span class="ico">⚠</span><span>事件中心</span>
+        </router-link>
+        <router-link to="/alerts" class="nav-item" :class="{ active: activeMenu === '/alerts' }">
+          <span class="ico">🔔</span><span>预警中心</span>
+        </router-link>
+        <router-link to="/propagation" class="nav-item" :class="{ active: activeMenu === '/propagation' }">
+          <span class="ico">📡</span><span>传播溯源</span>
+        </router-link>
+      </nav>
+
+      <div class="nav-spacer"></div>
+
+      <div class="nav-user">
+        <div class="avatar">{{ (authStore.username || 'A')[0].toUpperCase() }}</div>
+        <div>
+          <div class="u-name">{{ authStore.username || 'admin' }}</div>
+          <div class="u-role">管理员</div>
+        </div>
+        <button class="u-out" title="退出登录" @click="handleLogout">↩</button>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 class="h-page-title">{{ pageTitle }}</h1>
+          <p class="h-page-sub">{{ pageSub }}</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" :disabled="collecting" @click="handleCollect">
+            {{ collecting ? '采集中...' : '采集数据' }}
+          </button>
+        </div>
+      </header>
+
+      <router-view />
+    </main>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -79,12 +77,40 @@ const activeMenu = computed(() => {
   return route.path
 })
 
+const pageTitle = computed(() => {
+  const m: Record<string, string> = {
+    '/dashboard': '驾驶舱',
+    '/opinions': '舆情列表',
+    '/events': '事件中心',
+    '/alerts': '预警中心',
+    '/propagation': '传播溯源',
+  }
+  if (route.path.startsWith('/opinion/')) return '舆情详情'
+  if (route.path.startsWith('/event/')) return '事件详情'
+  return m[route.path] || '驾驶舱'
+})
+
+const pageSub = computed(() => {
+  const m: Record<string, string> = {
+    '/dashboard': '互联网舆情监测总览',
+    '/opinions': '查看和管理所有舆情信息',
+    '/events': '跟踪和管理舆情事件',
+    '/alerts': '预警规则配置与预警记录',
+    '/propagation': '溯源分析舆情传播路径',
+  }
+  if (route.path.startsWith('/opinion/')) return '舆情详细信息与AI分析'
+  if (route.path.startsWith('/event/')) return '事件详情与关联舆情'
+  return m[route.path] || ''
+})
+
 async function handleCollect() {
   if (collecting.value) return
   collecting.value = true
   try {
     const { data } = await api.post('/collector/run')
-    ElMessage.success(`采集完成：新增 ${data.created} 条，分析 ${data.analyzed} 条`)
+    ElMessage.success('采集完成：新增 ' + data.created + ' 条，分析 ' + data.analyzed + ' 条')
+    // trigger a page reload for active view
+    window.dispatchEvent(new CustomEvent('data-refresh'))
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || err?.response?.data?.message || '采集失败')
   } finally {
@@ -92,29 +118,204 @@ async function handleCollect() {
   }
 }
 
-function handleCommand(command: string) {
-  if (command === 'logout') {
-    ElMessageBox.confirm('确认退出登录？', '提示', {
-      confirmButtonText: '退出', cancelButtonText: '取消', type: 'warning',
-    }).then(() => { authStore.logout(); router.push('/login') }).catch(() => {})
-  }
+function handleLogout() {
+  ElMessageBox.confirm('确认退出登录？', '提示', {
+    confirmButtonText: '退出', cancelButtonText: '取消', type: 'warning',
+  }).then(() => { authStore.logout(); router.push('/login') }).catch(() => {})
 }
 </script>
 
 <style scoped>
-.app-layout { height: 100vh; }
-.app-aside { background-color: #1f2d3d; display: flex; flex-direction: column; }
-.logo { height: 60px; display: flex; flex-direction: column; justify-content: center; padding-left: 20px; color: #fff; border-bottom: 1px solid #2a3a4d; }
-.logo-title { font-size: 16px; font-weight: 600; }
-.logo-sub { font-size: 12px; color: #8a9bb0; margin-top: 2px; }
-.app-menu { border-right: none; flex: 1; }
-.menu-ico { display: inline-block; width: 20px; text-align: center; margin-right: 6px; font-size: 15px; }
-.app-header { display: flex; align-items: center; justify-content: space-between; background-color: #fff; border-bottom: 1px solid #e4e7ed; height: 60px; }
-.header-left { display: flex; align-items: center; }
-.header-title { font-size: 16px; font-weight: 600; color: #303133; }
-.user-dropdown { display: flex; align-items: center; gap: 6px; cursor: pointer; color: #606266; outline: none; }
-.user-ico { font-size: 15px; }
-.username { font-size: 14px; }
-.caret { font-size: 12px; color: #909399; }
-.app-main { background-color: #f0f2f5; padding: 20px; }
+/* ---- Shell ---- */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  background: #f5f5f7;
+}
+
+/* ---- Sidebar ---- */
+.sidebar {
+  width: 246px;
+  flex-shrink: 0;
+  padding: 26px 16px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f7;
+  border-right: 1px solid #e8e8ed;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px 22px;
+}
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #0071e3, #42a5f5);
+  color: #fff;
+  font-weight: 700;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.brand-name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: #1d1d1f;
+}
+.brand-name small {
+  display: block;
+  font-size: 11.5px;
+  color: #86868b;
+  font-weight: 400;
+}
+
+/* ---- Nav ---- */
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  color: #6e6e73;
+  font-size: 14.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.nav-item:hover {
+  background: #e8e8ed;
+  color: #1d1d1f;
+}
+.nav-item.active {
+  background: #e9e9ec;
+  color: #1d1d1f;
+  font-weight: 600;
+}
+.nav-item .ico {
+  width: 20px;
+  text-align: center;
+  font-size: 16px;
+}
+.nav-spacer {
+  flex: 1;
+}
+
+/* ---- User ---- */
+.nav-user {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.05);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e8f1fd;
+  color: #0071e3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+}
+.u-name { font-size: 13.5px; font-weight: 600; color: #1d1d1f; }
+.u-role { font-size: 11.5px; color: #86868b; }
+.u-out {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: #86868b;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+.u-out:hover {
+  background: #e8e8ed;
+  color: #1d1d1f;
+}
+
+/* ---- Main ---- */
+.main {
+  flex: 1;
+  min-width: 0;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 34px 44px 60px;
+}
+
+/* ---- Topbar ---- */
+.topbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+.h-page-title {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: #1d1d1f;
+}
+.h-page-sub {
+  font-size: 14px;
+  color: #6e6e73;
+  margin: 4px 0 0;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 980px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.18s ease, transform 0.12s ease, opacity 0.18s ease;
+  user-select: none;
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary {
+  background: #0071e3;
+  color: #fff;
+}
+.btn-primary:hover { background: #0077ed; }
+.btn-primary:disabled { opacity: 0.55; cursor: default; }
+
+/* ---- Responsive ---- */
+@media (max-width: 820px) {
+  .sidebar { display: none; }
+  .main { padding: 24px 18px 48px; }
+}
 </style>

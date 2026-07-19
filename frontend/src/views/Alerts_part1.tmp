@@ -1,0 +1,164 @@
+﻿<template>
+  <div class="alerts" v-loading="loading">
+    <div class="tabs-bar">
+      <button class="tab-btn" :class="{ active: activeTab==='rules' }" @click="activeTab='rules'">预警规则</button>
+      <button class="tab-btn" :class="{ active: activeTab==='records' }" @click="activeTab='records'">预警记录</button>
+    </div>
+
+    <!-- Rules tab -->
+    <div v-show="activeTab==='rules'">
+      <div class="toolbar">
+        <button class="btn btn-primary" @click="openRuleDialog(null)">新增规则</button>
+        <button class="btn btn-ghost" @click="loadRules">刷新</button>
+        <button class="btn btn-ghost" :disabled="evaluating" @click="handleEvaluate">{{ evaluating ? '评估中...' : '执行评估' }}</button>
+        <span v-if="evalResult" class="eval-result">评估完成：检查 {{ evalResult.total_checked }} 条，生成 {{ evalResult.alerts_created }} 条预警</span>
+      </div>
+
+      <div class="card table-card">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th style="width:70px">ID</th>
+              <th style="min-width:200px">规则名称</th>
+              <th style="min-width:180px">描述</th>
+              <th style="width:90px" class="col-center">阈值</th>
+              <th style="width:90px" class="col-center">等级</th>
+              <th style="width:80px" class="col-center">启用</th>
+              <th style="width:140px" class="col-center">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rules" :key="row.id">
+              <td>{{ row.id }}</td>
+              <td class="t-title">{{ row.name }}</td>
+              <td class="muted">{{ row.description }}</td>
+              <td class="col-center risk-num">{{ row.risk_threshold }}</td>
+              <td class="col-center">
+                <span class="pill" :class="riskPill(row.risk_level)"><span class="dot"></span>{{ riskText(row.risk_level) }}</span>
+              </td>
+              <td class="col-center">
+                <label class="switch-sm">
+                  <input type="checkbox" :checked="row.enabled" @change="toggleRule(row, ($event.target as HTMLInputElement).checked)" />
+                  <span class="track-sm"></span>
+                  <span class="thumb-sm"></span>
+                </label>
+              </td>
+              <td class="col-center">
+                <div class="row-actions">
+                  <button class="icon-btn" title="编辑" @click="openRuleDialog(row)">✎</button>
+                  <button class="icon-btn" title="删除" @click="deleteRule(row)">✕</button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="rules.length===0 && !loading">
+              <td colspan="7" class="empty-row">暂无规则</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="pager" v-if="rulesTotal > 0">
+          <span class="p-info">共 {{ rulesTotal }} 条</span>
+          <button :disabled="rulesPage<=1" @click="rulesPage--; loadRules()">‹</button>
+          <button v-for="p in rulesPages" :key="p" :class="{ active: p===rulesPage }" @click="rulesPage=p; loadRules()">{{ p }}</button>
+          <button :disabled="rulesPage>=rulesMaxPage" @click="rulesPage++; loadRules()">›</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Records tab -->
+    <div v-show="activeTab==='records'">
+      <div class="toolbar">
+        <select v-model="recFilterRisk" class="select" @change="loadRecords">
+          <option value="">预警等级（全部）</option>
+          <option value="critical">严重</option>
+          <option value="high">高</option>
+          <option value="medium">中</option>
+          <option value="low">低</option>
+        </select>
+        <select v-model="recFilterHandled" class="select" @change="loadRecords" style="margin-left:12px">
+          <option :value="null">处理状态（全部）</option>
+          <option :value="false">未处理</option>
+          <option :value="true">已处理</option>
+        </select>
+        <button class="btn btn-ghost" @click="loadRecords" style="margin-left:12px">刷新</button>
+      </div>
+
+      <div class="card table-card">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th style="width:70px">ID</th>
+              <th style="width:180px">触发规则</th>
+              <th style="width:90px" class="col-center">等级</th>
+              <th style="min-width:200px">关联舆情</th>
+              <th style="width:160px">关联事件</th>
+              <th style="min-width:200px">触发原因</th>
+              <th style="width:80px" class="col-center">状态</th>
+              <th style="width:160px">触发时间</th>
+              <th style="width:80px" class="col-center">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in records" :key="row.id">
+              <td>{{ row.id }}</td>
+              <td class="t-title">{{ row.rule_name }}</td>
+              <td class="col-center">
+                <span class="pill" :class="riskPill(row.risk_level)"><span class="dot"></span>{{ riskText(row.risk_level) }}</span>
+              </td>
+              <td>
+                <router-link v-if="row.opinion_id" :to="'/opinion/' + row.opinion_id" class="nav-link">{{ row.opinion_title }}</router-link>
+                <span v-else>{{ row.opinion_title || '-' }}</span>
+              </td>
+              <td>
+                <router-link v-if="row.event_id" :to="'/event/' + row.event_id" class="nav-link">{{ row.event_title }}</router-link>
+                <span v-else>{{ row.event_title || '-' }}</span>
+              </td>
+              <td class="muted">{{ row.trigger_reason }}</td>
+              <td class="col-center">
+                <span class="pill" :class="row.handled?'pill-green':'pill-red'"><span class="dot"></span>{{ row.handled?'已处理':'未处理' }}</span>
+              </td>
+              <td>{{ formatTime(row.created_at) }}</td>
+              <td class="col-center">
+                <button v-if="!row.handled" class="btn btn-ghost btn-sm" @click="handleRecord(row)">标记处理</button>
+              </td>
+            </tr>
+            <tr v-if="records.length===0 && !loading">
+              <td colspan="9" class="empty-row">暂无预警记录</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="pager" v-if="recordsTotal > 0">
+          <span class="p-info">共 {{ recordsTotal }} 条</span>
+          <button :disabled="recordsPage<=1" @click="recordsPage--; loadRecords()">‹</button>
+          <button v-for="p in recordsPages" :key="p" :class="{ active: p===recordsPage }" @click="recordsPage=p; loadRecords()">{{ p }}</button>
+          <button :disabled="recordsPage>=recordsMaxPage" @click="recordsPage++; loadRecords()">›</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rule dialog -->
+    <el-dialog v-model="ruleDialogVisible" :title="isEditing ? '编辑规则' : '新增规则'" width="560px">
+      <el-form :model="ruleForm" label-width="90px">
+        <el-form-item label="规则名称"><el-input v-model="ruleForm.name" placeholder="请输入规则名称" /></el-form-item>
+        <el-form-item label="描述"><el-input v-model="ruleForm.description" type="textarea" :rows="2" placeholder="描述该规则的用途" /></el-form-item>
+        <el-form-item label="风险阈值"><el-input-number v-model="ruleForm.risk_threshold" :min="0" :max="100" /></el-form-item>
+        <el-form-item label="关键词"><el-input v-model="ruleForm.keywords" placeholder="多个关键词用逗号分隔" /></el-form-item>
+        <el-form-item label="来源过滤"><el-input v-model="ruleForm.sources" placeholder="多个来源用逗号分隔，留空不限" /></el-form-item>
+        <el-form-item label="预警等级">
+          <el-select v-model="ruleForm.risk_level">
+            <el-option label="严重 critical" value="critical" />
+            <el-option label="高 high" value="high" />
+            <el-option label="中 medium" value="medium" />
+            <el-option label="低 low" value="low" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="启用"><el-switch v-model="ruleForm.enabled" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="ruleDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveRule">保存</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>

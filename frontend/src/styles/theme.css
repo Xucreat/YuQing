@@ -1,0 +1,367 @@
+﻿/* =========================================================================
+   Element Plus Apple-Style Theme Overrides
+   Design tokens from prototype/apple-style
+   ========================================================================= */
+
+:root {
+  /* ---- Primary accent (used sparingly) ---- */
+  --el-color-primary: #0071e3;
+  --el-color-primary-light-3: #3390e9;
+  --el-color-primary-light-5: #66b0f0;
+  --el-color-primary-light-7: #99ccf5;
+  --el-color-primary-light-8: #b3d9f8;
+  --el-color-primary-light-9: #cce6fa;
+  --el-color-primary-dark-2: #005bb5;
+
+  /* ---- Semantic colors ---- */
+  --el-color-success: #34c759;
+  --el-color-success-light-3: #5dd47a;
+  --el-color-success-light-5: #86e09d;
+  --el-color-success-light-7: #afecbf;
+  --el-color-success-light-8: #c3f2d0;
+  --el-color-success-light-9: #d7f7e1;
+  --el-color-success-dark-2: #28a648;
+
+  --el-color-warning: #ff9f0a;
+  --el-color-warning-light-3: #ffb43e;
+  --el-color-warning-light-5: #ffc96e;
+  --el-color-warning-light-7: #ffdd9c;
+  --el-color-warning-light-8: #ffe6b4;
+  --el-color-warning-light-9: #ffeecd;
+  --el-color-warning-dark-2: #cc7f08;
+
+  --el-color-danger: #ff3b30;
+  --el-color-danger-light-3: #ff655c;
+  --el-color-danger-light-5: #ff8e88;
+  --el-color-danger-light-7: #ffb5b0;
+  --el-color-danger-light-8: #ffc7c4;
+  --el-color-danger-light-9: #ffd9d7;
+  --el-color-danger-dark-2: #cc2f26;
+
+  --el-color-info: #6e6e73;
+  --el-color-info-light-3: #8d8d92;
+  --el-color-info-light-5: #acacb0;
+  --el-color-info-light-7: #c8c8cc;
+  --el-color-info-light-8: #d5d5d8;
+  --el-color-info-light-9: #e3e3e5;
+  --el-color-info-dark-2: #58585c;
+
+  /* ---- Backgrounds ---- */
+  --el-bg-color: #ffffff;
+  --el-bg-color-overlay: #ffffff;
+  --el-bg-color-page: #f5f5f7;
+  --el-fill-color-blank: #ffffff;
+  --el-fill-color: #f5f5f7;
+  --el-fill-color-light: #fbfbfd;
+  --el-fill-color-lighter: #f5f5f7;
+
+  /* ---- Text ---- */
+  --el-text-color-primary: #1d1d1f;
+  --el-text-color-regular: #1d1d1f;
+  --el-text-color-secondary: #6e6e73;
+  --el-text-color-placeholder: #86868b;
+  --el-text-color-disabled: #c0c0c5;
+
+  /* ---- Border ---- */
+  --el-border-color: #d2d2d7;
+  --el-border-color-light: #e8e8ed;
+  --el-border-color-lighter: #e8e8ed;
+  --el-border-color-extra-light: #f0f0f2;
+  --el-border-color-dark: #b0b0b5;
+
+  /* ---- Border radius ---- */
+  --el-border-radius-base: 12px;
+  --el-border-radius-small: 8px;
+  --el-border-radius-round: 980px;
+  --el-border-radius-circle: 50%;
+
+  /* ---- Shadows ---- */
+  --el-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.05);
+  --el-box-shadow-light: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.05);
+  --el-box-shadow-lighter: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --el-box-shadow-dark: 0 10px 40px rgba(0, 0, 0, 0.18);
+
+  /* ---- Font ---- */
+  --el-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Inter", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --el-font-size-base: 14px;
+
+  /* ---- Disabled ---- */
+  --el-disabled-bg-color: #f5f5f7;
+  --el-disabled-text-color: #c0c0c5;
+  --el-disabled-border-color: #e8e8ed;
+
+  /* ---- Transitions ---- */
+  --el-transition-duration: 0.18s;
+  --el-transition-duration-fast: 0.12s;
+}
+
+/* ======================  Global resets & apple-style additions  ====================== */
+
+html, body, #app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--el-bg-color-page);
+  color: var(--el-text-color-primary);
+  font-family: var(--el-font-family);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---- Make all buttons capsule-shaped ---- */
+.el-button {
+  border-radius: 980px !important;
+  font-weight: 500;
+}
+.el-button--primary {
+  background: #0071e3;
+  border-color: #0071e3;
+}
+.el-button--primary:hover {
+  background: #0077ed;
+  border-color: #0077ed;
+}
+
+/* ---- Make cards airy with prototype radii ---- */
+.el-card {
+  border-radius: 18px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.05) !important;
+  border: none !important;
+}
+.el-card__header {
+  border-bottom: 1px solid #e8e8ed !important;
+  padding: 20px 24px !important;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--el-text-color-primary);
+}
+.el-card__body {
+  padding: 24px !important;
+}
+
+/* ---- Tables: clean, apple-style ---- */
+.el-table {
+  --el-table-border-color: #e8e8ed;
+  --el-table-header-bg-color: transparent;
+  --el-table-row-hover-bg-color: #fafafc;
+  --el-table-current-row-bg-color: #f5f5f7;
+  font-size: 14px;
+}
+.el-table th.el-table__cell {
+  background: transparent;
+  color: #86868b;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-bottom: 1px solid #e8e8ed;
+}
+.el-table td.el-table__cell {
+  border-bottom: 1px solid #e8e8ed;
+}
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: #fafafc;
+}
+
+/* ---- Tags to pills ---- */
+.el-tag {
+  border-radius: 980px !important;
+  padding: 0 11px !important;
+  height: 24px !important;
+  line-height: 24px !important;
+  font-weight: 500;
+  font-size: 13px;
+  border: none !important;
+}
+
+/* ---- Inputs and selects ---- */
+.el-input__wrapper {
+  border-radius: 12px !important;
+  background: #fbfbfd;
+  box-shadow: none !important;
+  border: 1px solid #d2d2d7;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+.el-input__wrapper:hover {
+  box-shadow: none !important;
+}
+.el-input.is-focus .el-input__wrapper,
+.el-select .el-input.is-focus .el-input__wrapper {
+  border-color: #0071e3;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.12) !important;
+}
+
+/* ---- Dropdowns ---- */
+.el-popper {
+  border-radius: 14px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18) !important;
+  border: none !important;
+}
+.el-popper .el-select-dropdown__item {
+  border-radius: 10px;
+  margin: 2px 6px;
+}
+
+/* ---- Pagination ---- */
+.el-pagination {
+  --el-pagination-bg-color: transparent;
+  --el-pagination-button-bg-color: #ffffff;
+  --el-pagination-hover-color: #0071e3;
+  font-weight: 500;
+}
+.el-pager li {
+  border-radius: 9px !important;
+  border: 1px solid #d2d2d7;
+  background: #fff;
+  min-width: 34px;
+  height: 34px;
+  line-height: 34px;
+}
+.el-pager li.is-active {
+  background: #1d1d1f;
+  color: #fff;
+  border-color: #1d1d1f;
+}
+.el-pager li:hover {
+  color: #0071e3;
+}
+.el-pager li.is-active:hover {
+  color: #fff;
+}
+
+/* ---- Dialog / message box ---- */
+.el-dialog {
+  border-radius: 22px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18) !important;
+}
+.el-message {
+  border-radius: 14px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.05) !important;
+  border: none !important;
+}
+
+/* ---- Loading mask ---- */
+.el-loading-mask {
+  background-color: rgba(245, 245, 247, 0.7) !important;
+}
+
+/* ---- Menu (used in sidebar) ---- */
+.el-menu {
+  border-right: none !important;
+}
+.el-menu-item {
+  border-radius: 12px !important;
+  margin: 2px 8px;
+  font-size: 14.5px;
+  font-weight: 500;
+  height: 44px;
+  line-height: 44px;
+}
+.el-menu-item:hover {
+  background: #e8e8ed !important;
+}
+.el-menu-item.is-active {
+  background: #e9e9ec !important;
+  font-weight: 600;
+}
+
+/* ---- Form items ---- */
+.el-form-item__label {
+  color: #6e6e73;
+  font-weight: 500;
+}
+
+/* ---- Tabs ---- */
+.el-tabs__item {
+  font-weight: 500;
+  color: #6e6e73;
+}
+.el-tabs__item.is-active {
+  color: #0071e3;
+  font-weight: 600;
+}
+.el-tabs__active-bar {
+  background-color: #0071e3;
+}
+.el-tabs__nav-wrap::after {
+  background-color: #e8e8ed;
+}
+
+/* ---- Checkbox and radio ---- */
+.el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: #0071e3;
+  border-color: #0071e3;
+}
+.el-checkbox__input.is-checked + .el-checkbox__label {
+  color: #1d1d1f;
+}
+
+/* ---- Switch ---- */
+.el-switch.is-checked .el-switch__core {
+  background-color: #0071e3;
+  border-color: #0071e3;
+}
+
+/* ---- Breadcrumb ---- */
+.el-breadcrumb__inner {
+  color: #0071e3;
+  font-weight: 500;
+}
+
+/* ---- Tooltip ---- */
+.el-tooltip__popper {
+  border-radius: 10px !important;
+  background: rgba(29, 29, 31, 0.94) !important;
+}
+
+/* ---- Alert / notification ---- */
+.el-alert {
+  border-radius: 14px !important;
+  border: none !important;
+}
+
+/* ---- Dropdown menu ---- */
+.el-dropdown-menu__item {
+  border-radius: 10px;
+  margin: 2px 6px;
+}
+
+/* ---- Descriptions ---- */
+.el-descriptions__label {
+  font-weight: 500;
+}
+
+/* ---- Empty ---- */
+.el-empty__description {
+  color: #86868b;
+}
+
+/* ---- Collapse ---- */
+.el-collapse {
+  border: none;
+}
+.el-collapse-item__header {
+  border-bottom: 1px solid #e8e8ed;
+  font-weight: 500;
+}
+.el-collapse-item__wrap {
+  border-bottom: none;
+}
+
+/* ---- Link ---- */
+.el-link.el-link--primary {
+  color: #0071e3;
+}
+.el-link.el-link--primary:hover {
+  color: #0077ed;
+}
+
+/* ---- Progress ---- */
+.el-progress-bar__outer {
+  background-color: #e8e8ed;
+  border-radius: 980px;
+}
+.el-progress-bar__inner {
+  border-radius: 980px;
+  background: linear-gradient(90deg, #0071e3, #4aa3ff);
+}

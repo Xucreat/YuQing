@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="propagation" v-loading="loading">
     <el-row :gutter="16" class="prop-layout">
       <el-col :span="8">
@@ -167,7 +167,7 @@ function renderGraph() {
     name: n.source + ': ' + (n.title.length > 20 ? n.title.slice(0, 20) + '...' : n.title),
     symbolSize: Math.max(12, Math.min(36, n.risk_score / 3 + 8)),
     itemStyle: {
-      color: ({ critical: '#f56c6c', high: '#f56c6c', medium: '#e6a23c', low: '#409eff', neutral: '#909399' } as any)[n.sentiment] || '#909399',
+      color: ({ critical: '#ff3b30', high: '#ff3b30', medium: '#c77700', low: '#0071e3', neutral: '#86868b' } as any)[n.sentiment] || '#86868b',
     },
     category: n.depth,
     depth: n.depth,
@@ -228,29 +228,29 @@ onBeforeUnmount(() => {
 .event-list-card :deep(.el-card__body) { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 .event-list { flex: 1; overflow-y: auto; }
 .search-input { margin-bottom: 10px; }
-.event-item { padding: 10px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 4px; border: 1px solid transparent; transition: all 0.2s; }
-.event-item:hover { background: #ecf5ff; }
-.event-item.active { background: #ecf5ff; border-color: #409eff; }
-.ei-title { font-size: 14px; font-weight: 600; color: #303133; margin-bottom: 4px; }
+.event-item { padding: 10px 12px; border-radius: 12px; cursor: pointer; margin-bottom: 4px; border: 1px solid transparent; transition: all 0.2s; }
+.event-item:hover { background: #e8f1fd; }
+.event-item.active { background: #e8f1fd; border-color: #0071e3; }
+.ei-title { font-size: 14px; font-weight: 600; color: #1d1d1f; margin-bottom: 4px; }
 .ei-meta { display: flex; align-items: center; gap: 8px; }
-.ei-count, .ei-nodes { font-size: 12px; color: #909399; }
+.ei-count, .ei-nodes { font-size: 12px; color: #86868b; }
 .no-selection { display: flex; align-items: center; justify-content: center; height: 100%; }
 .detail-panel { height: 100%; overflow-y: auto; }
 .detail-header { display: flex; align-items: center; justify-content: space-between; }
-.dh-title { font-size: 16px; font-weight: 600; color: #303133; }
+.dh-title { font-size: 16px; font-weight: 600; color: #1d1d1f; }
 .graph-box { width: 100%; height: 320px; }
 .source-list { display: flex; flex-direction: column; gap: 8px; }
 .source-item { display: flex; align-items: center; gap: 8px; }
-.source-name { width: 70px; font-size: 13px; color: #606266; flex-shrink: 0; }
-.source-num { width: 30px; text-align: right; font-size: 13px; color: #303133; font-weight: 600; }
+.source-name { width: 70px; font-size: 13px; color: #6e6e73; flex-shrink: 0; }
+.source-num { width: 30px; text-align: right; font-size: 13px; color: #1d1d1f; font-weight: 600; }
 .timeline-list { max-height: 300px; overflow-y: auto; }
 .tl-item { display: flex; gap: 10px; margin-bottom: 8px; }
-.tl-dot { width: 8px; height: 8px; border-radius: 50%; background: #409eff; margin-top: 6px; flex-shrink: 0; }
+.tl-dot { width: 8px; height: 8px; border-radius: 50%; background: #0071e3; margin-top: 6px; flex-shrink: 0; }
 .tl-content { flex: 1; }
-.tl-time { font-size: 11px; color: #909399; }
-.tl-title { font-size: 13px; color: #303133; line-height: 1.4; }
-.tl-source { font-size: 11px; color: #c0c4cc; }
+.tl-time { font-size: 11px; color: #86868b; }
+.tl-title { font-size: 13px; color: #1d1d1f; line-height: 1.4; }
+.tl-source { font-size: 11px; color: #86868b; }
 
-.dh-title-link { font-size: 16px; font-weight: 600; color: #409eff; text-decoration: none; }
+.dh-title-link { font-size: 16px; font-weight: 600; color: #0071e3; text-decoration: none; }
 .dh-title-link:hover { text-decoration: underline; }
 </style>
