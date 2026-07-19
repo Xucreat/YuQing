@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+*.local
+
+# Env / 密钥
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+# Large data / database
+pgdata/
+pgsql/
+*.zip
+*.log
+*.txt
+
+# Workbuddy
+.workbuddy/

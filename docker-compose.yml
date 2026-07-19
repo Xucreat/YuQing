@@ -1,0 +1,64 @@
+version: "3.9"
+
+# 大厂县公安互联网舆情监测研判平台 MVP
+# 服务：postgres(16) + backend(FastAPI) + frontend(Vue3/nginx)
+# 禁止微服务拆分；唯一数据库 PostgreSQL 16（无 Redis/ES/Mongo/MinIO/MySQL）
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: yq_opinion_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: opinion_db
+      POSTGRES_USER: opinion_user
+      POSTGRES_PASSWORD: opinion_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opinion_user -d opinion_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - opinion_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: yq_opinion_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://opinion_user:opinion_pass@postgres:5432/opinion_db
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - opinion_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: yq_opinion_frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - opinion_net
+
+volumes:
+  pgdata:
+
+networks:
+  opinion_net:
+    driver: bridge

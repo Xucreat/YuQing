@@ -1,0 +1,1991 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>大厂县公安互联网舆情监测研判平台</title>
+  <style>/* =========================================================================
+   大厂县公安互联网舆情监测研判平台 · Apple 风格原型
+   Design tokens 取自 Apple Human Interface Guidelines
+   - 背景 #f5f5f7 / 卡片纯白 / 圆角 16-20px / 轻阴影 / 大量留白
+   - 仅以蓝色 (#0071e3) 作点缀，杜绝大面积蓝色后台风
+   ========================================================================= */
+
+:root {
+  --bg: #f5f5f7;
+  --card: #ffffff;
+  --text-1: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #86868b;
+  --separator: #d2d2d7;
+  --separator-soft: #e8e8ed;
+
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --accent-soft: #e8f1fd;
+
+  --red: #ff3b30;
+  --orange: #ff9f0a;
+  --green: #34c759;
+
+  --radius-xl: 22px;
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.05);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.05);
+  --shadow-pop: 0 10px 40px rgba(0, 0, 0, 0.18);
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Inter", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* ====================== 高保真增强：统计卡趋势指示 ====================== */
+.stat-card .s-foot-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.trend-badge {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+  padding: 2px 7px; border-radius: 980px; white-space: nowrap;
+}
+.trend-badge.up-bad { background: rgba(255, 59, 48, 0.1); color: var(--red); }
+.trend-badge.down-good { background: rgba(52, 199, 89, 0.12); color: #1a8e3c; }
+.trend-badge.up-good { background: rgba(52, 199, 89, 0.12); color: #1a8e3c; }
+.trend-badge.down-bad { background: rgba(255, 59, 48, 0.1); color: var(--red); }
+.trend-badge.flat { background: var(--separator-soft); color: var(--text-3); }
+
+/* 段落切换（趋势 7/14/30） */
+.seg-group { display: inline-flex; background: var(--separator-soft); border-radius: 980px; padding: 3px; gap: 2px; }
+.seg-btn {
+  border: none; background: transparent; color: var(--text-2);
+  font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 980px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.seg-btn:hover { color: var(--text-1); }
+.seg-btn.active { background: #fff; color: var(--text-1); box-shadow: var(--shadow-soft); }
+
+/* 关键词排名 */
+.kw-row-rank { grid-template-columns: 26px 96px 1fr 44px 28px; }
+.kw-rank {
+  width: 22px; height: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: var(--text-3); background: var(--separator-soft); font-variant-numeric: tabular-nums;
+}
+.kw-rank.top { background: var(--accent); color: #fff; }
+
+/* 趋势图容器 + tooltip */
+.trend-chart { position: relative; width: 100%; }
+.trend-tip {
+  position: absolute; top: 14px; transform: translateX(-50%);
+  background: rgba(29, 29, 31, 0.94); color: #fff; padding: 7px 12px; border-radius: 10px;
+  font-size: 12.5px; pointer-events: none; opacity: 0; transition: opacity 0.15s ease; white-space: nowrap;
+  display: flex; flex-direction: column; gap: 2px; z-index: 5;
+}
+.trend-tip b { font-weight: 600; }
+.trend-tip span { color: #c7c7cc; font-variant-numeric: tabular-nums; }
+.trend-svg .trend-pt { transition: r 0.12s ease; }
+.trend-svg .trend-pt.hot { r: 6.5; fill: var(--accent); }
+
+/* 情感分布环形图 */
+.donut-wrap { display: flex; align-items: center; gap: 22px; margin-top: 10px; flex-wrap: wrap; }
+.donut-svg { width: 140px; height: 140px; flex-shrink: 0; }
+.donut-legends { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 140px; }
+.donut-legend { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-1); }
+.donut-legend .dl-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.donut-legend b { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.donut-legend i { width: 42px; text-align: right; font-style: normal; color: var(--text-3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+/* 多列网格 */
+.dash-cols-3 { display: grid; grid-template-columns: 1fr 2fr; gap: 18px; }
+.dash-cols-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+
+/* sparkline / 24h */
+.spark-svg { width: 100%; height: 48px; display: block; }
+.hour-svg { width: 100%; height: auto; display: block; }
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: inherit; text-decoration: none; }
+
+button { font-family: var(--font); cursor: pointer; }
+
+/* ---------- 通用排版 ---------- */
+.h-page-title { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+.h-page-sub { font-size: 14px; color: var(--text-2); margin: 4px 0 0; }
+.section-title { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+.muted { color: var(--text-2); }
+.mono { font-variant-numeric: tabular-nums; }
+
+/* ---------- 按钮 ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 980px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  transition: background-color 0.18s ease, transform 0.12s ease, opacity 0.18s ease;
+  user-select: none;
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.55; cursor: default; }
+.btn-ghost { background: var(--separator-soft); color: var(--text-1); }
+.btn-ghost:hover { background: #dededf; }
+.btn-quiet { background: transparent; color: var(--accent); padding: 8px 12px; }
+.btn-quiet:hover { background: var(--accent-soft); }
+
+/* ---------- 标签 / 胶囊 ---------- */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 980px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill-red { background: rgba(255, 59, 48, 0.1); color: var(--red); }
+.pill-orange { background: rgba(255, 159, 10, 0.12); color: #c77700; }
+.pill-green { background: rgba(52, 199, 89, 0.12); color: #1a8e3c; }
+.pill-gray { background: rgba(110, 110, 115, 0.12); color: var(--text-2); }
+.pill-blue { background: var(--accent-soft); color: var(--accent); }
+
+/* ---------- 卡片 ---------- */
+.card {
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+}
+.card-pad-lg { padding: 28px 30px; }
+
+/* ============================== 登录页 ============================== */
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #eef4fb 0%, rgba(238, 244, 251, 0) 60%),
+    var(--bg);
+}
+.login-card {
+  width: 412px;
+  max-width: 100%;
+  background: var(--card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-pop);
+  padding: 44px 40px 40px;
+  text-align: center;
+}
+.login-badge {
+  width: 64px; height: 64px;
+  margin: 0 auto 22px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #0071e3, #42a5f5);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 30px; font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 113, 227, 0.28);
+}
+.login-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+.login-sub { font-size: 13px; color: var(--text-3); margin: 8px 0 28px; letter-spacing: 0.01em; }
+
+.field { text-align: left; margin-bottom: 16px; }
+.field label { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 7px; font-weight: 500; }
+.input {
+  width: 100%;
+  height: 46px;
+  padding: 0 15px;
+  font-size: 15px;
+  color: var(--text-1);
+  background: #fbfbfd;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+.input:focus {
+  border-color: var(--accent);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.12);
+}
+.login-btn { width: 100%; height: 48px; font-size: 16px; margin-top: 8px; }
+.login-hint { margin-top: 18px; font-size: 12.5px; color: var(--text-3); }
+.login-hint code {
+  background: var(--separator-soft);
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* ============================== 应用骨架 ============================== */
+.app-shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 246px;
+  flex-shrink: 0;
+  padding: 26px 16px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.brand {
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 12px 22px;
+}
+.brand-logo {
+  width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+  background: linear-gradient(135deg, #0071e3, #42a5f5);
+  color: #fff; font-weight: 700; font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+}
+.brand-name { font-size: 15px; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; }
+.brand-name small { display: block; font-size: 11.5px; color: var(--text-3); font-weight: 400; }
+
+.nav { display: flex; flex-direction: column; gap: 4px; }
+.nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  color: var(--text-2);
+  font-size: 14.5px; font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.nav-item:hover { background: var(--separator-soft); color: var(--text-1); }
+.nav-item.active { background: #e9e9ec; color: var(--text-1); font-weight: 600; }
+.nav-item .ico { width: 20px; text-align: center; font-size: 16px; }
+.nav-spacer { flex: 1; }
+.nav-user {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+  display: flex; align-items: center; gap: 10px;
+}
+.nav-user .avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px;
+}
+.nav-user .u-name { font-size: 13.5px; font-weight: 600; }
+.nav-user .u-role { font-size: 11.5px; color: var(--text-3); }
+.nav-user .u-out { margin-left: auto; }
+
+/* ---------- 主内容 ---------- */
+.main {
+  flex: 1;
+  min-width: 0;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 34px 44px 60px;
+}
+.topbar {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; margin-bottom: 26px;
+}
+.topbar .actions { display: flex; gap: 10px; align-items: center; }
+
+/* ============================== Dashboard ============================== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.stat-card { padding: 22px 24px; }
+.stat-card .s-label { font-size: 14px; color: var(--text-2); margin-bottom: 10px; }
+.stat-card .s-value { font-size: 38px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+.stat-card .s-value.danger { color: var(--red); }
+.stat-card .s-foot { font-size: 12.5px; color: var(--text-3); margin-top: 10px; }
+.stat-card .s-ico {
+  float: right; width: 40px; height: 40px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center; font-size: 19px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.stat-card.is-red .s-ico { background: rgba(255, 59, 48, 0.1); color: var(--red); }
+.stat-card.is-green .s-ico { background: rgba(52, 199, 89, 0.12); color: #1a8e3c; }
+.stat-card.is-amber .s-ico { background: rgba(255, 159, 10, 0.12); color: #c77700; }
+
+.dash-row {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 18px;
+}
+.chart-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.chart-box { width: 100%; }
+.trend-svg { width: 100%; height: auto; display: block; }
+
+/* 关键词排行（HTML 条形，避免外部依赖） */
+.kw-list { display: flex; flex-direction: column; gap: 14px; margin-top: 6px; }
+.kw-row { display: grid; grid-template-columns: 96px 1fr 44px; align-items: center; gap: 12px; }
+.kw-word { font-size: 14px; color: var(--text-1); font-weight: 500; }
+.kw-track { height: 10px; background: var(--separator-soft); border-radius: 980px; overflow: hidden; }
+.kw-fill {
+  height: 100%;
+  border-radius: 980px;
+  background: linear-gradient(90deg, #0071e3, #4aa3ff);
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.kw-count { font-size: 13px; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ============================== 表格（舆情/事件） ============================== */
+.toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: 1; }
+.select, .search {
+  height: 42px;
+  padding: 0 14px;
+  font-size: 14px;
+  color: var(--text-1);
+  background: var(--card);
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.select { min-width: 160px; }
+.search { min-width: 220px; flex: 1; max-width: 320px; }
+.select:focus, .search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.1);
+}
+.table-card { padding: 6px 6px 14px; overflow: hidden; }
+table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.tbl thead th {
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--separator-soft);
+  white-space: nowrap;
+}
+table.tbl tbody td {
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--separator-soft);
+  color: var(--text-1);
+  vertical-align: middle;
+}
+table.tbl tbody tr { transition: background-color 0.12s ease; }
+table.tbl tbody tr:hover { background: #fafafc; }
+table.tbl tbody tr:last-child td { border-bottom: none; }
+table.tbl .col-center { text-align: center; }
+table.tbl .col-num { text-align: right; font-variant-numeric: tabular-nums; }
+.t-link { color: var(--accent); font-weight: 500; }
+.t-link:hover { text-decoration: underline; }
+.t-title { font-weight: 500; color: var(--text-1); }
+.risk-num { font-weight: 600; font-variant-numeric: tabular-nums; }
+.empty-row td { text-align: center; color: var(--text-3); padding: 40px 0; }
+
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 18px 0; }
+.pager .p-info { color: var(--text-3); font-size: 13px; margin-right: auto; }
+.pager button {
+  min-width: 34px; height: 34px; padding: 0 10px;
+  border: 1px solid var(--separator); background: var(--card);
+  border-radius: 9px; color: var(--text-1); font-size: 13.5px;
+  transition: background 0.15s ease;
+}
+.pager button:hover:not(:disabled) { background: var(--separator-soft); }
+.pager button.active { background: var(--text-1); color: #fff; border-color: var(--text-1); }
+.pager button:disabled { opacity: 0.4; cursor: default; }
+
+/* ============================== 舆情详情 ============================== */
+.detail-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; align-items: start; }
+.detail-back { margin-bottom: 18px; }
+.detail-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 14px; line-height: 1.35; }
+.detail-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: var(--text-2); margin-bottom: 16px; }
+.detail-divider { height: 1px; background: var(--separator-soft); margin: 18px 0; }
+.detail-content { font-size: 15px; line-height: 1.85; color: #2b2b2e; white-space: pre-wrap; }
+.detail-url { color: var(--accent); word-break: break-all; font-size: 13.5px; }
+
+.ai-block { margin-bottom: 20px; }
+.ai-label { font-size: 12.5px; color: var(--text-3); font-weight: 600; margin-bottom: 8px; letter-spacing: 0.02em; }
+.ai-text { font-size: 14.5px; line-height: 1.7; color: var(--text-1); }
+.risk-big { font-size: 44px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+.kw-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.kw-tag { background: var(--accent-soft); color: var(--accent); padding: 5px 12px; border-radius: 980px; font-size: 13px; font-weight: 500; }
+.ai-actions { margin-top: 6px; }
+.ai-status-line { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.spinner {
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid var(--separator); border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ====================== 详情页增强 ====================== */
+.ai-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
+.ai-spark { flex: 1; max-width: 240px; }
+.kw-clouds { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; margin-top: 4px; }
+.kw-cloud { display: inline-block; padding: 5px 12px; border-radius: 980px; background: var(--accent-soft); color: var(--accent); font-weight: 600; line-height: 1.3; }
+.score-bar { flex: 1; height: 8px; background: var(--separator-soft); border-radius: 980px; overflow: hidden; min-width: 90px; }
+.score-fill { height: 100%; border-radius: 980px; transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* 传播概览 */
+.prop-overview { margin-top: 4px; }
+.po-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.po-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--separator-soft); font-size: 14px; }
+.po-row span { color: var(--text-2); }
+.po-row b { font-weight: 600; }
+.po-bars { margin: 14px 0 4px; }
+.btn-block { width: 100%; justify-content: center; }
+
+/* 相关舆情 */
+.rel-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.rel-item { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 12px; transition: background 0.12s ease; }
+.rel-item:hover { background: #fafafc; }
+.rel-title { font-size: 14.5px; color: var(--text-1); font-weight: 500; }
+.rel-meta { font-size: 12.5px; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+
+/* 处置记录时间线 */
+.log-list { display: flex; flex-direction: column; gap: 2px; }
+.log-item { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; }
+.log-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; background: var(--accent); }
+.log-dot.collect { background: var(--accent); }
+.log-dot.ai { background: var(--green); }
+.log-dot.push { background: #c77700; }
+.log-dot.wait { background: var(--text-3); }
+.log-dot.warn { background: var(--red); }
+
+/* 事件详情页 */
+.crumb { font-size: 13px; color: var(--accent); margin: 2px 0 6px; }
+.crumb a:hover { text-decoration: underline; }
+.ev-summary { font-size: 15px; line-height: 1.65; color: var(--text-2); margin: 0; }
+.ev-meta-pill { display: inline-flex; align-items: center; }
+.log-text { font-size: 14px; color: var(--text-1); }
+.log-time { font-size: 12px; color: var(--text-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* ============================== Toast ============================== */
+.toast {
+  position: fixed; left: 50%; bottom: 38px; transform: translateX(-50%) translateY(20px);
+  background: rgba(29, 29, 31, 0.94);
+  color: #fff; padding: 12px 22px; border-radius: 14px;
+  font-size: 14px; opacity: 0; pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 999; max-width: 90vw;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast { display: inline-flex; align-items: center; gap: 8px; }
+.toast-ico { font-size: 15px; line-height: 1; }
+
+/* 搜索框清除按钮 */
+.search-wrap { position: relative; display: inline-flex; align-items: center; flex: 1; max-width: 320px; }
+.search-wrap .search { width: 100%; max-width: none; flex: none; padding-right: 34px; }
+.search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: var(--text-3); cursor: pointer; font-size: 12px; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+.search-clear:hover { background: var(--separator-soft); }
+
+/* 表格行内快捷操作 */
+.row-actions { display: inline-flex; gap: 6px; justify-content: center; opacity: 0.35; transition: opacity 0.15s ease; }
+tr:hover .row-actions { opacity: 1; }
+.icon-btn { width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--separator-soft); background: #fff; color: var(--text-2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; transition: all 0.12s ease; }
+.icon-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* 空状态 */
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 0; }
+.empty-emoji { font-size: 30px; }
+.empty-state p { margin: 0; color: var(--text-3); }
+
+/* ============================== Modal ============================== */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.32);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  z-index: 500; animation: fade 0.2s ease;
+}
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  width: 680px; max-width: 100%; max-height: 84vh; overflow: hidden;
+  background: var(--card); border-radius: var(--radius-xl); box-shadow: var(--shadow-pop);
+  display: flex; flex-direction: column; animation: pop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes pop { from { transform: scale(0.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 22px 26px 14px; }
+.modal-head h3 { margin: 0; font-size: 19px; font-weight: 600; }
+.modal-close { border: none; background: var(--separator-soft); width: 30px; height: 30px; border-radius: 50%; font-size: 16px; color: var(--text-2); }
+.modal-close:hover { background: #dededf; }
+.modal-body { padding: 4px 26px 24px; overflow-y: auto; }
+.modal-sub { font-size: 13px; color: var(--text-3); margin: 0 0 16px; }
+
+/* ============================== 响应式 ============================== */
+@media (max-width: 1100px) {
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .dash-row { grid-template-columns: 1fr; }
+  .detail-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 820px) {
+  .sidebar { display: none; }
+  .main { padding: 24px 18px 48px; }
+  .stat-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================== 预警中心 ============================== */
+.pill-yellow { background: rgba(255, 214, 10, 0.2); color: #9a7400; }
+
+/* 预警中心：批量操作栏 + 行内展开 */
+.col-check { width: 44px; text-align: center; }
+.col-check input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.al-row:hover { background: #fafafc; }
+.al-row.expanded { background: #f5f5f7; }
+.batch-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; margin-bottom: 14px; border-radius: 12px;
+  background: var(--accent-soft); opacity: 0.5; transition: opacity 0.15s ease; flex-wrap: wrap;
+}
+.batch-bar.active { opacity: 1; }
+.batch-info { font-size: 14px; color: var(--accent); font-weight: 600; }
+.batch-info b { font-variant-numeric: tabular-nums; }
+.batch-actions { display: flex; gap: 8px; }
+.alc-detail td { background: #fafafc; padding: 0 !important; border-bottom: 1px solid var(--separator-soft); }
+.alc-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 16px 20px; }
+.alc-grid { display: flex; flex-direction: column; }
+.alc-timeline { border-left: 1px solid var(--separator-soft); padding-left: 16px; }
+@media (max-width: 820px) { .alc-inner { grid-template-columns: 1fr; } }
+
+/* 时间轴（传播里程碑） */
+.timeline { position: relative; padding-left: 24px; margin-top: 4px; }
+.timeline::before { content: ""; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 2px; background: var(--separator-soft); }
+.tl-item { position: relative; padding: 0 0 20px; }
+.tl-item:last-child { padding-bottom: 0; }
+.tl-dot { position: absolute; left: -24px; top: 3px; width: 15px; height: 15px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); }
+.tl-item.red .tl-dot { border-color: var(--red); }
+.tl-item.orange .tl-dot { border-color: var(--orange); }
+.tl-item.yellow .tl-dot { border-color: #e0b400; }
+.tl-time { font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tl-text { font-size: 14px; color: var(--text-1); margin-top: 3px; line-height: 1.5; }
+
+/* ============================== 传播溯源 ============================== */
+.prop-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.prop-grid-3 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; align-items: start; }
+.net-svg { width: 100%; height: auto; display: block; }
+.net-svg text { font-family: -apple-system, "SF Pro Text", "Inter", system-ui, sans-serif; }
+.net-wrap { padding: 6px 0 0; position: relative; }
+.net-link { stroke: #d2d2d7; stroke-width: 1.6; fill: none; stroke-linecap: round; }
+.net-node-circle { fill: #ffffff; stroke: var(--accent); stroke-width: 2.5; }
+.net-node-origin { stroke: #ffffff; stroke-width: 3; }
+.net-node-label { font-size: 14px; font-weight: 600; fill: #1d1d1f; }
+.net-node-sub { fill: #86868b; font-size: 12px; }
+.net-stage { fill: #86868b; font-size: 13px; font-weight: 600; letter-spacing: 0.03em; }
+.net-chip { fill: #eafaf0; stroke: #34c759; stroke-width: 1.5; }
+.net-chip-label { font-size: 13.5px; font-weight: 600; fill: #1a8e3c; }
+.net-caption { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--separator-soft); font-size: 12.5px; color: var(--text-3); display: flex; align-items: center; gap: 8px; }
+.net-arrow { color: var(--accent); font-weight: 700; }
+
+/* 网络图交互 */
+.net-node { cursor: pointer; }
+.net-hit { fill: transparent; }
+.net-node.hot .net-node-circle { stroke-width: 4.5; }
+.net-node.hot .net-chip { stroke-width: 3; }
+.net-link.hot { stroke: var(--accent); stroke-width: 3; }
+.net-tip {
+  position: absolute; left: 0; top: 0; pointer-events: none; opacity: 0; transition: opacity 0.12s ease;
+  background: #1d1d1f; color: #fff; font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 8px;
+  white-space: nowrap; box-shadow: var(--shadow-md); z-index: 5;
+}
+
+/* 传播指标条 */
+.metric-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.mini-metric { background: #fff; border: 1px solid var(--separator-soft); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow-sm); }
+.mm-v { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; color: var(--text-1); font-variant-numeric: tabular-nums; }
+.mm-u { font-size: 13px; font-weight: 500; color: var(--text-3); margin-left: 4px; }
+.mm-k { font-size: 13px; color: var(--text-2); margin-top: 8px; }
+@media (max-width: 820px) { .metric-row { grid-template-columns: repeat(2, 1fr); } }
+
+.kv-list { display: flex; flex-direction: column; margin-top: 14px; }
+.kv-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--separator-soft); font-size: 14px; }
+.kv-row:last-child { border-bottom: none; }
+.kv-row .k { color: var(--text-2); }
+.kv-row .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+.node-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--separator-soft); }
+.node-row:last-child { border-bottom: none; }
+.node-ava { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+.node-meta { min-width: 0; }
+.node-name { font-size: 14px; font-weight: 600; }
+.node-role { font-size: 12px; color: var(--text-3); }
+
+@media (max-width: 1100px) {
+  .prop-grid-2, .prop-grid-3 { grid-template-columns: 1fr; }
+}
+
+/* ============================== 个人中心 ============================== */
+.profile-card { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.avatar-lg { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; flex-shrink: 0; }
+.profile-meta { flex: 1; min-width: 180px; }
+.profile-name { font-size: 20px; font-weight: 600; }
+.profile-role { font-size: 13px; color: var(--text-3); margin-top: 2px; }
+.profile-tags { display: flex; gap: 8px; margin-top: 8px; }
+.shortcut-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+.shortcut { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border: 1px solid var(--separator-soft); border-radius: 12px; transition: all 0.12s ease; }
+.shortcut:hover { border-color: var(--accent); background: var(--accent-soft); }
+.shortcut .ico { color: var(--accent); font-size: 16px; }
+@media (max-width: 640px) { .shortcut-grid { grid-template-columns: 1fr; } }
+
+/* ============================== 系统设置 ============================== */
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--separator-soft); }
+.set-row:last-child { border-bottom: none; }
+.set-label { font-size: 14.5px; font-weight: 500; }
+.set-desc { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
+.switch { position: relative; width: 46px; height: 28px; flex-shrink: 0; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch .track { position: absolute; inset: 0; background: var(--separator-soft); border-radius: 980px; transition: background 0.2s ease; }
+.switch .thumb { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; background: #fff; border-radius: 50%; box-shadow: var(--shadow-sm); transition: transform 0.2s ease; }
+.switch input:checked ~ .track { background: var(--accent); }
+.switch input:checked ~ .thumb { transform: translateX(18px); }
+.range { width: 180px; accent-color: var(--accent); }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="modal-root"></div>
+  <script>/* =========================================================================
+   大厂县公安互联网舆情监测研判平台 · Apple 风格原型 (JS / 无依"
+   - hash 路由/login #/dashboard #/opinions #/opinion/:id #/events
+   - 模拟数据字段严格对齐 backend/app/schemas frontend/src/types
+   - 所有交互为纯前端模拟，数据写入 localStorage 以模拟「写库   ========================================================================= */
+(function () {
+  "use strict";
+
+  // 安全存储封装：部分浏览器（如 Firefox 默认）在 file:// 协议下禁用 localStorage，
+  // 直接访问会抛 SecurityError，导致整个 IIFE 在顶层崩溃、页面白屏。
+  // 此处探测可用性并降级为内存对象，保证双击 index.html 即可运行。
+  const store = (function () {
+    let mem = {};
+    let ok = true;
+    try {
+      window.localStorage.setItem("__proto_probe__", "1");
+      window.localStorage.removeItem("__proto_probe__");
+    } catch (e) {
+      ok = false;
+    }
+    return ok
+      ? window.localStorage
+      : {
+          getItem: function (k) {
+            return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null;
+          },
+          setItem: function (k, v) {
+            mem[k] = String(v);
+          },
+          removeItem: function (k) {
+            delete mem[k];
+          },
+        };
+  })();
+
+
+  /* ----------------------------- 模拟数据----------------------------- */
+  // 字段对照 backend/app/schemas/opinion.OpinionOut + frontend Opinion 类型
+  // 注意：risk_level 在真实系统中实际映射sentiment（positive/negative/neutral  
+const OPINIONS = [
+    {
+      id: 1,
+      title: "大厂县某小区居民质疑消防通道长期被私家车占用",
+      content:
+        "近日，多名业主在社交平台反映，大厂县某小区内消防通道被私家车长期占用，存在严重安全隐患。部分业主表示曾向物业反映但未获有效处理，呼吁相关部门介入核查并限期整改",
+      source: "微博",
+      url: "https://weibo.com/example/1",
+      region_id: 1,
+      publish_time: "2026-07-15T09:20:00Z",
+      risk_score: 84,
+      sentiment: "negative",
+      summary: "业主反映小区消防通道被长期占用，存在安全隐患，质疑物业与相关部门处置不力",
+      keywords: "消防,通道,安全隐患,物业",
+      created_at: "2026-07-15T09:25:00Z",
+      analysis_status: "completed",
+      analysis_time: "2026-07-15T09:30:00Z",
+      analysis_suggestion:
+        "建议立即转交消防与住建部门核查，督促物业清理通道并限期整改，同步发布权威提示消除公众疑虑",
+    },
+    {
+      id: 2,
+      title: "大厂县某路段发生交通事故致3人受引发交通拥",
+      content:
+        "今日早高峰，大厂县某主干道发生一起两车追尾事故，造成3人受伤送医。现场一度出现严重拥堵，网友呼吁优化该路口信号灯配时与监控覆盖",
+      source: "今日头条",
+      url: "https://toutiao.com/example/2",
+      region_id: 1,
+      publish_time: "2026-07-15T07:40:00Z",
+      risk_score: 76,
+      sentiment: "negative",
+      summary: "主干道交通事故致3人受伤，早高峰严重拥堵，网友关注路口交通安全与信号配时",
+      keywords: "交通事拥堵,信号安全隐患",
+      created_at: "2026-07-15T07:50:00Z",
+      analysis_status: "completed",
+      analysis_time: "2026-07-15T07:55:00Z",
+      analysis_suggestion:
+        "建议交警部门通报事故处置进展，排查路口隐患，并通过导航平台发布绕行提示",
+    },
+    {
+      id: 3,
+      title: "网友反映大厂县某菜市场部分菜品价格偏",
+      content:
+        "有市民在本地论坛发帖，称近期菜市场部分蔬菜与肉禽价格偏高，希望市场监管部门关注物价波动并加强引导",
+      source: "微信",
+      url: "https://mp.weixin.qq.com/example/3",
+      region_id: 1,
+      publish_time: "2026-07-14T15:10:00Z",
+      risk_score: 45,
+      sentiment: "neutral",
+      summary: "市民反映菜市场部分菜品价格偏高，关注物价波动",
+      keywords: "价格,菜市物价,民生",
+      created_at: "2026-07-14T15:20:00Z",
+      analysis_status: "completed",
+      analysis_time: "2026-07-14T15:25:00Z",
+      analysis_suggestion: "建议市场监管部门跟踪重点品类价格，适时发布保供稳价信息",
+    },
+    {
+      id: 4,
+      title: "大厂县政务服务中心获群众点赞：办事效率明显提",
+      content:
+        "多位市民在短视频平台分享在大厂县政务服务中心的办事体验，称赞一窗受理、限时办结，获得感与满意度提升",
+      source: "大厂县政府网",
+      url: "https://www.lfdc.gov.cn/example/4",
+      region_id: 1,
+      publish_time: "2026-07-14T10:00:00Z",
+      risk_score: 12,
+      sentiment: "positive",
+      summary: "政务服务中心办事效率获群众正向评价，体现营商环境改善",
+      keywords: "政务服务,营商环境,满意",
+      created_at: "2026-07-14T10:10:00Z",
+      analysis_status: "completed",
+      analysis_time: "2026-07-14T10:15:00Z",
+      analysis_suggestion: "可总结为正面典型案例，适度宣传以引导正向舆论",
+    },
+    {
+      id: 5,
+      title: "大厂县某小区业主维权事件引发关注",
+      content:
+        "某小区因车位产权归属问题，部分业主聚集维权，相关视频在社交平台传播。网友呼吁依法化解矛盾、保障业主合法权益",
+      source: "百度贴吧",
+      url: "https://tieba.baidu.com/example/5",
+      region_id: 1,
+      publish_time: "2026-07-13T18:30:00Z",
+      risk_score: 68,
+      sentiment: "negative",
+      summary: "小区车位产权纠纷引发业主维权，存在舆情扩散风险",
+      keywords: "维权,车位,产权,群体",
+      created_at: "2026-07-13T18:40:00Z",
+      analysis_status: "completed",
+      analysis_time: "2026-07-13T18:45:00Z",
+      analysis_suggestion:
+        "建议街道与司法所介入调解，依法依规化解纠纷，避免矛盾升级",
+    },
+    {
+      id: 6,
+      title: "大厂县举办消夏文化节 丰富群众夜间生活",
+      content:
+        "为进一步活跃夜间经济，大厂县举办消夏文化节，设置文艺演出与便民市集，受到居民欢迎",
+      source: "大厂县政府网",
+      url: "https://www.lfdc.gov.cn/example/6",
+      region_id: 1,
+      publish_time: "2026-07-13T09:00:00Z",
+      risk_score: 8,
+      sentiment: "positive",
+      summary: "消夏文化节丰富群众生活，正面舆情",
+      keywords: "文化夜间经济,民生",
+      created_at: "2026-07-13T09:10:00Z",
+      analysis_status: "completed",
+      analysis_time: "2026-07-13T09:15:00Z",
+      analysis_suggestion: "可作为正面宣传素材持续跟进",
+    },
+    {
+      id: 7,
+      title: "家长建议大厂县某学校周边增设护学通道",
+      content:
+        "有家长反映学校周边上下学时段人车混行、存在安全隐患，建议增设护学通道与交通疏导",
+      source: "抖音",
+      url: "https://douyin.com/example/7",
+      region_id: 1,
+      publish_time: "2026-07-12T16:20:00Z",
+      risk_score: 55,
+      sentiment: "negative",
+      summary: "家长反映学校周边交通拥堵与安全隐患，建议增设护学通道",
+      keywords: "学校,交安全隐患,民生",
+      created_at: "2026-07-12T16:30:00Z",
+      analysis_status: "completed",
+      analysis_time: "2026-07-12T16:35:00Z",
+      analysis_suggestion: "建议教育部门联合交警设置护学岗与临时管制",
+    },
+    {
+      id: 8,
+      title: "大厂县某超市食品安全问题引发讨论",
+      content:
+        "有消费者称在某连锁超市购买到临近保质期食品，相关讨论在本地微信群扩散，呼吁加强商超食品安全监管",
+      source: "微博",
+      url: "https://weibo.com/example/8",
+      region_id: 1,
+      publish_time: "2026-07-12T11:05:00Z",
+      risk_score: 71,
+      sentiment: "negative",
+      summary: "超市临近保质期食品问题引发食品安全担忧",
+      keywords: "食品安全,超市,监管,投诉",
+      created_at: "2026-07-12T11:15:00Z",
+      analysis_status: "completed",
+      analysis_time: "2026-07-12T11:20:00Z",
+      analysis_suggestion: "建议市场监管部门开展商超临期食品专项检查并公示结果",
+    },
+    {
+      id: 9,
+      title: "大厂县推出优化营商环境新举措获企业好",
+      content:
+        "大厂县发布优化营商环境若干措施，涵盖审批提速与税费优惠，多家企业表示信心增强",
+      source: "大厂县政府网",
+      url: "https://www.lfdc.gov.cn/example/9",
+      region_id: 1,
+      publish_time: "2026-07-11T14:00:00Z",
+      risk_score: 10,
+      sentiment: "positive",
+      summary: "营商环境新举措获企业正向反馈",
+      keywords: "营商环境,企业,政策",
+      created_at: "2026-07-11T14:10:00Z",
+      analysis_status: "completed",
+      analysis_time: "2026-07-11T14:15:00Z",
+      analysis_suggestion: "可跟踪政策落地成效，作为正面案例宣传",
+    },
+    {
+      id: 10,
+      title: "网友建议大厂县增加社区公交线路覆",
+      content:
+        "有网友在留言板建议，部分新建社区公交线路覆盖不足，希望优化线网、增加班次",
+      source: "微信",
+      url: "https://mp.weixin.qq.com/example/10",
+      region_id: 1,
+      publish_time: "2026-07-11T08:40:00Z",
+      risk_score: 30,
+      sentiment: "neutral",
+      summary: "网友建议优化社区公交线路覆盖",
+      keywords: "公交,民生,出行",
+      created_at: "2026-07-11T08:50:00Z",
+      analysis_status: "pending",
+      analysis_time: null,
+      analysis_suggestion: null,
+    },
+    {
+      id: 11,
+      title: "大厂县某建筑工地夜间施工扰民引投",
+      content:
+        "附近居民反映某工地夜间施工噪声扰民，影响休息，希望城管与环保部门加强夜间巡查",
+      source: "今日头条",
+      url: "https://toutiao.com/example/11",
+      region_id: 1,
+      publish_time: "2026-07-10T22:10:00Z",
+      risk_score: 63,
+      sentiment: "negative",
+      summary: "工地夜间施工噪声扰民，存在投诉升级风险",
+      keywords: "施工,噪声,扰民,环保",
+      created_at: "2026-07-10T22:20:00Z",
+      analysis_status: "completed",
+      analysis_time: "2026-07-10T22:25:00Z",
+      analysis_suggestion: "建议环保与城管部门核查施工许可与时段，依法处理噪声投诉",
+    },
+    {
+      id: 12,
+      title: "大厂县空气质量持续改上半年优良天数同比增",
+      content:
+        "生态环境部门发布数据，大厂县上半年空气质量优良天数同比增加，群众获得感提升",
+      source: "大厂县政府网",
+      url: "https://www.lfdc.gov.cn/example/12",
+      region_id: 1,
+      publish_time: "2026-07-10T09:30:00Z",
+      risk_score: 6,
+      sentiment: "positive",
+      summary: "空气质量改善，正面民生舆情",
+      keywords: "空气质量,环保,民生",
+      created_at: "2026-07-10T09:40:00Z",
+      analysis_status: "failed",
+      analysis_time: "2026-07-10T09:45:00Z",
+      analysis_suggestion: null,
+    },
+  ];
+
+  // Dashboard 趋势：对DashboardStatsResponse.trend（最日，无数据日  
+const TREND = [
+    { date: "2026-07-10", count: 9 },
+    { date: "2026-07-11", count: 12 },
+    { date: "2026-07-12", count: 15 },
+    { date: "2026-07-13", count: 11 },
+    { date: "2026-07-14", count: 14 },
+    { date: "2026-07-15", count: 18 },
+    { date: "2026-07-16", count: 7 },
+  ];
+
+  // Dashboard 关键词：对齐 DashboardStatsResponse.keywords（TOP，逗号拆分统计  
+const KEYWORDS = [
+    { word: "消防", count: 34 },
+    { word: "交通事", count: 28 },
+    { word: "价格", count: 22 },
+    { word: "食品安全", count: 19 },
+    { word: "营商环境", count: 16 },
+    { word: "公交", count: 13 },
+  ];
+
+  // 事件：对EventOut（status 后端固定返回 "active"  // linked 为原型模拟的关联舆情（真实系统经 event_opinions 表统计）
+  const EVENTS = [
+    {
+      id: 1,
+      title: "大厂县某小区消防安全舆情",
+      risk_level: "high",
+      opinion_count: 14,
+      status: "active",
+      first_time: "2026-07-10T08:00:00Z",
+      last_time: "2026-07-15T20:00:00Z",
+      linked: [1, 8, 7, 11],
+    },
+    {
+      id: 2,
+      title: "大厂县道路交通安全事",
+      risk_level: "medium",
+      opinion_count: 8,
+      status: "active",
+      first_time: "2026-07-12T07:40:00Z",
+      last_time: "2026-07-15T07:55:00Z",
+      linked: [2, 5],
+    },
+    {
+      id: 3,
+      title: "大厂县消费价格投",
+      risk_level: "low",
+      opinion_count: 5,
+      status: "active",
+      first_time: "2026-07-13T15:10:00Z",
+      last_time: "2026-07-14T15:25:00Z",
+      linked: [3, 10],
+    },
+  ];
+
+  // 预警中心（主流舆情研判系统核心模块；本平台后端尚未实现，原型为规划演示）
+  // level: red(红色/特级) / orange(橙色/重大) / yellow(黄色/较大)
+  // status: pending(待处 / handling(处置 / done(已处"
+  const ALERTS = [
+    { id: 1, title: "某小区消防通道占用舆情持续升温", level: "red", source: "微博", opinionId: 1, reason: "风险评分 84 + 敏感词命中（消防 / 安全隐患", time: "2026-07-15T09:30:00Z", status: "pending" },
+    { id: 2, title: "主干道交通事故引发聚集讨", level: "red", source: "今日头条", opinionId: 2, reason: "风险评分 76 + 敏感词命中（事故", time: "2026-07-15T07:55:00Z", status: "handling" },
+    { id: 3, title: "小区车位维权事件出现扩散迹象", level: "orange", source: "百度贴吧", opinionId: 5, reason: "敏感词命中（维权 / 群体 关联舆情增多", time: "2026-07-13T18:45:00Z", status: "handling" },
+    { id: 4, title: "超市食品安全投诉热度上升", level: "orange", source: "微博", opinionId: 8, reason: "敏感词命中（食品安全 跨群转发", time: "2026-07-12T11:20:00Z", status: "done" },
+    { id: 5, title: "菜市场价格偏高引发关", level: "yellow", source: "微信", opinionId: 3, reason: "风险评分临界5", time: "2026-07-14T15:25:00Z", status: "done" },
+    { id: 6, title: "学校周边交通隐患建议受关注", level: "yellow", source: "抖音", opinionId: 7, reason: "风险评分 55 + 民生类诉", time: "2026-07-12T16:35:00Z", status: "pending" },
+    { id: 7, title: "工地夜间施工扰民投诉增多", level: "red", source: "今日头条", opinionId: 11, reason: "敏感词命中（扰民 / 噪声 投诉上升", time: "2026-07-10T22:25:00Z", status: "done" },
+    { id: 8, title: "用户建议增加公交线路", level: "yellow", source: "微信", opinionId: 10, reason: "低频民生建议，纳入常态监", time: "2026-07-11T08:50:00Z", status: "pending" },
+  ];
+
+  // 传播溯源（主流舆情研判系统核心模块；按事件聚合分析，原型为规划演示）
+  const PROPAGATION = {
+    1: {
+      summary: "该事件起源于业主群，经本地资讯号转发后快速扩散至短视频平台，并于 7-15 登上同城热搜，相关部门当日介入核查",
+      platforms: [
+        { name: "微博", value: 42 },
+        { name: "微信", value: 28 },
+        { name: "抖音", value: 19 },
+        { name: "今日头条", value: 15 },
+        { name: "百度贴吧", value: 9 },
+        { name: "其他", value: 7 },
+      ],
+      milestones: [
+        { level: "yellow", time: "07-10 08:00", text: "起源：业主在业主群首发消防通道质疑" },
+        { level: "orange", time: "07-11 12:30", text: "扩散：本地微博大 V 转发，单条阅读破 10 " },
+        { level: "orange", time: "07-13 09:00", text: "升级：短视频平台出现现场画面，二次传" },
+        { level: "red", time: "07-15 09:20", text: "爆发：登上同城热搜，舆情量短时陡" },
+        { level: "green", time: "07-15 20:00", text: "响应：消防与住建部门介入核查" },
+      ],
+      nodes: [
+        { name: "大厂本地资讯", role: "本地资讯", impact: "", fans: "12.3" },
+        { name: "热心市民小王", role: "首发业主", impact: "", fans: "0.8" },
+        { name: "大厂县融", role: "官方媒体", impact: "", fans: "25.6" },
+      ],
+    },
+    2: {
+      summary: "交通事故类舆情随早高峰集中爆发，经新闻客户端与短视频扩散，交警部门当日通报处置进展后趋于平稳",
+      platforms: [
+        { name: "今日头条", value: 31 },
+        { name: "抖音", value: 24 },
+        { name: "微博", value: 18 },
+        { name: "微信", value: 12 },
+        { name: "百度贴吧", value: 6 },
+        { name: "其他", value: 4 },
+      ],
+      milestones: [
+        { level: "orange", time: "07-12 07:40", text: "起源：早高峰交通事故，网友现场图文首发" },
+        { level: "red", time: "07-12 08:30", text: "扩散：新闻客户端推送，同城热度上升" },
+        { level: "orange", time: "07-12 10:00", text: "关注：网友呼吁优化路口信号灯配时" },
+        { level: "green", time: "07-12 12:00", text: "响应：交警部门通报事故处置进展" },
+      ],
+      nodes: [
+        { name: "大厂交警", role: "官方账号", impact: "", fans: "18.9" },
+        { name: "头条本地", role: "新闻客户", impact: "", fans: "32.1" },
+        { name: "路人", role: "现场目击", impact: "", fans: "1.2" },
+      ],
+    },
+    3: {
+      summary: "消费价格类舆情以微信长文与本地论坛为主，传播平缓、地域性强，市场监管部门跟踪后未出现扩散",
+      platforms: [
+        { name: "微信", value: 22 },
+        { name: "百度贴吧", value: 11 },
+        { name: "微博", value: 8 },
+        { name: "今日头条", value: 5 },
+        { name: "抖音", value: 3 },
+        { name: "其他", value: 2 },
+      ],
+      milestones: [
+        { level: "yellow", time: "07-13 15:10", text: "起源：市民发帖反映菜价偏" },
+        { level: "yellow", time: "07-13 19:00", text: "扩散：本地论坛与微信群转" },
+        { level: "green", time: "07-14 10:00", text: "响应：市场监管部门纳入价格监" },
+      ],
+      nodes: [
+        { name: "菜市场王阿姨", role: "普通市", impact: "", fans: "0.3" },
+        { name: "大厂市场监管", role: "官方账号", impact: "", fans: "9.4" },
+        { name: "本地生活", role: "生活类号", impact: "", fans: "4.1" },
+      ],
+    },
+  };
+
+  const SENTIMENT_TEXT = { negative: "负面", positive: "正面", neutral: "中" };
+  const STATUS_TEXT = { completed: "已完", failed: "失败", processing: "分析", pending: "待分" };
+  const RISK_TEXT = { high: "", medium: "", low: "" };
+
+  /* ----------------------------- 工具函数 ----------------------------- */
+  const $app = document.getElementById("app");
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function fmtTime(t) {
+    if (!t) return "";
+    return String(t).replace("T", " ").slice(0, 16);
+  }
+  function fmtDate(t) {
+    if (!t) return "";
+    return String(t).slice(5, 10);
+  }
+  function riskClass(score) {
+    if (score >= 70) return "red";
+    if (score >= 40) return "orange";
+    return "green";
+  }
+  function riskColorInline(score) {
+    if (score >= 70) return "#ff3b30";
+    if (score >= 40) return "#ff9f0a";
+    return "#34c759";
+  }
+  function sentimentPill(s) {
+    const c = s === "negative" ? "red" : s === "positive" ? "green" : "gray";
+    return `<span class="pill pill-${c}"><span class="dot"></span>${SENTIMENT_TEXT[s] || s}</span>`;
+  }
+  function statusPill(st) {
+    const c = st === "completed" ? "green" : st === "failed" ? "red" : st === "processing" ? "orange" : "gray";
+    return `<span class="pill pill-${c}">${st === "processing" ? '<span class="spinner"></span>' : ""}${STATUS_TEXT[st] || st}</span>`;
+  }
+  function riskPill(level) {
+    const c = level === "high" ? "red" : level === "medium" ? "orange" : "green";
+    return `<span class="pill pill-${c}"><span class="dot"></span>${RISK_TEXT[level] || level}</span>`;
+  }
+
+  function toast(msg) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove("show"), 2200);
+  }
+
+  // 模拟「写库」：localStorage 覆盖原始模拟数据，刷新后仍保持
+  function loadOpinions() {
+    try {
+      const raw = store.getItem("apple_proto_opinions");
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return JSON.parse(JSON.stringify(OPINIONS));
+  }
+  function saveOpinions(list) {
+    try { store.setItem("apple_proto_opinions", JSON.stringify(list)); } catch (e) {}
+  }
+  let opinions = loadOpinions();
+
+  function getOpinion(id) { return opinions.find((o) => o.id === Number(id)); }
+
+  /* ----------------------------- SVG 趋势图（无依赖） ----------------------------- */
+  function trendSVG(data) {
+    const W = 720, H = 300, padL = 44, padR = 20, padT = 20, padB = 42;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const max = Math.max(1, ...data.map((d) => d.count));
+    const n = data.length;
+    const x = (i) => padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+    const y = (v) => padT + plotH - (v / max) * plotH;
+    const baseY = padT + plotH;
+
+    const pts = data.map((d, i) => [x(i), y(d.count)]);
+    const line = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+    const area = line + ` L${x(n - 1).toFixed(1)} ${baseY} L${x(0).toFixed(1)} ${baseY} Z`;
+
+    let grid = "";
+    const steps = 3;
+    for (let i = 0; i <= steps; i++) {
+      const gv = Math.round((max / steps) * i);
+      const gy = y(gv);
+      grid += `<line x1="${padL}" y1="${gy}" x2="${W - padR}" y2="${gy}" stroke="#e8e8ed" stroke-width="1"/>`;
+      grid += `<text x="${padL - 10}" y="${gy + 4}" text-anchor="end" font-size="11" fill="#86868b">${gv}</text>`;
+    }
+    const dots = pts.map((p, i) =>
+      `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4.5" fill="#fff" stroke="#0071e3" stroke-width="2.5"/>`
+    ).join("");
+    const labels = data.map((d, i) =>
+      `<text x="${x(i).toFixed(1)}" y="${H - 16}" text-anchor="middle" font-size="11.5" fill="#86868b">${fmtDate(d.date)}</text>`
+    ).join("");
+
+    return `<svg class="trend-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="日舆情趋势折线图">
+      <defs>
+        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#0071e3" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="#0071e3" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      ${grid}
+      <path d="${area}" fill="url(#areaGrad)"/>
+      <path d="${line}" fill="none" stroke="#0071e3" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}
+      ${labels}
+    </svg>`;
+  }
+
+  /* ----------------------------- 预警 / 传播 辅助 ----------------------------- */
+  function alertLevelPill(level) {
+    const map = { red: ["red", ""], orange: ["orange", ""], yellow: ["yellow", ""] };
+    const m = map[level] || ["gray", level];
+    return `<span class="pill pill-${m[0]}"><span class="dot"></span>${m[1]}色预</span>`;
+  }
+  function alertStatusPill(s) {
+    const map = { pending: ["gray", "待处"], handling: ["orange", "处置"], done: ["green", "已处"] };
+    const m = map[s] || ["gray", s];
+    return `<span class="pill pill-${m[0]}">${m[1]}</span>`;
+  }
+
+  // 传播路径网络图（SVG，无依赖）：起源 平台 关键节点
+  // 优化：加大留白、阶段表头、关键节点用圆角 chip，避免图文拥挤
+function propagationNetworkSVG(platforms, nodes) {
+    const W = 880, H = 600;
+    const headerY = 36;
+    const top = 96, bottom = H - 44;            // P=6 时纵向间距≈92px，名与数留足间隙不重叠
+    const origin = { x: 104, y: (top + bottom) / 2 };
+    const pX = 388, nX = 772;
+    const P = platforms.length, N = nodes.length;
+    const pY = (i) => (P === 1 ? (top + bottom) / 2 : top + (i / (P - 1)) * (bottom - top));
+    const nY = (i) => (N === 1 ? (top + bottom) / 2 : top + (i / (N - 1)) * (bottom - top));
+
+    let links = "";
+    platforms.forEach((_, i) => {
+      const y = pY(i);
+      links += `<path class="net-link" d="M ${origin.x} ${origin.y} Q ${(origin.x + pX) / 2} ${y} ${pX} ${y}"/>`;
+    });
+    platforms.forEach((_, i) => {
+      const ni = N === 0 ? 0 : i % N;
+      const py = pY(i), ny = nY(ni);
+      links += `<path class="net-link" d="M ${pX} ${py} Q ${(pX + nX) / 2} ${ny} ${nX} ${ny}"/>`;
+    });
+
+    // 阶段表头（明从左到右"的叙事逻辑    
+    const headers =
+      `<text class="net-stage" x="${origin.x}" y="${headerY}" text-anchor="middle">舆情起源</text>` +
+      `<text class="net-stage" x="${pX}" y="${headerY}" text-anchor="middle">平台扩散</text>` +
+      `<text class="net-stage" x="${nX}" y="${headerY}" text-anchor="middle">关键节点</text>`;
+
+    // 平台节点（标签上26 / 数值下30，间距足够不与相邻节点重叠）
+    const pNodes = platforms
+      .map((p, i) => {
+        const y = pY(i);
+        return `<circle class="net-node-circle" cx="${pX}" cy="${y}" r="11"/>
+                <text class="net-node-label" x="${pX}" y="${y - 32}" text-anchor="middle">${esc(p.name)}</text>
+                <text class="net-node-sub" x="${pX}" y="${y + 36}" text-anchor="middle">${p.value} </text>`;
+      })
+      .join("");
+
+    // 关键传播节点（圆chip，文字内嵌、不压连线）
+    const nNodes = nodes
+      .map((n, i) => {
+        const y = nY(i);
+        const w = Math.max(76, n.name.length * 14 + 30);
+        const x0 = nX - w / 2;
+        return `<rect class="net-chip" x="${x0}" y="${y - 16}" width="${w}" height="32" rx="16"/>
+                <text class="net-chip-label" x="${nX}" y="${y + 5}" text-anchor="middle">${esc(n.name)}</text>
+                <text class="net-node-sub" x="${nX}" y="${y + 36}" text-anchor="middle">影响${esc(n.impact)}</text>`;
+      })
+      .join("");
+
+    return `<svg class="net-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="传播路径网络>
+        <defs>
+          <radialGradient id="originG" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#0071e3"/><stop offset="100%" stop-color="#0a84ff"/>
+          </radialGradient>
+        </defs>
+        ${links}
+        ${headers}
+        ${pNodes}
+        ${nNodes}
+        <circle class="net-node-origin" cx="${origin.x}" cy="${origin.y}" r="19" fill="url(#originG)"/>
+        <text x="${origin.x}" y="${origin.y + 4}" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">起源</text>
+        <text x="${origin.x}" y="${origin.y + 42}" text-anchor="middle" class="net-node-sub">${esc(platforms.length)} 个平</text>
+      </svg>`;
+  }
+
+  /* ----------------------------- 页面：登----------------------------- */
+  function renderLogin() {
+    $app.innerHTML = `
+      <div class="login-screen">
+        <div class="login-card">
+          <div class="login-badge"></div>
+          <h1 class="login-title">大厂县公安互联网舆情监测研判平台</h1>
+          <p class="login-sub">Internet Public Opinion Monitoring Platform</p>
+          <form id="loginForm" autocomplete="off">
+            <div class="field">
+              <label for="username">用户</label>
+              <input id="username" class="input" type="text" value="admin" placeholder="请输入用户名" />
+            </div>
+            <div class="field">
+              <label for="password">密码</label>
+              <input id="password" class="input" type="password" value="admin123" placeholder="请输入密 />
+            </div>
+            <button type="submit" class="btn btn-primary login-btn"></button>
+          </form>
+          <p class="login-hint">演示账号code>admin</code> / <code>admin123</code></p>
+        </div>
+      </div>`;
+
+    document.getElementById("loginForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const u = document.getElementById("username").value.trim();
+      const p = document.getElementById("password").value;
+      // 模拟 POST /api/login（真实仅校验 admin/admin123）
+      if (u === "admin" && p === "admin123") {
+        store.setItem("apple_proto_token", "mock-jwt-token");
+        store.setItem("apple_proto_user", u);
+        toast("登录成功");
+        location.hash = "#/dashboard";
+      } else {
+        toast("用户名或密码错误");
+      }
+    });
+  }
+
+  /* ----------------------------- 应用骨架 ----------------------------- */
+  const NAV = [
+    { hash: "#/dashboard", ico: "", label: "驾驶" },
+    { hash: "#/opinions", ico: "", label: "舆情列表" },
+    { hash: "#/events", ico: "", label: "事件中心" },
+    { hash: "#/alerts", ico: "", label: "预警中心" },
+    { hash: "#/propagation", ico: "", label: "传播溯源" },
+  ];
+
+  function shell(activeHash, inner) {
+    const user = store.getItem("apple_proto_user") || "admin";
+    const nav = NAV.map(
+      (n) =>
+        `<a class="nav-item ${n.hash === activeHash ? "active" : ""}" href="${n.hash}">
+           <span class="ico">${n.ico}</span><span>${n.label}</span>
+         </a>`
+    ).join("");
+    return `
+      <div class="app-shell">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-logo"></div>
+            <div class="brand-name">大厂县公安舆small>监测研判平台</small></div>
+          </div>
+          <nav class="nav">${nav}</nav>
+          <div class="nav-spacer"></div>
+          <div class="nav-user">
+            <div class="avatar">A</div>
+            <div>
+              <div class="u-name">${esc(user)}</div>
+              <div class="u-role">管理</div>
+            </div>
+            <button class="btn btn-quiet u-out" id="logoutBtn">退</button>
+          </div>
+        </aside>
+        <main class="main">${inner}</main>
+      </div>`;
+  }
+
+  function bindShell() {
+    const b = document.getElementById("logoutBtn");
+    if (b) b.addEventListener("click", function () {
+      store.removeItem("apple_proto_token");
+      store.removeItem("apple_proto_user");
+      location.hash = "#/login";
+    });
+  }
+
+  /* ----------------------------- 页面：Dashboard ----------------------------- */
+  function renderDashboard() {
+    const total = opinions.length;
+    const today = opinions.filter((o) => o.created_at && o.created_at.slice(0, 10) === "2026-07-16").length;
+    const highRisk = opinions.filter((o) => o.risk_score >= 70).length;
+    const eventTotal = EVENTS.length;
+
+    const kwMax = Math.max(1, ...KEYWORDS.map((k) => k.count));
+    const kwHTML = KEYWORDS.map(
+      (k) =>
+        `<div class="kw-row">
+           <div class="kw-word">${esc(k.word)}</div>
+           <div class="kw-track"><div class="kw-fill" style="width:${(k.count / kwMax) * 100}%"></div></div>
+           <div class="kw-count">${k.count}</div>
+         </div>`
+    ).join("");
+
+    const inner = `
+      <div class="topbar">
+        <div>
+          <h1 class="h-page-title">舆情驾驶</h1>
+          <p class="h-page-sub">实时掌握大厂县互联网舆情态势</p>
+        </div>
+        <div class="actions">
+          <a class="btn btn-ghost" href="#/opinions">查看舆情</a>
+          <a class="btn btn-primary" href="#/events">事件中心</a>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="card stat-card">
+          <div class="s-ico">📊</div>
+          <div class="s-label">总舆</div>
+          <div class="s-value mono">${total}</div>
+          <div class="s-foot">累计收录舆情条目</div>
+        </div>
+        <div class="card stat-card is-green">
+          <div class="s-ico">🆕</div>
+          <div class="s-label">今日新增</div>
+          <div class="s-value mono">${today}</div>
+          <div class="s-foot">2026-07-16 新增</div>
+        </div>
+        <div class="card stat-card is-red">
+          <div class="s-ico">⚠️</div>
+          <div class="s-label">高风</div>
+          <div class="s-value mono danger">${highRisk}</div>
+          <div class="s-foot">风险评分 70</div>
+        </div>
+        <div class="card stat-card is-amber">
+          <div class="s-ico"></div>
+          <div class="s-label">事件数量</div>
+          <div class="s-value mono">${eventTotal}</div>
+          <div class="s-foot">进行中事</div>
+        </div>
+      </div>
+
+      <div class="dash-row">
+        <div class="card">
+          <div class="chart-head">
+            <span class="section-title">7 日舆情趋</span>
+            <span class="muted" style="font-size:13px">单位：条</span>
+          </div>
+          <div class="chart-box">${trendSVG(TREND)}</div>
+        </div>
+        <div class="card">
+          <div class="chart-head">
+            <span class="section-title">TOP 关键词排</span>
+          </div>
+          <div class="kw-list">${kwHTML}</div>
+        </div>
+      </div>`;
+
+    $app.innerHTML = shell("#/dashboard", inner);
+    bindShell();
+  }
+
+  /* ----------------------------- 页面：舆情列----------------------------- */
+  const opState = { source: "", risk_level: "", keyword: "", page: 1, size: 10 };
+
+  function renderOpinions() {
+    const sources = Array.from(new Set(opinions.map((o) => o.source)));
+    const filtered = opinions.filter((o) => {
+      if (opState.source && o.source !== opState.source) return false;
+      // 真实系统：risk_level 参数映射sentiment 字段
+      if (opState.risk_level && o.sentiment !== opState.risk_level) return false;
+      if (opState.keyword) {
+        const k = opState.keyword.toLowerCase();
+        const hay = (o.keywords + o.title + o.content).toLowerCase();
+        if (!hay.includes(k)) return false;
+      }
+      return true;
+    });
+
+    const total = filtered.length;
+    const pages = Math.max(1, Math.ceil(total / opState.size));
+    if (opState.page > pages) opState.page = pages;
+    const start = (opState.page - 1) * opState.size;
+    const rows = filtered.slice(start, start + opState.size);
+
+    const sourceOpts = ['<option value="">来源（全部）</option>']
+      .concat(sources.map((s) => `<option value="${esc(s)}" ${opState.source === s ? "selected" : ""}>${esc(s)}</option>`))
+      .join("");
+
+    const riskOpts = [
+      '<option value="">风险等级（全部）</option>',
+      `<option value="negative" ${opState.risk_level === "negative" ? "selected" : ""}>负面 negative</option>`,
+      `<option value="neutral" ${opState.risk_level === "neutral" ? "selected" : ""}>中neutral</option>`,
+      `<option value="positive" ${opState.risk_level === "positive" ? "selected" : ""}>正面 positive</option>`,
+    ].join("");
+
+    const body = rows.length
+      ? rows
+          .map(
+            (o) => `
+        <tr data-id="${o.id}" style="cursor:pointer">
+          <td class="col-num muted">${o.id}</td>
+          <td><a class="t-link t-title" href="#/opinion/${o.id}">${esc(o.title)}</a></td>
+          <td class="muted">${esc(o.source)}</td>
+          <td class="col-center muted mono">${fmtTime(o.publish_time)}</td>
+          <td class="col-center"><span class="risk-num" style="color:${riskColorInline(o.risk_score)}">${o.risk_score}</span></td>
+          <td class="col-center">${sentimentPill(o.sentiment)}</td>
+          <td class="col-center">${statusPill(o.analysis_status)}</td>
+        </tr>`
+          )
+          .join("")
+      : `<tr class="empty-row"><td colspan="7">暂无符合条件的舆</td></tr>`;
+
+    // 分页按钮
+    let pager = "";
+    const pns = [];
+    if (pages <= 7) {
+      for (let i = 1; i <= pages; i++) pns.push(i);
+    } else {
+      pns.push(1);
+      if (opState.page > 3) pns.push("...");
+      for (let i = Math.max(2, opState.page - 1); i <= Math.min(pages - 1, opState.page + 1); i++) pns.push(i);
+      if (opState.page < pages - 2) pns.push("...");
+      pns.push(pages);
+    }
+    pager = pns
+      .map((p) =>
+        p === "..."
+          ? `<button disabled>...</button>`
+          : `<button class="${p === opState.page ? "active" : ""}" data-page="${p}">${p}</button>`
+      )
+      .join("");
+
+    const inner = `
+      <div class="topbar">
+        <div>
+          <h1 class="h-page-title">舆情列表</h1>
+          <p class="h-page-sub">${total} 条舆· 支持来源 / 风险等级 / 关键词筛</p>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="filters">
+          <select class="select" id="fSource">${sourceOpts}</select>
+          <select class="select" id="fRisk">${riskOpts}</select>
+          <input class="search" id="fKeyword" type="text" placeholder="关键/ 标题 / 内容" value="${esc(opState.keyword)}" />
+          <button class="btn btn-primary" id="fSearch">搜索</button>
+          <button class="btn btn-ghost" id="fReset">重置</button>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th class="col-num">ID</th>
+              <th>标题</th>
+              <th>来源</th>
+              <th class="col-center">时间</th>
+              <th class="col-center">风险评分</th>
+              <th class="col-center">情感</th>
+              <th class="col-center">AI 状</th>
+            </tr>
+          </thead>
+          <tbody id="opBody">${body}</tbody>
+        </table>
+        <div class="pager">
+          <span class="p-info">${opState.page} / ${pages} · 每页 ${opState.size} </span>
+          <button id="prevPage" ${opState.page <= 1 ? "disabled" : ""}>上一</button>
+          ${pager}
+          <button id="nextPage" ${opState.page >= pages ? "disabled" : ""}>下一</button>
+        </div>
+      </div>`;
+
+    $app.innerHTML = shell("#/opinions", inner);
+    bindShell();
+
+    document.getElementById("fSource").addEventListener("change", (e) => { opState.source = e.target.value; opState.page = 1; renderOpinions(); });
+    document.getElementById("fRisk").addEventListener("change", (e) => { opState.risk_level = e.target.value; opState.page = 1; renderOpinions(); });
+    document.getElementById("fSearch").addEventListener("click", () => { opState.keyword = document.getElementById("fKeyword").value.trim(); opState.page = 1; renderOpinions(); });
+    document.getElementById("fKeyword").addEventListener("keydown", (e) => { if (e.key === "Enter") { opState.keyword = e.target.value.trim(); opState.page = 1; renderOpinions(); } });
+    document.getElementById("fReset").addEventListener("click", () => { opState.source = ""; opState.risk_level = ""; opState.keyword = ""; opState.page = 1; renderOpinions(); });
+    document.getElementById("prevPage").addEventListener("click", () => { if (opState.page > 1) { opState.page--; renderOpinions(); } });
+    document.getElementById("nextPage").addEventListener("click", () => { if (opState.page < pages) { opState.page++; renderOpinions(); } });
+    document.querySelectorAll("#opBody tr[data-id]").forEach((tr) =>
+      tr.addEventListener("click", (e) => {
+        if (e.target.tagName === "A") return; // 链接已处理
+        location.hash = "#/opinion/" + tr.getAttribute("data-id");
+      })
+    );
+    document.querySelectorAll(".pager button[data-page]").forEach((b) =>
+      b.addEventListener("click", () => { opState.page = Number(b.getAttribute("data-page")); renderOpinions(); })
+    );
+  }
+
+  /* ----------------------------- 页面：舆情详----------------------------- */
+  function renderOpinionDetail(id) {
+    const o = getOpinion(id);
+    if (!o) {
+      $app.innerHTML = shell("#/opinions", `
+        <div class="topbar"><div><h1 class="h-page-title">未找到舆</h1></div></div>
+        <div class="card"><p class="muted">该舆情不存在或已被删除a class="t-link" href="#/opinions">返回列表</a></p></div>`);
+      bindShell();
+      return;
+    }
+
+    const kws = (o.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
+    const kwHTML = kws.length ? kws.map((k) => `<span class="kw-tag">${esc(k)}</span>`).join("") : `<span class="muted">暂无</span>`;
+
+    const inner = `
+      <div class="topbar">
+        <div>
+          <h1 class="h-page-title">舆情详情</h1>
+          <p class="h-page-sub">ID #${o.id}</p>
+        </div>
+        <div class="actions"><a class="btn btn-ghost" href="#/opinions">返回列表</a></div>
+      </div>
+
+      <div class="detail-grid">
+        <div class="card card-pad-lg">
+          <h2 class="detail-title">${esc(o.title)}</h2>
+          <div class="detail-meta">
+            <span>来源{esc(o.source)}</span>
+            <span>发布时间{fmtTime(o.publish_time)}</span>
+          </div>
+          ${o.url ? `<div class="detail-meta"><span>链接a class="detail-url" href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.url)}</a></span></div>` : ""}
+          <div class="detail-divider"></div>
+          <div class="detail-content">${esc(o.content)}</div>
+        </div>
+
+        <div class="card card-pad-lg">
+          <div class="ai-status-line">
+            <span class="section-title">AI 分析</span>
+            <span style="margin-left:auto">${statusPill(o.analysis_status)}</span>
+          </div>
+
+          <div class="ai-block">
+            <div class="ai-label">风险评分</div>
+            <div class="risk-big" style="color:${riskColorInline(o.risk_score)}">${o.risk_score}</div>
+          </div>
+          <div class="ai-block">
+            <div class="ai-label">情感</div>
+            ${sentimentPill(o.sentiment)}
+          </div>
+          <div class="ai-block">
+            <div class="ai-label">AI 摘要</div>
+            <div class="ai-text">${esc(o.summary || "暂无")}</div>
+          </div>
+          <div class="ai-block">
+            <div class="ai-label">关键</div>
+            <div class="kw-tags">${kwHTML}</div>
+          </div>
+          <div class="ai-block">
+            <div class="ai-label">研判建议</div>
+            <div class="ai-text">${esc(o.analysis_suggestion || "暂无")}</div>
+          </div>
+          <div class="ai-block">
+            <div class="ai-label">分析时间</div>
+            <div class="ai-text">${fmtTime(o.analysis_time)}</div>
+          </div>
+
+          <div class="detail-divider"></div>
+          <div class="ai-actions">
+            ${o.analysis_status === "processing"
+              ? `<button class="btn btn-primary" disabled><span class="spinner"></span>&nbsp;分析中</button>`
+              : `<button class="btn btn-primary" id="triggerAI">触发 AI 分析</button>`}
+          </div>
+        </div>
+      </div>`;
+
+    $app.innerHTML = shell("#/opinion/" + id, inner);
+    bindShell();
+
+    const btn = document.getElementById("triggerAI");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        // 模拟 POST /api/analyze/{id}：先processing，再写库 completed
+        o.analysis_status = "processing";
+        saveOpinions(opinions);
+        renderOpinionDetail(id);
+        setTimeout(function () {
+          o.analysis_status = "completed";
+          o.analysis_time = new Date().toISOString();
+          // 命中规则降级：高风险关键negative + 高分
+          const hit = /消防|事故|死亡|群体|谣言|食品|噪声|扰民/.test(o.keywords + o.title + o.content);
+          if (o.risk_score === 0 || o.summary === "") {
+            o.sentiment = hit ? "negative" : "neutral";
+            o.risk_score = hit ? 78 : 36;
+            o.summary = "AI 研判，该舆情" + (hit ? "含敏感要素，需重点跟进" : "风险相对可控");
+            o.keywords = o.keywords || "大厂舆情";
+            o.analysis_suggestion = hit ? "建议持续监测并准备响应口径" : "建议常态关注即可";
+          }
+          saveOpinions(opinions);
+          renderOpinionDetail(id);
+          toast("AI 分析完成");
+        }, 1300);
+      });
+    }
+  }
+
+  /* ----------------------------- 页面：事件中----------------------------- */
+  function renderEvents() {
+    const total = EVENTS.length;
+    const body = EVENTS.length
+      ? EVENTS.map(
+          (e) => `
+        <tr data-id="${e.id}" style="cursor:pointer">
+          <td class="col-num muted">${e.id}</td>
+          <td><span class="t-title t-link">${esc(e.title)}</span></td>
+          <td class="col-center">${riskPill(e.risk_level)}</td>
+          <td class="col-center muted mono">${e.opinion_count}</td>
+          <td class="col-center"><span class="pill pill-green"><span class="dot"></span>${esc(e.status)}</span></td>
+          <td class="col-center muted mono">${fmtTime(e.first_time)}</td>
+          <td class="col-center muted mono">${fmtTime(e.last_time)}</td>
+        </tr>`
+        ).join("")
+      : `<tr class="empty-row"><td colspan="7">暂无事件</td></tr>`;
+
+    const inner = `
+      <div class="topbar">
+        <div>
+          <h1 class="h-page-title">事件中心</h1>
+          <p class="h-page-sub">聚合关联舆情 · ${total} 个进行中事件</p>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th class="col-num">ID</th>
+              <th>事件标题</th>
+              <th class="col-center">风险等级</th>
+              <th class="col-center">关联舆情</th>
+              <th class="col-center">状</th>
+              <th class="col-center">首次发现</th>
+              <th class="col-center">最后更</th>
+            </tr>
+          </thead>
+          <tbody id="evBody">${body}</tbody>
+        </table>
+      </div>`;
+
+    $app.innerHTML = shell("#/events", inner);
+    bindShell();
+
+    document.querySelectorAll("#evBody tr[data-id]").forEach((tr) =>
+      tr.addEventListener("click", () => openEventModal(tr.getAttribute("data-id")))
+    );
+  }
+
+  function openEventModal(id) {
+    const e = EVENTS.find((x) => x.id === Number(id));
+    if (!e) return;
+    const linked = e.linked.map((oid) => getOpinion(oid)).filter(Boolean);
+    const rows = linked.length
+      ? linked
+          .map(
+            (o) => `
+        <tr data-id="${o.id}" style="cursor:pointer">
+          <td class="col-num muted">${o.id}</td>
+          <td><a class="t-link t-title" href="#/opinion/${o.id}">${esc(o.title)}</a></td>
+          <td class="muted">${esc(o.source)}</td>
+          <td class="col-center"><span class="risk-num" style="color:${riskColorInline(o.risk_score)}">${o.risk_score}</span></td>
+          <td class="col-center">${sentimentPill(o.sentiment)}</td>
+        </tr>`
+          )
+          .join("")
+      : `<tr class="empty-row"><td colspan="5">暂无关联舆情</td></tr>`;
+
+    const root = document.getElementById("modal-root");
+    root.innerHTML = `
+      <div class="modal-mask" id="modalMask">
+        <div class="modal" role="dialog" aria-modal="true">
+          <div class="modal-head">
+            <h3>${esc(e.title)}</h3>
+            <button class="modal-close" id="modalClose"></button>
+          </div>
+          <div class="modal-body">
+            <p class="modal-sub">风险等级 ${RISK_TEXT[e.risk_level]} · 关联舆情 ${e.opinion_count} · 首次发现 ${fmtTime(e.first_time)}</p>
+            <div class="card table-card" style="padding:6px 6px 14px">
+              <table class="tbl">
+                <thead><tr><th class="col-num">ID</th><th>标题</th><th>来源</th><th class="col-center">风险</th><th class="col-center">情感</th></tr></thead>
+                <tbody id="modalBody">${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById("modalClose").addEventListener("click", () => (root.innerHTML = ""));
+    document.getElementById("modalMask").addEventListener("click", (ev) => {
+      if (ev.target.id === "modalMask") root.innerHTML = "";
+    });
+    document.querySelectorAll("#modalBody tr[data-id]").forEach((tr) =>
+      tr.addEventListener("click", (ev) => {
+        if (ev.target.tagName === "A") return;
+        root.innerHTML = "";
+        location.hash = "#/opinion/" + tr.getAttribute("data-id");
+      })
+    );
+  }
+
+  /* ----------------------------- 页面：预警中----------------------------- */
+  const alertState = { level: "", status: "" };
+
+  function renderAlerts() {
+    const today = ALERTS.filter((a) => a.time && (a.time.slice(0, 10) === "2026-07-15" || a.time.slice(0, 10) === "2026-07-16")).length;
+    const pending = ALERTS.filter((a) => a.status === "pending").length;
+    const red = ALERTS.filter((a) => a.level === "red").length;
+    const done = ALERTS.filter((a) => a.status === "done").length;
+
+    const filtered = ALERTS.filter((a) => {
+      if (alertState.level && a.level !== alertState.level) return false;
+      if (alertState.status && a.status !== alertState.status) return false;
+      return true;
+    });
+
+    const levelOpts = [
+      '<option value="">等级（全部）</option>',
+      '<option value="red" ' + (alertState.level === "red" ? "selected" : "") + ">红色</option>",
+      '<option value="orange" ' + (alertState.level === "orange" ? "selected" : "") + ">橙色</option>",
+      '<option value="yellow" ' + (alertState.level === "yellow" ? "selected" : "") + ">黄色</option>",
+    ].join("");
+    const statusOpts = [
+      '<option value="">状态（全部</option>',
+      '<option value="pending" ' + (alertState.status === "pending" ? "selected" : "") + ">待处</option>",
+      '<option value="handling" ' + (alertState.status === "handling" ? "selected" : "") + ">处置</option>",
+      '<option value="done" ' + (alertState.status === "done" ? "selected" : "") + ">已处</option>",
+    ].join("");
+
+    const body = filtered.length
+      ? filtered
+          .map(
+            (a) => `
+        <tr data-id="${a.id}" style="cursor:pointer">
+          <td class="col-center">${alertLevelPill(a.level)}</td>
+          <td><a class="t-link t-title" href="#/opinion/${a.opinionId}">${esc(a.title)}</a></td>
+          <td class="muted">${esc(a.source)}</td>
+          <td class="muted" style="font-size:13px">${esc(a.reason)}</td>
+          <td class="col-center muted mono">${fmtTime(a.time)}</td>
+          <td class="col-center">${alertStatusPill(a.status)}</td>
+        </tr>`
+          )
+          .join("")
+      : `<tr class="empty-row"><td colspan="6">暂无符合条件的预</td></tr>`;
+
+    const inner = `
+      <div class="topbar">
+        <div>
+          <h1 class="h-page-title">预警中心</h1>
+          <p class="h-page-sub">实时监测风险阈值与敏感要素 · <span class="pill pill-blue">规划模块</span></p>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="card stat-card">
+          <div class="s-ico" style="background:var(--accent-soft);color:var(--accent)">!</div>
+          <div class="s-label">今日预警</div>
+          <div class="s-value mono">${today}</div>
+          <div class="s-foot">新增预警条数</div>
+        </div>
+        <div class="card stat-card is-amber">
+          <div class="s-ico" style="background:rgba(110,110,115,.12);color:var(--text-2)"></div>
+          <div class="s-label">待处</div>
+          <div class="s-value mono">${pending}</div>
+          <div class="s-foot">需及时响应</div>
+        </div>
+        <div class="card stat-card is-red">
+          <div class="s-ico" style="background:rgba(255,59,48,.1);color:var(--red)"></div>
+          <div class="s-label">红色预警</div>
+          <div class="s-value mono danger">${red}</div>
+          <div class="s-foot">特级 / 需立即处置</div>
+        </div>
+        <div class="card stat-card is-green">
+          <div class="s-ico" style="background:rgba(52,199,89,.12);color:#1a8e3c"></div>
+          <div class="s-label">已处</div>
+          <div class="s-value mono">${done}</div>
+          <div class="s-foot">闭环完成</div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="filters">
+          <select class="select" id="aLevel">${levelOpts}</select>
+          <select class="select" id="aStatus">${statusOpts}</select>
+          <button class="btn btn-ghost" id="aReset">重置</button>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th class="col-center">等级</th>
+              <th>预警标题</th>
+              <th>来源</th>
+              <th>触发原因</th>
+              <th class="col-center">时间</th>
+              <th class="col-center">状</th>
+            </tr>
+          </thead>
+          <tbody id="alBody">${body}</tbody>
+        </table>
+      </div>`;
+
+    $app.innerHTML = shell("#/alerts", inner);
+    bindShell();
+
+    document.getElementById("aLevel").addEventListener("change", (e) => { alertState.level = e.target.value; renderAlerts(); });
+    document.getElementById("aStatus").addEventListener("change", (e) => { alertState.status = e.target.value; renderAlerts(); });
+    document.getElementById("aReset").addEventListener("click", () => { alertState.level = ""; alertState.status = ""; renderAlerts(); });
+  }
+
+  /* ----------------------------- 页面：传播溯----------------------------- */
+  const propState = { eventId: 1 };
+
+  function renderPropagation() {
+    const ev = EVENTS.find((e) => e.id === Number(propState.eventId)) || EVENTS[0];
+    const data = PROPAGATION[ev.id] || PROPAGATION[1];
+
+    const pMax = Math.max(1, ...data.platforms.map((p) => p.value));
+    const platHTML = data.platforms
+      .map(
+        (p) => `
+        <div class="kw-row">
+          <div class="kw-word">${esc(p.name)}</div>
+          <div class="kw-track"><div class="kw-fill" style="width:${(p.value / pMax) * 100}%"></div></div>
+          <div class="kw-count">${p.value}</div>
+        </div>`
+      )
+      .join("");
+
+    const tlHTML = data.milestones
+      .map(
+        (m) => `
+        <div class="tl-item ${m.level === "green" ? "" : m.level}">
+          <span class="tl-dot"></span>
+          <div class="tl-time">${esc(m.time)}</div>
+          <div class="tl-text">${esc(m.text)}</div>
+        </div>`
+      )
+      .join("");
+
+    const nodeHTML = data.nodes
+      .map(
+        (n) => `
+        <div class="node-row">
+          <div class="node-ava">${esc(n.name.slice(0, 1))}</div>
+          <div class="node-meta">
+            <div class="node-name">${esc(n.name)}</div>
+            <div class="node-role">${esc(n.role)} · ${esc(n.fans)} 粉丝</div>
+          </div>
+          <span class="pill pill-${n.impact === "" ? "red" : n.impact === "" ? "orange" : "gray"}">${esc(n.impact)}</span>
+        </div>`
+      )
+      .join("");
+
+    const opts = EVENTS.map(
+      (e) => `<option value="${e.id}" ${e.id === ev.id ? "selected" : ""}>${esc(e.title)}</option>`
+    ).join("");
+
+    const inner = `
+      <div class="topbar">
+        <div>
+          <h1 class="h-page-title">传播溯源</h1>
+          <p class="h-page-sub">还原舆情传播路径与关键节· <span class="pill pill-blue">规划模块</span></p>
+        </div>
+        <div class="actions">
+          <select class="select" id="pEvent" style="min-width:240px">${opts}</select>
+        </div>
+      </div>
+
+      <div class="card card-pad-lg" style="margin-bottom:18px">
+        <div class="ai-text" style="color:var(--text-2)">${esc(data.summary)}</div>
+      </div>
+
+      <div class="card card-pad-lg">
+        <div class="chart-head"><span class="section-title">传播路径</span><span class="muted" style="font-size:13px">还原舆情从起源到放大的完整链</span></div>
+        <div class="net-wrap">${propagationNetworkSVG(data.platforms, data.nodes)}</div>
+        <div class="net-caption"><span class="net-arrow"></span> 传播方向：舆情起多平台扩关键节点放大</div>
+      </div>
+
+      <div class="prop-grid-2" style="margin-top:18px">
+        <div class="card card-pad-lg">
+          <div class="chart-head"><span class="section-title">关键传播节点</span></div>
+          <div style="margin-top:12px">${nodeHTML}</div>
+        </div>
+        <div class="card card-pad-lg">
+          <div class="chart-head"><span class="section-title">平台分布</span><span class="muted" style="font-size:13px">单位：条</span></div>
+          <div class="kw-list" style="margin-top:14px">${platHTML}</div>
+        </div>
+      </div>
+
+      <div class="card card-pad-lg" style="margin-top:18px">
+        <div class="chart-head"><span class="section-title">传播时间</span></div>
+        <div class="timeline" style="margin-top:16px">${tlHTML}</div>
+      </div>`;
+
+    $app.innerHTML = shell("#/propagation", inner);
+    bindShell();
+
+    document.getElementById("pEvent").addEventListener("change", (e) => { propState.eventId = Number(e.target.value); renderPropagation(); });
+  }
+
+  /* ----------------------------- 路由 ----------------------------- */
+  function route() {
+    const hash = location.hash || "#/dashboard";
+    const token = store.getItem("apple_proto_token");
+
+    // 鉴权守卫（对应frontend router beforeEach）
+    if (!token && hash !== "#/login") { location.hash = "#/login"; return; }
+    if (token && hash === "#/login") { location.hash = "#/dashboard"; return; }
+
+    const m = hash.match(/^#\/opinion\/(.+)$/);
+    if (hash === "#/login") return renderLogin();
+    if (hash === "#/dashboard") return renderDashboard();
+    if (hash === "#/opinions") return renderOpinions();
+    if (m) return renderOpinionDetail(m[1]);
+    if (hash === "#/events") return renderEvents();
+    if (hash === "#/alerts") return renderAlerts();
+    if (hash === "#/propagation") return renderPropagation();
+
+    // 默认
+    location.hash = token ? "#/dashboard" : "#/login";
+  }
+
+  window.addEventListener("hashchange", route);
+  // 首屏：无 hash 时给个默认值
+  if (!location.hash) location.hash = "#/dashboard";
+  route();
+})();
+</script>
+</body>
+</html>
