@@ -20,10 +20,16 @@ class PropagationNodeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class PropagationLink(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     source_id: int
     target_id: int
     source_name: str
     target_name: str
+
+
+class SourceSummaryItem(BaseModel):
+    source: str
+    count: int
 
 class PropagationGraphResponse(BaseModel):
     nodes: List[PropagationNodeOut]
@@ -31,7 +37,7 @@ class PropagationGraphResponse(BaseModel):
     event_id: Optional[int] = None
     event_title: str = ""
     total_opinions: int = 0
-    source_summary: List[dict] = []
+    source_summary: List[SourceSummaryItem] = []
 
 class PropagationRebuildResponse(BaseModel):
     success: bool = True

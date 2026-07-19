@@ -36,5 +36,6 @@ class DashboardStatsResponse(BaseModel):
     total: int
     today: int
     high_risk: int
+    event_count: int
     trend: List[TrendItem]
     keywords: List[KeywordItem]

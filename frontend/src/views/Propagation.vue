@@ -35,7 +35,7 @@
           <el-card shadow="never">
             <template #header>
               <div class="detail-header">
-                <span class="dh-title">{{ selectedEvent.event_title }}</span>
+                <router-link :to="'/event/' + selectedEvent.event_id" class="dh-title-link">{{ selectedEvent.event_title }}</router-link>
                 <el-button type="warning" size="small" :loading="rebuilding" @click="handleRebuild">构建传播链</el-button>
               </div>
             </template>
@@ -250,4 +250,7 @@ onBeforeUnmount(() => {
 .tl-time { font-size: 11px; color: #909399; }
 .tl-title { font-size: 13px; color: #303133; line-height: 1.4; }
 .tl-source { font-size: 11px; color: #c0c4cc; }
+
+.dh-title-link { font-size: 16px; font-weight: 600; color: #409eff; text-decoration: none; }
+.dh-title-link:hover { text-decoration: underline; }
 </style>

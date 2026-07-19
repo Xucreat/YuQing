@@ -12,13 +12,15 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, delete as sa_delete
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.opinion import Opinion
 from app.models.region import Region
+from app.models.event_opinion import EventOpinion
+from app.models.alert import AlertRecord
 from app.schemas.opinion import OpinionCreate, OpinionListResponse, OpinionOut
 
 opinions_router = APIRouter(
@@ -117,13 +119,24 @@ def create_opinion(payload: OpinionCreate, db: Session = Depends(get_db)) -> Opi
 
 @opinions_router.delete("/{opinion_id}", status_code=status.HTTP_200_OK)
 def delete_opinion(opinion_id: int, db: Session = Depends(get_db)) -> dict:
-    """删除舆情（MVP 保留）。不存在返回 404。"""
+    """Delete opinion with cascade cleanup of related records."""
     opinion = db.get(Opinion, opinion_id)
     if opinion is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Opinion not found",
         )
+
+    # Cascade-clean related records before deleting opinion
+    from app.models.propagation import PropagationNode
+    for eo in db.query(EventOpinion).where(EventOpinion.opinion_id == opinion_id).all():
+        db.delete(eo)
+    db.query(AlertRecord).where(AlertRecord.opinion_id == opinion_id).update(
+        {"opinion_id": None}, synchronize_session=False
+    )
+    for pn in db.query(PropagationNode).where(PropagationNode.opinion_id == opinion_id).all():
+        db.delete(pn)
+    db.flush()
     db.delete(opinion)
     db.commit()
     return {"detail": "Opinion deleted", "id": opinion_id}

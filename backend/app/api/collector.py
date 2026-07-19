@@ -70,7 +70,12 @@ def run_collector(
         created=result.created,
         analyzed=result.analyzed,
         failed=result.failed,
-        message="采集完成",
+        message=(
+            f"采集完成：抓取{result.fetched_raw}条，新增{result.created}条，"
+            f"分析{result.analyzed}条"
+            + (f"，{result.failed}条分析失败" if result.failed > 0 else "")
+            + ("；无新增数据（可能网站不可达或数据未更新）" if result.created == 0 else "")
+        ),
     )
 
 

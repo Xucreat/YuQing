@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="alerts" v-loading="loading">
     <el-tabs v-model="activeTab">
       <el-tab-pane label="预警规则" name="rules">
@@ -60,8 +60,18 @@
             <el-table-column label="预警等级" width="120" align="center">
               <template #default="{ row }"><el-tag :type="riskTag(row.risk_level)" size="small">{{ riskText(row.risk_level) }}</el-tag></template>
             </el-table-column>
-            <el-table-column prop="opinion_title" label="关联舆情" min-width="220" show-overflow-tooltip />
-            <el-table-column prop="event_title" label="关联事件" width="180" show-overflow-tooltip />
+                        <el-table-column label="关联舆情" min-width="220">
+              <template #default="{ row }">
+                <router-link v-if="row.opinion_id" :to="'/opinion/' + row.opinion_id" class="nav-link">{{ row.opinion_title }}</router-link>
+                <span v-else>{{ row.opinion_title || '-' }}</span>
+              </template>
+            </el-table-column>
+                        <el-table-column label="关联事件" width="180">
+              <template #default="{ row }">
+                <router-link v-if="row.event_id" :to="'/event/' + row.event_id" class="nav-link">{{ row.event_title }}</router-link>
+                <span v-else>{{ row.event_title || '-' }}</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="trigger_reason" label="触发原因" min-width="220" show-overflow-tooltip />
             <el-table-column label="状态" width="100" align="center">
               <template #default="{ row }"><el-tag :type="row.handled ? 'success' : 'danger'" size="small">{{ row.handled ? '已处理' : '未处理' }}</el-tag></template>
@@ -109,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, reactive } from 'vue'
+import { onMounted, ref, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import type { AlertRule, AlertRuleListResponse, AlertRecord, AlertRecordListResponse, AlertEvaluateResponse } from '@/types'
@@ -235,6 +245,10 @@ function handleRulesPage(p: number) { rulesPage.value = p; loadRules() }
 function handleRecordsPage(p: number) { recordsPage.value = p; loadRecords() }
 
 onMounted(() => { loadRules() })
+
+watch(activeTab, (tab) => {
+  if (tab === 'records') loadRecords()
+})
 </script>
 
 <style scoped>
@@ -243,4 +257,7 @@ onMounted(() => { loadRules() })
 .table-card { margin-top: 0; }
 .pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
 .eval-result { margin-left: 16px; color: #67c23a; font-size: 14px; }
+
+.nav-link { color: #409eff; text-decoration: none; }
+.nav-link:hover { text-decoration: underline; }
 </style>

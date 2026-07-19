@@ -34,6 +34,7 @@ from app.core.config import settings
 from app.models.opinion import Opinion
 from app.models.region import Region
 from app.services.ai import AIService
+from app.services.alert_service import AlertService
 
 # ---------------------------------------------------------------------------
 # Phase 3A temporary implementation.
@@ -195,6 +196,7 @@ class CollectorService:
 
         for collector in self.collectors:
             items = collector.fetch() or []
+            result.fetched_raw += len(items)
             for item in items:
                 # 1) 去重：已存在则跳过，不重复创建
                 if self._already_exists(db, item):
@@ -247,5 +249,14 @@ class CollectorService:
         # 政府网站采集成功后更新防抖时间戳（供下次 5 秒判断）。
         if self._uses_government():
             _GOV_LAST_RUN_AT = now
+
+        # Auto-trigger alert evaluation after collection to ensure
+        # new high-risk opinions generate alerts without manual intervention.
+        try:
+            alert_result = AlertService.evaluate(db)
+            if alert_result.get("alerts_created", 0) > 0:
+                AlertService.sync_alert_events(db)
+        except Exception:
+            pass  # alert failure should not block collection result
 
         return result

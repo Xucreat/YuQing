@@ -21,6 +21,7 @@ from sqlalchemy import cast, Date, func, select
 from sqlalchemy.orm import Session
 
 from app.models.opinion import Opinion
+from app.models.event import Event
 
 # 高风险阈值：risk_score >= 此值记为高风险
 HIGH_RISK_THRESHOLD = 70
@@ -64,6 +65,9 @@ def get_dashboard_stats(db: Session) -> dict:
         or 0
     )
 
+    # 3b) 事件数
+    event_count = db.scalar(select(func.count(Event.id))) or 0
+
     # 4) 近 TREND_DAYS 日趋势（无数据日期补齐 count=0）
     today_date: date = db.scalar(select(func.current_date()))
     window_start = today_date - timedelta(days=TREND_DAYS - 1)
@@ -103,6 +107,7 @@ def get_dashboard_stats(db: Session) -> dict:
         "total": total,
         "today": today,
         "high_risk": high_risk,
+        "event_count": event_count,
         "trend": trend,
         "keywords": keywords,
     }

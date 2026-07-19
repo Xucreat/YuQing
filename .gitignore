@@ -29,3 +29,5 @@ pgsql/
 
 # Workbuddy
 .workbuddy/
+# Decompressed node_modules
+frontend/node_modules_decompressed/

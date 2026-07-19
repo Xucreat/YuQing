@@ -45,7 +45,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
@@ -67,7 +67,7 @@ interface EventDetail {
   total_opinions: number
 }
 
-const event = reactive<EventDetail>({
+const event = ref<EventDetail>({
   id: 0, title: '', risk_level: '', opinion_count: 0, status: '',
   first_time: null, last_time: null, description: '', keyword: '',
   opinions: [], total_opinions: 0,
@@ -97,7 +97,7 @@ async function loadData() {
   try {
     const id = route.params.id
     const { data } = await api.get<EventDetail>('/events/' + id)
-    Object.assign(event, data)
+    event.value = { ...event.value, ...data }
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || '加载事件详情失败')
   } finally {

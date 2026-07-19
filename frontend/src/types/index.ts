@@ -83,6 +83,7 @@ export interface DashboardStats {
   total: number
   today: number
   high_risk: number
+  event_count: number
   trend: TrendPoint[]
   keywords: KeywordCount[]
   // ↓ 旧字段：后端未返回，保留 optional 防止历史引用报错，勿使用

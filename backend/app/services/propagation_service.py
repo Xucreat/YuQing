@@ -1,4 +1,4 @@
-"""Propagation tracing service."""
+﻿"""Propagation tracing service."""
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.models.opinion import Opinion
@@ -33,18 +33,24 @@ class PropagationService:
             db.commit()
             return {"nodes_created": 0}
 
-        # Group by source for parent linking
-        source_nodes: dict[str, list[int]] = {}
+        # Track last node per source for within-source chains, and overall
+        # last node for cross-source links. This produces multi-level trees
+        # that reflect real cross-platform propagation topology.
+        source_last_ids: dict[str, int] = {}
+        overall_last_id: int | None = None
         created = 0
-        last_node_id = None
         now = datetime.now(timezone.utc)
 
-        for i, op in enumerate(opinions):
-            parent_id = None
-            depth = 0
-            if i > 0 and last_node_id:
-                parent_id = last_node_id
-                depth = 1
+        for op in opinions:
+            parent_id: int | None = None
+
+            if op.source in source_last_ids:
+                # Same-source: chain from the previous node of this source
+                parent_id = source_last_ids[op.source]
+            elif overall_last_id is not None:
+                # Cross-source: first appearance of this source links to the
+                # chronologically preceding node from a different source
+                parent_id = overall_last_id
 
             node = PropagationNode(
                 event_id=event_id,
@@ -57,17 +63,30 @@ class PropagationService:
                 risk_score=op.risk_score,
                 sentiment=op.sentiment,
                 keywords=op.keywords,
-                depth=depth,
+                depth=0,  # placeholder; resolved in second pass below
                 created_at=now,
             )
             db.add(node)
-            db.flush()
-            last_node_id = node.id
+            db.flush()  # needed to get node.id for parent refs
+
+            source_last_ids[op.source] = node.id
+            overall_last_id = node.id
             created += 1
 
-            if op.source not in source_nodes:
-                source_nodes[op.source] = []
-            source_nodes[op.source].append(node.id)
+        # Resolve actual depth by walking parent chains after all nodes exist
+        created_nodes = (
+            db.query(PropagationNode)
+            .where(PropagationNode.event_id == event_id)
+            .all()
+        )
+        id_to_node = {n.id: n for n in created_nodes}
+        for n in created_nodes:
+            d = 0
+            cur = n
+            while cur.parent_id and cur.parent_id in id_to_node:
+                d += 1
+                cur = id_to_node[cur.parent_id]
+            n.depth = d
 
         db.commit()
         return {"nodes_created": created}
@@ -148,7 +167,6 @@ class PropagationService:
             "source_url": n.source_url,
             "title": n.title,
             "publish_time": n.publish_time.isoformat() if n.publish_time else None,
-            "created_at": n.created_at.isoformat() if n.created_at else None,
             "risk_score": n.risk_score,
             "sentiment": n.sentiment,
             "keywords": n.keywords,

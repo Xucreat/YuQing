@@ -25,7 +25,7 @@ def rebuild(event_id: int, db: Session = Depends(get_db), _u: User = Depends(get
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@propagation_router.get("/graph/{event_id}")
+@propagation_router.get("/graph/{event_id}", response_model=PropagationGraphResponse)
 def get_graph(event_id: int, db: Session = Depends(get_db), _u: User = Depends(get_current_user)):
     try:
         data = PropagationService.get_graph(db, event_id)

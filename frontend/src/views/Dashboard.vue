@@ -27,7 +27,7 @@
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-label">事件数</div>
-          <div class="stat-value">{{ eventTotal }}</div>
+          <div class="stat-value">{{ stats.event_count }}</div>
         </el-card>
       </el-col>
     </el-row>
@@ -54,12 +54,10 @@ import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
-import type { DashboardStats, EventListResponse, TrendPoint, KeywordCount, CollectorRunResponse } from '@/types'
+import type { DashboardStats, TrendPoint, KeywordCount, CollectorRunResponse } from '@/types'
 
 const loading = ref(false)
 const collecting = ref(false)
-const eventTotal = ref(0)
-
 const stats = reactive<DashboardStats>({
   total: 0, today: 0, high_risk: 0, trend: [], keywords: [],
 })
@@ -104,12 +102,8 @@ function handleResize() { trendChart?.resize(); keywordChart?.resize() }
 async function loadData() {
   loading.value = true
   try {
-    const [statsRes, eventsRes] = await Promise.all([
-      api.get<DashboardStats>('/dashboard/stats'),
-      api.get<EventListResponse>('/events', { params: { page: 1, size: 1 } }),
-    ])
+    const statsRes = await api.get<DashboardStats>('/dashboard/stats')
     Object.assign(stats, statsRes.data)
-    eventTotal.value = eventsRes.data.total
     renderTrend(stats.trend)
     renderKeywords(stats.keywords)
   } catch (err: any) {
