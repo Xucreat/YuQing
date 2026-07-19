@@ -111,6 +111,13 @@ async function handleCollect() {
     ElMessage.success('采集完成：新增 ' + data.created + ' 条，分析 ' + data.analyzed + ' 条')
     // trigger a page reload for active view
     window.dispatchEvent(new CustomEvent('data-refresh'))
+    // Auto-trigger alert evaluation after collection
+    try {
+      const evalRes = await api.post('/alerts/evaluate')
+      if (evalRes.data.alerts_created > 0) {
+        ElMessage.success('预警评估完成：生成 ' + evalRes.data.alerts_created + ' 条新预警')
+      }
+    } catch (_) { /* evaluation failure should not block collection */ }
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || err?.response?.data?.message || '采集失败')
   } finally {

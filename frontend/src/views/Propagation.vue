@@ -14,6 +14,7 @@
               :key="ev.event_id"
               :class="['event-item', { active: selectedEvent?.event_id === ev.event_id }]"
               @click="selectEvent(ev)"
+              @dblclick="router.push('/event/' + ev.event_id)"
             >
               <div class="ei-title">{{ ev.event_title }}</div>
               <div class="ei-meta">
@@ -86,11 +87,13 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 import type { PropagationEventSummary, PropagationGraph, PropagationRebuildResponse } from '@/types'
 
+const router = useRouter()
 const loading = ref(false)
 const rebuilding = ref(false)
 const events = ref<PropagationEventSummary[]>([])
