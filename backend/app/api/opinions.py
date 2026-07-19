@@ -134,8 +134,16 @@ def delete_opinion(opinion_id: int, db: Session = Depends(get_db)) -> dict:
     db.query(AlertRecord).where(AlertRecord.opinion_id == opinion_id).update(
         {"opinion_id": None}, synchronize_session=False
     )
-    for pn in db.query(PropagationNode).where(PropagationNode.opinion_id == opinion_id).all():
-        db.delete(pn)
+    # Nullify parent references first to avoid FK violations when
+    # other nodes still point to the ones being deleted.
+    nodes = db.query(PropagationNode).where(PropagationNode.opinion_id == opinion_id).all()
+    if nodes:
+        node_ids = [n.id for n in nodes]
+        db.query(PropagationNode).where(
+            PropagationNode.parent_id.in_(node_ids)
+        ).update({"parent_id": None}, synchronize_session=False)
+        for pn in nodes:
+            db.delete(pn)
     db.flush()
     db.delete(opinion)
     db.commit()

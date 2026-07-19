@@ -60,11 +60,12 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 
 const route = useRoute()
+const router = useRouter()
 const loading = ref(false)
 
 interface EventDetail {
@@ -107,6 +108,17 @@ async function loadData() {
     const { data } = await api.get<EventDetail>('/events/' + id)
     event.value = { ...event.value, ...data }
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '加载事件详情失败') } finally { loading.value = false }
+}
+
+async function handleDelete() {
+  try {
+    const id = route.params.id
+    await api.delete('/events/' + id)
+    ElMessage.success('事件已删除')
+    router.push('/events')
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '删除失败')
+  }
 }
 
 onMounted(loadData)

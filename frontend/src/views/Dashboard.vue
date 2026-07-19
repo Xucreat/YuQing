@@ -1,37 +1,37 @@
-ï»¿<template>
+<template>
   <div class="dashboard" v-loading="loading">
     <!-- Stat cards -->
     <div class="stat-grid">
       <div class="card stat-card">
-        <div class="s-ico">â–¤</div>
-        <div class="s-label">æ€»èˆ†æƒ…æ•°</div>
+        <div class="s-ico">?</div>
+        <div class="s-label">×ÜÓßÇéÊı</div>
         <div class="s-value">{{ stats.total.toLocaleString() }}</div>
         <div class="s-foot-row">
-          <span class="s-foot">ç´¯è®¡ç›‘æµ‹æ•°æ®</span>
+          <span class="s-foot">ÀÛ¼Æ¼à²âÊı¾İ</span>
         </div>
       </div>
       <div class="card stat-card is-green">
-        <div class="s-ico">â†‘</div>
-        <div class="s-label">ä»Šæ—¥æ–°å¢</div>
+        <div class="s-ico">¡ü</div>
+        <div class="s-label">½ñÈÕĞÂÔö</div>
         <div class="s-value">{{ stats.today.toLocaleString() }}</div>
         <div class="s-foot-row">
-          <span class="s-foot">å½“æ—¥é‡‡é›†</span>
+          <span class="s-foot">µ±ÈÕ²É¼¯</span>
         </div>
       </div>
       <div class="card stat-card is-red">
-        <div class="s-ico">âš </div>
-        <div class="s-label">é«˜é£é™©</div>
+        <div class="s-ico">?</div>
+        <div class="s-label">¸ß·çÏÕ</div>
         <div class="s-value danger">{{ stats.high_risk.toLocaleString() }}</div>
         <div class="s-foot-row">
-          <span class="s-foot">éœ€å…³æ³¨å¤„ç†</span>
+          <span class="s-foot">Ğè¹Ø×¢´¦Àí</span>
         </div>
       </div>
       <div class="card stat-card is-amber">
-        <div class="s-ico">â—‰</div>
-        <div class="s-label">äº‹ä»¶æ•°</div>
+        <div class="s-ico">?</div>
+        <div class="s-label">ÊÂ¼şÊı</div>
         <div class="s-value">{{ stats.event_count?.toLocaleString() || '0' }}</div>
         <div class="s-foot-row">
-          <span class="s-foot">èšåˆäº‹ä»¶</span>
+          <span class="s-foot">¾ÛºÏÊÂ¼ş</span>
         </div>
       </div>
     </div>
@@ -41,7 +41,7 @@
       <!-- Left: trend chart -->
       <div class="card card-pad-lg">
         <div class="chart-head">
-          <h3 class="section-title">èˆ†æƒ…è¶‹åŠ¿</h3>
+          <h3 class="section-title">ÓßÇéÇ÷ÊÆ</h3>
           <SegmentedControl v-model="trendDays" :options="segOptions" />
         </div>
         <div ref="trendRef" class="chart-box"></div>
@@ -49,11 +49,11 @@
 
       <!-- Right: Sentiment donut + keywords -->
       <div class="card card-pad-lg">
-        <h3 class="section-title">æƒ…æ„Ÿåˆ†å¸ƒ</h3>
+        <h3 class="section-title">Çé¸Ğ·Ö²¼</h3>
         <SentimentDonut :data="sentimentData" />
         <div style="margin-top: 20px;">
           <div class="chart-head">
-            <h3 class="section-title">TOP10 å…³é”®è¯</h3>
+            <h3 class="section-title">TOP10 ¹Ø¼ü´Ê</h3>
           </div>
           <div class="kw-list">
             <div v-for="(kw, i) in topKeywords" :key="kw.word" class="kw-row kw-row-rank">
@@ -72,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
@@ -83,9 +83,9 @@ import SentimentDonut from '@/components/SentimentDonut.vue'
 const loading = ref(false)
 const trendDays = ref(7)
 const segOptions = [
-  { label: '7å¤©', value: 7 },
-  { label: '14å¤©', value: 14 },
-  { label: '30å¤©', value: 30 },
+  { label: '7Ìì', value: 7 },
+  { label: '14Ìì', value: 14 },
+  { label: '30Ìì', value: 30 },
 ]
 
 const stats = reactive<DashboardStats & { event_count?: number }>({
@@ -96,9 +96,9 @@ const trendRef = ref<HTMLElement>()
 let trendChart: echarts.ECharts | null = null
 
 const sentimentData = computed(() => [
-  { label: 'è´Ÿé¢', count: stats.high_risk || 0, color: '#ff3b30' },
-  { label: 'ä¸­æ€§', count: Math.max(0, (stats.total || 0) - (stats.high_risk || 0) - ((stats.today || 0))), color: '#86868b' },
-  { label: 'æ­£é¢', count: Math.max(0, (stats.today || 0) - (stats.high_risk || 0)), color: '#34c759' },
+  { label: '¸ºÃæ', count: stats.high_risk || 0, color: '#ff3b30' },
+  { label: 'ÖĞĞÔ', count: Math.max(0, (stats.total || 0) - (stats.high_risk || 0) - ((stats.today || 0))), color: '#86868b' },
+  { label: 'ÕıÃæ', count: Math.max(0, (stats.today || 0) - (stats.high_risk || 0)), color: '#34c759' },
 ])
 
 const topKeywords = computed(() => {
@@ -135,7 +135,7 @@ function renderTrend(trend: TrendPoint[]) {
       axisLabel: { color: '#86868b', fontSize: 11 },
     },
     series: [{
-      name: 'èˆ†æƒ…æ•°',
+      name: 'ÓßÇéÊı',
       type: 'line',
       smooth: true,
       symbol: 'circle',
@@ -156,14 +156,18 @@ function handleResize() { trendChart?.resize() }
 async function loadData() {
   loading.value = true
   try {
-    const statsRes = await api.get<DashboardStats>('/dashboard/stats')
+    const statsRes = await api.get<DashboardStats>('/dashboard/stats', { params: { days: trendDays.value } })
     Object.assign(stats, statsRes.data)
     await nextTick()
     renderTrend(stats.trend)
   } catch (err: any) {
-    ElMessage.error(err?.response?.data?.detail || 'åŠ è½½ç»Ÿè®¡æ•°æ®å¤±è´¥')
+    ElMessage.error(err?.response?.data?.detail || '¼ÓÔØÍ³¼ÆÊı¾İÊ§°Ü')
   } finally { loading.value = false }
 }
+
+
+// Watch trendDays to reload when selected range changes
+watch(trendDays, () => { loadData() })
 
 onMounted(async () => {
   await nextTick()

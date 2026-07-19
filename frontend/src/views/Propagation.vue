@@ -155,6 +155,8 @@ async function handleRebuild() {
   try {
       const { data } = await api.post<PropagationRebuildResponse>(`/propagation/rebuild/${selectedEvent.value.event_id}`)
     ElMessage.success(`传播链构建完成：创建 ${data.nodes_created} 个节点`)
+    
+    await loadEvents()
     await selectEvent(selectedEvent.value)
   } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '构建失败') } finally { rebuilding.value = false }
 }

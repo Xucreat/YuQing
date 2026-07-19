@@ -82,7 +82,8 @@ class CollectorRunResult:
 
     created: int = 0    # 本次实际新增 Opinion 数量
     analyzed: int = 0   # AI 分析成功（completed）数量
-    collector_type: str = ""  # 本次采集方式（government/mock）
+    collector_type: str = ""
+    fetched_raw: int = 0  # 本次采集方式（government/mock）
 
     def finalize(self) -> "CollectorRunResult":
         # 失败 = 新增 - 分析成功；失败记录保留在数据库（status=failed）。

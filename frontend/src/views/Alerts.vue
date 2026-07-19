@@ -11,7 +11,7 @@
 
         <el-card shadow="never" class="table-card">
           <el-table :data="rules" stripe>
-            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column type="index" :index="(idx: number) => (rulesPage - 1) * rulesSize + idx + 1" label="ID" width="70" />
             <el-table-column prop="name" label="规则名称" min-width="200" show-overflow-tooltip />
             <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
             <el-table-column label="风险阈值" width="100" align="center">
@@ -55,7 +55,7 @@
 
         <el-card shadow="never" class="table-card">
           <el-table :data="records" stripe>
-            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column type="index" :index="(idx: number) => (recordsPage - 1) * recordsSize + idx + 1" label="ID" width="70" />
             <el-table-column prop="rule_name" label="触发规则" width="200" show-overflow-tooltip />
             <el-table-column label="预警等级" width="120" align="center">
               <template #default="{ row }"><el-tag :type="riskTag(row.risk_level)" size="small">{{ riskText(row.risk_level) }}</el-tag></template>
@@ -81,7 +81,8 @@
             </el-table-column>
             <el-table-column label="操作" width="100" align="center">
               <template #default="{ row }">
-                <el-button v-if="!row.handled" type="success" size="small" link @click="handleRecord(row)">标记处理</el-button>
+                <el-button v-if="!row.handled" type="success" size="small" @click="handleRecord(row)">标记处理</el-button>
+                <span v-else style="color: #86868b; font-size: 13px;">已处理</span>
               </template>
             </el-table-column>
           </el-table>

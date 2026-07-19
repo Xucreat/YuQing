@@ -17,6 +17,8 @@ from app.models.event import Event
 from app.models.event_opinion import EventOpinion
 from app.models.opinion import Opinion
 from app.models.user import User
+from app.models.propagation import PropagationNode
+from app.models.alert import AlertRecord
 from app.schemas.event import (
     EventCreateResponse,
     EventDetailResponse,
@@ -109,6 +111,38 @@ def get_event(
         total_opinions=len(opinion_outs),
     )
 
+
+@events_router.delete(
+    "/{event_id}",
+    status_code=status.HTTP_200_OK,
+)
+def delete_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Delete an event and all its related records."""
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    # Nullify parent refs among propagation nodes for this event
+    db.query(PropagationNode).where(
+        PropagationNode.event_id == event_id
+    ).update({"parent_id": None}, synchronize_session=False)
+    db.query(PropagationNode).where(PropagationNode.event_id == event_id).delete()
+
+    # Delete event-opinion links
+    db.query(EventOpinion).where(EventOpinion.event_id == event_id).delete()
+
+    # Nullify alert record references to this event
+    db.query(AlertRecord).where(AlertRecord.event_id == event_id).update(
+        {"event_id": None, "event_title": ""}, synchronize_session=False
+    )
+
+    db.delete(event)
+    db.commit()
+    return {"detail": "Event deleted", "id": event_id}
 
 @events_router.get(
     "",

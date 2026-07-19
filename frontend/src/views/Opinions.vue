@@ -43,8 +43,8 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in rows" :key="row.id" @click="goDetail(row.id)" style="cursor:pointer">
-            <td>{{ row.id }}</td>
+          <tr v-for="(row, idx) in rows" :key="row.id" @click="goDetail(row.id)" style="cursor:pointer">
+            <td>{{ (page - 1) * size + idx + 1 }}</td>
             <td><span class="t-title">{{ row.title }}</span></td>
             <td>{{ row.source }}</td>
             <td class="col-center">

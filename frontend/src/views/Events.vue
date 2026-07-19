@@ -19,11 +19,12 @@
             <th style="width:100px" class="col-center">状态</th>
             <th style="width:170px">首次发现</th>
             <th style="width:170px">最后更新</th>
+            <th style="width:80px" class="col-center">操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in rows" :key="row.id" @click="$router.push('/event/' + row.id)" style="cursor:pointer">
-            <td>{{ row.id }}</td>
+          <tr v-for="(row, idx) in rows" :key="row.id" @click="$router.push('/event/' + row.id)" style="cursor:pointer">
+            <td>{{ (page - 1) * size + idx + 1 }}</td>
             <td><span class="t-title">{{ row.title }}</span></td>
             <td class="col-center">
               <span class="pill" :class="riskPill(row.risk_level)"><span class="dot"></span>{{ riskText(row.risk_level) }}</span>
@@ -32,9 +33,12 @@
             <td class="col-center"><span class="pill pill-green"><span class="dot"></span>{{ row.status }}</span></td>
             <td>{{ formatTime(row.first_time) }}</td>
             <td>{{ formatTime(row.last_time) }}</td>
+            <td class="col-center" @click.stop>
+              <button class="btn-icon btn-delete" title="删除事件" @click="handleDelete(row)">🗑</button>
+            </td>
           </tr>
           <tr v-if="rows.length===0 && !loading">
-            <td colspan="7" class="empty-row">暂无事件数据</td>
+            <td colspan="8" class="empty-row">暂无事件数据</td>
           </tr>
         </tbody>
       </table>
@@ -98,6 +102,20 @@ async function handleAggregate() {
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '聚合失败') } finally { aggregating.value = false }
 }
 
+async function handleDelete(row: EventItem) {
+  try {
+    const { ElMessageBox } = await import('element-plus')
+    await ElMessageBox.confirm(
+      `确认删除事件「${row.title}」？关联的舆情不会被删除，仅解除关联。`,
+      '删除确认',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    await api.delete('/events/' + row.id)
+    ElMessage.success('事件已删除')
+    await loadData()
+  } catch { /* cancelled or error */ }
+}
+
 onMounted(loadData)
 </script>
 
@@ -147,4 +165,12 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .pager button:hover:not(:disabled) { background: #e8e8ed; }
 .pager button.active { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
 .pager button:disabled { opacity: 0.4; cursor: default; }
+
+.btn-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: none; border-radius: 8px;
+  background: transparent; cursor: pointer; font-size: 16px;
+  transition: background 0.15s ease;
+}
+.btn-delete:hover { background: rgba(255,59,48,0.1); }
 </style>
