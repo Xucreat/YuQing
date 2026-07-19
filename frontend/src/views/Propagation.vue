@@ -226,8 +226,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.propagation { height: 100%; overflow: hidden; }
-.prop-layout { height: 100%; overflow: hidden; }
+.propagation { height: 100%; max-height: calc(100vh - 140px); overflow: hidden; display: flex; flex-direction: column; }
+.prop-layout { flex: 1; overflow: hidden; height: 100%; }
 .prop-layout > .el-col { height: 100%; display: flex; flex-direction: column; }
 .event-list-card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 .event-list-card :deep(.el-card__body) { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
