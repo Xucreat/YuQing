@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, or_, select, delete as sa_delete
+from sqlalchemy import func, or_, select, delete as sa_delete, text
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
@@ -36,9 +36,13 @@ MAX_SIZE = 100
 def list_opinions(
     page: int = 1,
     size: int = 20,
+    q: str | None = None,
     source: str | None = None,
     risk_level: str | None = None,
+    risk_min: int | None = None,
+    risk_max: int | None = None,
     keyword: str | None = None,
+    sentiment: str | None = None,
     db: Session = Depends(get_db),
 ) -> OpinionListResponse:
     """分页列表，支持来源 / 风险等级 / 关键词过滤。
@@ -51,10 +55,20 @@ def list_opinions(
     size = max(min(size, MAX_SIZE), 1)
 
     stmt = select(Opinion)
+    # P1: full-text search using PostgreSQL ts_vector
+    if q:
+        tsq = func.plainto_tsquery("simple", q)
+        stmt = stmt.where(func.coalesce(Opinion.search_vector, text("''::tsvector")).op("@@")(tsq))
     if source:
         stmt = stmt.where(Opinion.source == source)
     if risk_level:
         stmt = stmt.where(Opinion.sentiment == risk_level)
+    if risk_min is not None:
+        stmt = stmt.where(Opinion.risk_score >= risk_min)
+    if risk_max is not None:
+        stmt = stmt.where(Opinion.risk_score <= risk_max)
+    if sentiment:
+        stmt = stmt.where(Opinion.sentiment == sentiment)
     if keyword:
         like = f"%{keyword}%"
         stmt = stmt.where(

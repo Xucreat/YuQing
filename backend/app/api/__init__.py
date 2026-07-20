@@ -15,6 +15,8 @@ from app.api.dashboard import dashboard_router
 from app.api.alerts import alerts_router
 from app.api.events import events_router
 from app.api.propagation import propagation_router
+from app.api.keywords import keywords_router
+from app.api.sources import sources_router
 from app.api.opinions import opinions_router
 
 api_router = APIRouter()
@@ -36,3 +38,5 @@ api_router.include_router(collector_router, prefix="/collector")
 api_router.include_router(alerts_router, prefix="/alerts")
 api_router.include_router(events_router, prefix="/events")
 api_router.include_router(propagation_router, prefix="/propagation")
+api_router.include_router(keywords_router, prefix="/keywords")
+api_router.include_router(sources_router)

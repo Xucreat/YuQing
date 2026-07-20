@@ -107,8 +107,14 @@ async function handleCollect() {
   if (collecting.value) return
   collecting.value = true
   try {
-    const { data } = await api.post('/collector/run')
-    ElMessage.success('采集完成：新增 ' + data.created + ' 条，分析 ' + data.analyzed + ' 条')
+    const { data } = await api.post('/collector/run');
+    if (data.fetched_raw === 0) {
+      ElMessage.warning('采集完成：未抓取到新内容，数据源暂无可读数据');
+    } else if (data.created === 0) {
+      ElMessage.warning('采集完成：抓取 ' + data.fetched_raw + ' 条，均为已存在数据');
+    } else {
+      ElMessage.success('采集完成：新增 ' + data.created + ' 条，分析 ' + data.analyzed + ' 条');
+    }
     // trigger a page reload for active view
     window.dispatchEvent(new CustomEvent('data-refresh'))
     // Auto-trigger alert evaluation after collection
@@ -326,3 +332,4 @@ function handleLogout() {
   .main { padding: 24px 18px 48px; }
 }
 </style>
+

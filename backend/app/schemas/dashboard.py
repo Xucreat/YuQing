@@ -23,6 +23,16 @@ class KeywordItem(BaseModel):
     count: int
 
 
+class SourceItem(BaseModel):
+    source: str
+    count: int
+
+
+class SentimentItem(BaseModel):
+    label: str
+    count: int
+
+
 class DashboardStatsResponse(BaseModel):
     """驾驶舱统计总览。
 
@@ -39,3 +49,5 @@ class DashboardStatsResponse(BaseModel):
     event_count: int
     trend: List[TrendItem]
     keywords: List[KeywordItem]
+    sources: List[SourceItem]
+    sentiments: List[SentimentItem]

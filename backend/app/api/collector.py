@@ -1,15 +1,15 @@
-"""Collector 采集接口（Phase 3A）。
+﻿"""Collector 閲囬泦鎺ュ彛锛圥hase 3A锛夈€?
 
-路由（挂载在 /api 下，由 main.py 统一加前缀）：
-  POST   /collector/run     触发一次采集 + 自动 AI 分析闭环（Bearer JWT）
-  GET    /collector/status  查询采集状态（Bearer JWT，内存，重启丢失）
+璺敱锛堟寕杞藉湪 /api 涓嬶紝鐢?main.py 缁熶竴鍔犲墠缂€锛夛細
+  POST   /collector/run     瑙﹀彂涓€娆￠噰闆?+ 鑷姩 AI 鍒嗘瀽闂幆锛圔earer JWT锛?
+  GET    /collector/status  鏌ヨ閲囬泦鐘舵€侊紙Bearer JWT锛屽唴瀛橈紝閲嶅惎涓㈠け锛?
 
-严格范围（本阶段）：
-- 仅「手动触发一次采集」。不做定时 / Celery / Redis / 事件聚合 / 前端。
-- 业务不直接调用 DeepSeek / Provider，统一经 CollectorService -> AIService。
-- 采集状态存内存（见 collectors.service._COLLECTOR_STATUS），重启丢失、
-  不持久化；代码与 docs 已注明 Phase 3A 临时实现。
-- 不修改数据库结构 / 不新增迁移。
+涓ユ牸鑼冨洿锛堟湰闃舵锛夛細
+- 浠呫€屾墜鍔ㄨЕ鍙戜竴娆￠噰闆嗐€嶃€備笉鍋氬畾鏃?/ Celery / Redis / 浜嬩欢鑱氬悎 / 鍓嶇銆?
+- 涓氬姟涓嶇洿鎺ヨ皟鐢?DeepSeek / Provider锛岀粺涓€缁?CollectorService -> AIService銆?
+- 閲囬泦鐘舵€佸瓨鍐呭瓨锛堣 collectors.service._COLLECTOR_STATUS锛夛紝閲嶅惎涓㈠け銆?
+  涓嶆寔涔呭寲锛涗唬鐮佷笌 docs 宸叉敞鏄?Phase 3A 涓存椂瀹炵幇銆?
+- 涓嶄慨鏀规暟鎹簱缁撴瀯 / 涓嶆柊澧炶縼绉汇€?
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from app.schemas.collector import CollectorRunResponse, CollectorStatusResponse
 
 collector_router = APIRouter(
     tags=["collector"],
-    # 全部采集接口均需登录（Bearer JWT）
+    # 鍏ㄩ儴閲囬泦鎺ュ彛鍧囬渶鐧诲綍锛圔earer JWT锛?
     dependencies=[Depends(get_current_user)],
 )
 
@@ -43,21 +43,21 @@ def run_collector(
     db: Session = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> CollectorRunResponse:
-    """触发一次采集 + 自动 AI 分析闭环。
+    """瑙﹀彂涓€娆￠噰闆?+ 鑷姩 AI 鍒嗘瀽闂幆銆?
 
-    流程：按 settings.collector_type 选择 Collector（government / mock）
-          -> Collector.fetch() -> 按 url 去重 -> 建 Opinion(pending)
-          -> AIService.analyze -> 写回字段 + 状态流转(completed/failed)。
-    返回：collector_type（采集方式）/ created / analyzed / failed。
+    娴佺▼锛氭寜 settings.collector_type 閫夋嫨 Collector锛坓overnment / mock锛?
+          -> Collector.fetch() -> 鎸?url 鍘婚噸 -> 寤?Opinion(pending)
+          -> AIService.analyze -> 鍐欏洖瀛楁 + 鐘舵€佹祦杞?completed/failed)銆?
+    杩斿洖锛歝ollector_type锛堥噰闆嗘柟寮忥級/ created / analyzed / failed銆?
 
-    Phase 3B：政府网站采集 5 秒内重复触发 → 返回 429（success=false），
-    避免误操作连续请求政府网站（不使用 500）。
+    Phase 3B锛氭斂搴滅綉绔欓噰闆?5 绉掑唴閲嶅瑙﹀彂 鈫?杩斿洖 429锛坰uccess=false锛夛紝
+    閬垮厤璇搷浣滆繛缁姹傛斂搴滅綉绔欙紙涓嶄娇鐢?500锛夈€?
     """
     service = CollectorService()
     try:
         result = service.collect_and_analyze(db)
     except CollectorThrottled:
-        # 5 秒防抖：过于频繁 → 429 Too Many Requests（不判为服务错误）。
+        # 5 绉掗槻鎶栵細杩囦簬棰戠箒 鈫?429 Too Many Requests锛堜笉鍒や负鏈嶅姟閿欒锛夈€?
         response.status_code = status.HTTP_429_TOO_MANY_REQUESTS
         return CollectorRunResponse(
             success=False,
@@ -67,14 +67,15 @@ def run_collector(
     return CollectorRunResponse(
         success=True,
         collector_type=result.collector_type,
+        fetched_raw=result.fetched_raw,
         created=result.created,
         analyzed=result.analyzed,
         failed=result.failed,
         message=(
-            f"采集完成：抓取{result.fetched_raw}条，新增{result.created}条，"
-            f"分析{result.analyzed}条"
-            + (f"，{result.failed}条分析失败" if result.failed > 0 else "")
-            + ("；无新增数据（可能网站不可达或数据未更新）" if result.created == 0 else "")
+            f"閲囬泦瀹屾垚锛氭姄鍙杮result.fetched_raw}鏉★紝鏂板{result.created}鏉★紝"
+            f"鍒嗘瀽{result.analyzed}鏉?
+            + (f"锛寋result.failed}鏉″垎鏋愬け璐? if result.failed > 0 else "")
+            + ("锛涙棤鏂板鏁版嵁锛堝彲鑳界綉绔欎笉鍙揪鎴栨暟鎹湭鏇存柊锛? if result.created == 0 else "")
         ),
     )
 
@@ -87,10 +88,12 @@ def run_collector(
 def collector_status(
     _current_user: User = Depends(get_current_user),
 ) -> CollectorStatusResponse:
-    """查询采集状态（模块级内存，重启丢失；Phase 3A 临时实现）。"""
+    """鏌ヨ閲囬泦鐘舵€侊紙妯″潡绾у唴瀛橈紝閲嶅惎涓㈠け锛汸hase 3A 涓存椂瀹炵幇锛夈€?""
     st = get_collector_status()
     return CollectorStatusResponse(
         last_run=st.get("last_run"),
         total_collected=st.get("total_collected", 0),
         collector_type=st.get("collector_type"),
     )
+
+

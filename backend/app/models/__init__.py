@@ -12,6 +12,7 @@ from app.models.event import Event
 from app.models.event_opinion import EventOpinion
 from app.models.alert import AlertRule, AlertRecord
 from app.models.propagation import PropagationNode
+from app.models.collector_run import CollectorRun
 
 __all__ = [
     "Base",
@@ -24,4 +25,5 @@ __all__ = [
     "AlertRule",
     "AlertRecord",
     "PropagationNode",
+    "CollectorRun",
 ]

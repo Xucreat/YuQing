@@ -1,4 +1,6 @@
-﻿import { createRouter, createWebHistory } from 'vue-router'
+import KeywordsPage from '@/views/Keywords.vue'
+import SourcesPage from '@/views/Sources.vue'
+import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -44,6 +46,18 @@ const router = createRouter({
       path: '/alerts',
       name: 'alerts',
       component: () => import('@/views/Alerts.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/keywords',
+      name: 'keywords',
+      component: KeywordsPage,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/sources',
+      name: 'sources',
+      component: SourcesPage,
       meta: { requiresAuth: true },
     },
     {

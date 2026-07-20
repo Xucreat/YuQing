@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -26,6 +27,7 @@ class Opinion(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # 关键词：TEXT 逗号分隔（如 "消防,事故,投诉"），不使用 Array 类型
     keywords: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    search_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )

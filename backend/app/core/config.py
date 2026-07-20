@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     #   - 生产默认 government（大厂县政府网站）
     #   - 测试默认 mock（conftest 在导入 app 前注入 COLLECTOR_TYPE=mock）
     collector_type: str = "government"
+    # P0: scheduled collection
+    collector_schedule_enabled: bool = True
+    collector_schedule_cron: str = "*/30 * * * *"
+    collector_keywords: str = "大厂,舆情,消防,安全生产,民生,投诉,廊坊,大厂回族"
+    # P0: new data sources
+    baidu_news_enabled: bool = True
+    weibo_enabled: bool = True
+    weibo_cookie: str = ""
+    hebei_news_enabled: bool = True
+    hebei_news_feeds: str = ""
     # 政府网站栏目页地址（.env 用逗号分隔字符串亦可，见下方 validator）。
     #   今日大厂 /jrdc.jhtml，公告公示 /gggs.jhtml
     gov_news_urls: List[str] = [

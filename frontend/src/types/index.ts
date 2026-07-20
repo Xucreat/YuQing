@@ -79,6 +79,9 @@ export interface KeywordCount {
 // GET /api/dashboard/stats锛氬悗绔疄闄呰繑鍥?
 // { total, today, high_risk, trend[{date,count}], keywords[{word,count}] }
 // 娉ㄦ剰锛氭棤 event_count锛堜簨浠舵暟闇€鍙﹁皟 GET /api/events 鐨?total锛?
+export interface SourceItem { source: string; count: number }
+export interface SentimentItem { label: string; count: number }
+
 export interface DashboardStats {
   total: number
   today: number
@@ -86,6 +89,8 @@ export interface DashboardStats {
   event_count: number
   trend: TrendPoint[]
   keywords: KeywordCount[]
+  sources: SourceItem[]
+  sentiments: SentimentItem[]
   // 鈫?鏃у瓧娈碉細鍚庣鏈繑鍥烇紝淇濈暀 optional 闃叉鍘嗗彶寮曠敤鎶ラ敊锛屽嬁浣跨敤
   today_new?: number
   trend_7d?: { date: string; count: number }[]

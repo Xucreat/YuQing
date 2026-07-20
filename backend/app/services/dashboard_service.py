@@ -72,6 +72,23 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
         for word, count in counter.most_common(TOP_KEYWORDS)
     ]
 
+    # P0: source distribution
+    from sqlalchemy import func as sfunc, select as sselect
+    source_rows = db.execute(
+        select(Opinion.source, sfunc.count(Opinion.id))
+        .group_by(Opinion.source)
+        .order_by(sfunc.count(Opinion.id).desc())
+        .limit(10)
+    ).all()
+    sources = [{"source": s or "未知", "count": c} for s, c in source_rows]
+
+    # P0: sentiment distribution
+    sentiment_rows = db.execute(
+        select(Opinion.sentiment, sfunc.count(Opinion.id))
+        .group_by(Opinion.sentiment)
+    ).all()
+    sentiments = [{"label": s, "count": c} for s, c in sentiment_rows]
+
     return {
         "total": total,
         "today": today,
@@ -79,4 +96,6 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
         "event_count": event_count,
         "trend": trend,
         "keywords": keywords,
+        "sources": sources,
+        "sentiments": sentiments,
     }
