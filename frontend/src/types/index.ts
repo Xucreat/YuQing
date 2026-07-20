@@ -1,14 +1,14 @@
-// 共享类型定义（Phase 4：对齐后端真实 API contract）
+﻿// 鍏变韩绫诲瀷瀹氫箟锛圥hase 4锛氬榻愬悗绔湡瀹?API contract锛?
 //
-// 对齐原则：只修正与后端 response 不一致字段；已废弃/不匹配字段保留为
-// optional + 注释，不删除，避免破坏既有引用。
+// 瀵归綈鍘熷垯锛氬彧淇涓庡悗绔?response 涓嶄竴鑷村瓧娈碉紱宸插簾寮?涓嶅尮閰嶅瓧娈典繚鐣欎负
+// optional + 娉ㄩ噴锛屼笉鍒犻櫎锛岄伩鍏嶇牬鍧忔棦鏈夊紩鐢ㄣ€?
 
 export type Sentiment = 'positive' | 'negative' | 'neutral'
 
-// 分析状态（后端 analysis_status）
+// 鍒嗘瀽鐘舵€侊紙鍚庣 analysis_status锛?
 export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
-// 与后端 OpinionOut 完全对齐
+// 涓庡悗绔?OpinionOut 瀹屽叏瀵归綈
 export interface Opinion {
   id: number
   title: string
@@ -20,15 +20,15 @@ export interface Opinion {
   risk_score: number
   sentiment: Sentiment
   summary: string
-  keywords: string // 逗号分隔，如 "消防,事故,投诉"
+  keywords: string // 閫楀彿鍒嗛殧锛屽 "娑堥槻,浜嬫晠,鎶曡瘔"
   created_at: string
-  // ===== Phase 2C：AI 分析字段 =====
+  // ===== Phase 2C锛欰I 鍒嗘瀽瀛楁 =====
   analysis_status: AnalysisStatus
   analysis_time?: string | null
   analysis_suggestion?: string | null
 }
 
-// GET /api/opinions 分页响应
+// GET /api/opinions 鍒嗛〉鍝嶅簲
 export interface OpinionListResponse {
   items: Opinion[]
   total: number
@@ -36,21 +36,21 @@ export interface OpinionListResponse {
   size: number
 }
 
-// 与后端 EventOut 对齐（status 后端固定返回 "active"）
+// 涓庡悗绔?EventOut 瀵归綈锛坰tatus 鍚庣鍥哄畾杩斿洖 "active"锛?
 export interface EventItem {
   id: number
   title: string
   risk_level: string
   opinion_count: number
-  status: string // 后端固定 "active"（仅序列化层）
+  status: string // 鍚庣鍥哄畾 "active"锛堜粎搴忓垪鍖栧眰锛?
   first_time: string | null
   last_time: string | null
-  // ↓ 旧字段：后端 EventOut 未返回，保留 optional 兼容历史引用
+  // 鈫?鏃у瓧娈碉細鍚庣 EventOut 鏈繑鍥烇紝淇濈暀 optional 鍏煎鍘嗗彶寮曠敤
   description?: string
   keyword?: string
 }
 
-// GET /api/events 分页响应
+// GET /api/events 鍒嗛〉鍝嶅簲
 export interface EventListResponse {
   items: EventItem[]
   total: number
@@ -58,7 +58,7 @@ export interface EventListResponse {
   size: number
 }
 
-// POST /api/events/aggregate 响应
+// POST /api/events/aggregate 鍝嶅簲
 export interface EventCreateResponse {
   success: boolean
   created: number
@@ -66,7 +66,7 @@ export interface EventCreateResponse {
   linked: number
 }
 
-// 趋势点 / 关键词项（对齐后端 dashboard schema）
+// 瓒嬪娍鐐?/ 鍏抽敭璇嶉」锛堝榻愬悗绔?dashboard schema锛?
 export interface TrendPoint {
   date: string
   count: number
@@ -76,9 +76,9 @@ export interface KeywordCount {
   count: number
 }
 
-// GET /api/dashboard/stats：后端实际返回
+// GET /api/dashboard/stats锛氬悗绔疄闄呰繑鍥?
 // { total, today, high_risk, trend[{date,count}], keywords[{word,count}] }
-// 注意：无 event_count（事件数需另调 GET /api/events 的 total）
+// 娉ㄦ剰锛氭棤 event_count锛堜簨浠舵暟闇€鍙﹁皟 GET /api/events 鐨?total锛?
 export interface DashboardStats {
   total: number
   today: number
@@ -86,20 +86,19 @@ export interface DashboardStats {
   event_count: number
   trend: TrendPoint[]
   keywords: KeywordCount[]
-  // ↓ 旧字段：后端未返回，保留 optional 防止历史引用报错，勿使用
+  // 鈫?鏃у瓧娈碉細鍚庣鏈繑鍥烇紝淇濈暀 optional 闃叉鍘嗗彶寮曠敤鎶ラ敊锛屽嬁浣跨敤
   today_new?: number
-  event_count?: number
   trend_7d?: { date: string; count: number }[]
   top_keywords?: { keyword: string; count: number }[]
 }
 
-// POST /api/login 响应
+// POST /api/login 鍝嶅簲
 export interface LoginResult {
   access_token: string
   token_type: string
 }
 
-// POST /api/collector/run 响应（Phase 3A/3B；前端暂未使用，补充类型完整性）
+// POST /api/collector/run 鍝嶅簲锛圥hase 3A/3B锛涘墠绔殏鏈娇鐢紝琛ュ厖绫诲瀷瀹屾暣鎬э級
 export interface CollectorRunResponse {
   success: boolean
   created: number
