@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.event import Event
 from app.models.event_opinion import EventOpinion
@@ -43,7 +44,7 @@ MAX_SIZE = 100
 )
 def aggregate_events(
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("events:write")),
 ) -> EventCreateResponse:
     """手动触发一次 Event 聚合。"""
     result = EventAggregator().aggregate(db)
@@ -119,7 +120,7 @@ def get_event(
 def delete_event(
     event_id: int,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("events:write")),
 ) -> dict:
     """Delete an event and all its related records."""
     event = db.get(Event, event_id)

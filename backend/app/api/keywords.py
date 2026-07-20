@@ -3,8 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import func, select, delete as sa_delete
 from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.keyword import Keyword
+from app.models.user import User
 from pydantic import BaseModel
 
 keywords_router = APIRouter(
@@ -71,7 +73,7 @@ def list_keywords(
 
 
 @keywords_router.post("", response_model=KeywordOut, status_code=status.HTTP_201_CREATED)
-def create_keyword(payload: KeywordCreate, db: Session = Depends(get_db)):
+def create_keyword(payload: KeywordCreate, _: User = Depends(require_permission("keywords:write")), db: Session = Depends(get_db)):
     existing = db.query(Keyword).filter(Keyword.word == payload.word).first()
     if existing:
         raise HTTPException(status_code=409, detail="Keyword already exists")
@@ -83,7 +85,7 @@ def create_keyword(payload: KeywordCreate, db: Session = Depends(get_db)):
 
 
 @keywords_router.put("/{keyword_id}", response_model=KeywordOut)
-def update_keyword(keyword_id: int, payload: KeywordUpdate, db: Session = Depends(get_db)):
+def update_keyword(keyword_id: int, payload: KeywordUpdate, _: User = Depends(require_permission("keywords:write")), db: Session = Depends(get_db)):
     kw = db.get(Keyword, keyword_id)
     if not kw:
         raise HTTPException(status_code=404, detail="Keyword not found")
@@ -99,7 +101,7 @@ def update_keyword(keyword_id: int, payload: KeywordUpdate, db: Session = Depend
 
 
 @keywords_router.delete("/{keyword_id}", status_code=status.HTTP_200_OK)
-def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
+def delete_keyword(keyword_id: int, _: User = Depends(require_permission("keywords:write")), db: Session = Depends(get_db)):
     kw = db.get(Keyword, keyword_id)
     if not kw:
         raise HTTPException(status_code=404, detail="Keyword not found")

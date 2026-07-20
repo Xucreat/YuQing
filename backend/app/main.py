@@ -1,5 +1,6 @@
 """FastAPI 应用入口。"""
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import os
@@ -21,6 +22,15 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
     description="MVP - Phase 2B 认证 + 舆情基础 API + 驾驶舱统计",
+)
+
+# 允许任意来源跨域访问（CORS 全开）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/_debug_static", tags=["debug"])

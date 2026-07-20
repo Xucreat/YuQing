@@ -125,6 +125,31 @@ class PropagationService:
             {"source": k, "count": v} for k, v in sorted(source_counts.items(), key=lambda x: -x[1])
         ]
 
+        # ===== P2 传播分析增强：事件级聚合指标 =====
+        max_depth = max((n.depth for n in nodes), default=0)
+        distinct_sources = len(source_counts)
+
+        times = [n.publish_time for n in nodes if n.publish_time]
+        first_time = min(times).isoformat() if times else None
+        last_time = max(times).isoformat() if times else None
+
+        sentiment_counts: dict[str, int] = {}
+        for n in nodes:
+            sentiment_counts[n.sentiment] = sentiment_counts.get(n.sentiment, 0) + 1
+        sentiment_summary = [
+            {"label": k, "count": v} for k, v in sorted(sentiment_counts.items())
+        ]
+
+        depth_counts: dict[int, int] = {}
+        for n in nodes:
+            depth_counts[n.depth] = depth_counts.get(n.depth, 0) + 1
+        depth_distribution = [
+            {"depth": d, "count": c} for d, c in sorted(depth_counts.items())
+        ]
+
+        negative_count = sentiment_counts.get("negative", 0)
+        negative_ratio = round(negative_count / len(nodes) * 100, 1) if nodes else 0.0
+
         return {
             "nodes": [PropagationService._node_to_dict(n) for n in nodes],
             "links": links,
@@ -132,6 +157,13 @@ class PropagationService:
             "event_title": event.title,
             "total_opinions": event.opinion_count,
             "source_summary": source_summary,
+            "max_depth": max_depth,
+            "distinct_sources": distinct_sources,
+            "first_time": first_time,
+            "last_time": last_time,
+            "sentiment_summary": sentiment_summary,
+            "depth_distribution": depth_distribution,
+            "negative_ratio": negative_ratio,
         }
 
     @staticmethod

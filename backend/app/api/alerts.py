@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.alert import AlertRule, AlertRecord
 from app.models.user import User
@@ -28,7 +29,7 @@ def list_rules(
 
 
 @alerts_router.post("/rules", response_model=AlertRuleOut, status_code=status.HTTP_201_CREATED)
-def create_rule(payload: AlertRuleCreate, db: Session = Depends(get_db), _u: User = Depends(get_current_user)):
+def create_rule(payload: AlertRuleCreate, db: Session = Depends(get_db), _u: User = Depends(require_permission("alerts:write"))):
     rule = AlertRule(**payload.model_dump())
     db.add(rule)
     db.commit()
@@ -37,7 +38,7 @@ def create_rule(payload: AlertRuleCreate, db: Session = Depends(get_db), _u: Use
 
 
 @alerts_router.put("/rules/{rule_id}", response_model=AlertRuleOut)
-def update_rule(rule_id: int, payload: AlertRuleUpdate, db: Session = Depends(get_db), _u: User = Depends(get_current_user)):
+def update_rule(rule_id: int, payload: AlertRuleUpdate, db: Session = Depends(get_db), _u: User = Depends(require_permission("alerts:write"))):
     rule = db.get(AlertRule, rule_id)
     if not rule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
@@ -49,7 +50,7 @@ def update_rule(rule_id: int, payload: AlertRuleUpdate, db: Session = Depends(ge
 
 
 @alerts_router.delete("/rules/{rule_id}")
-def delete_rule(rule_id: int, db: Session = Depends(get_db), _u: User = Depends(get_current_user)):
+def delete_rule(rule_id: int, db: Session = Depends(get_db), _u: User = Depends(require_permission("alerts:write"))):
     rule = db.get(AlertRule, rule_id)
     if not rule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
@@ -59,7 +60,7 @@ def delete_rule(rule_id: int, db: Session = Depends(get_db), _u: User = Depends(
 
 
 @alerts_router.post("/evaluate", response_model=AlertEvaluateResponse)
-def evaluate_alerts(db: Session = Depends(get_db), _u: User = Depends(get_current_user)):
+def evaluate_alerts(db: Session = Depends(get_db), _u: User = Depends(require_permission("alerts:write"))):
     result = AlertService.evaluate(db)
     AlertService.sync_alert_events(db)
     return AlertEvaluateResponse(success=True, **result)
@@ -85,7 +86,7 @@ def list_records(
 
 
 @alerts_router.put("/records/{record_id}/handle", response_model=AlertRecordOut)
-def handle_record(record_id: int, db: Session = Depends(get_db), _u: User = Depends(get_current_user)):
+def handle_record(record_id: int, db: Session = Depends(get_db), _u: User = Depends(require_permission("alerts:write"))):
     rec = db.get(AlertRecord, record_id)
     if not rec:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")

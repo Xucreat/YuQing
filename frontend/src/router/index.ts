@@ -1,4 +1,4 @@
-import KeywordsPage from '@/views/Keywords.vue'
+﻿import KeywordsPage from '@/views/Keywords.vue'
 import SourcesPage from '@/views/Sources.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
@@ -61,6 +61,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/users',
+      name: 'users',
+      component: () => import('@/views/Users.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/propagation',
       name: 'propagation',
       component: () => import('@/views/Propagation.vue'),
@@ -80,3 +86,4 @@ router.beforeEach((to) => {
 })
 
 export default router
+

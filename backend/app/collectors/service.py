@@ -1,22 +1,22 @@
-﻿"""Collector 閲囬泦鏈嶅姟锛圥hase 3A锛氶噰闆?鈫?鍏ュ簱 鈫?鑷姩 AI 鍒嗘瀽闂幆锛夈€?
+"""Collector 采集服务（Phase 3A：采集 → 入库 → 自动 AI 分析闭环）。
 
-鑱岃矗锛?
-  1. 璋冨害鍚?Collector.fetch() 鎷垮埌鏍囧噯鍖?dict 鍒楄〃銆?
-  2. 鎸?url 鍘婚噸锛坲rl 涓虹┖鏃堕€€鍥?title+publish_time 杈呭姪鍒ゆ柇锛夛紝璺宠繃宸插瓨鍦ㄩ」銆?
-  3. 鏂板缓 Opinion锛堥粯璁?risk_score=0 / sentiment=neutral / analysis_status=pending锛夈€?
-  4. 璋冪敤 AIService.analyze(title, content) 鍋?AI 鍒嗘瀽骞跺啓鍥炲瓧娈?+ 鐘舵€佹祦杞€?
-  5. 鍗曟潯 AI 澶辫触闅旂锛氳鏉＄疆 analysis_status="failed"锛堜繚鐣欐暟鎹簱璁板綍锛夛紝
-     涓嶅奖鍝嶅叾浣欐暟鎹紱澶辫触璁℃暟 failed = created - analyzed銆?
+职责：
+  1. 调度各 Collector.fetch() 拿到标准化 dict 列表。
+  2. 按 url 去重（url 为空时退回 title+publish_time 辅助判断），跳过已存在项。
+  3. 新建 Opinion（默认 risk_score=0 / sentiment=neutral / analysis_status=pending）。
+  4. 调用 AIService.analyze(title, content) 做 AI 分析并写回字段 + 状态流转。
+  5. 单条 AI 失败隔离：该条置 analysis_status="failed"（保留数据库记录），
+     不影响其余数据；失败计数 failed = created - analyzed。
 
-璁捐绾︽潫锛堟潵鑷敤鎴风‘璁わ級锛?
-- 澶嶇敤 AIService.analyze锛堜笌鎵嬪姩鍒嗘瀽 API 鍏辩敤鍒嗘瀽鑳藉姏锛夛紝涓嶆娊鍙栧叕鍏?
-  AIAnalysisHelper锛圡VP 蹇€熼獙璇侊級锛涗絾宸插湪涓嬫柟鏍囨敞 TODO Phase 4 寰呮娊鍙栥€?
-- CollectorService 涓嶇洿鎺ヨ皟鐢?DeepSeek / Provider锛岀粺涓€缁?AIService銆?
-- 閲囬泦鐘舵€佸瓨**妯″潡绾у唴瀛樺彉閲?*锛堣 _COLLECTOR_STATUS锛夛紝閲嶅惎涓㈠け銆佷笉鎸佷箙鍖栥€?
+设计约束（来自用户确认）：
+- 复用 AIService.analyze（与手动分析 API 共用分析能力），不抽取公共
+  AIAnalysisHelper（MVP 快速验证）；但已在下方标注 TODO Phase 4 待抽取。
+- CollectorService 不直接调用 DeepSeek / Provider，统一经 AIService。
+- 采集状态存**模块级内存变量**（见 _COLLECTOR_STATUS），重启丢失、不持久化。
   # Phase 3A temporary implementation.
   # Persistent collector task history is postponed.
-  # Future: 鑻ュ鍔犲畾鏃堕噰闆嗭紝鍐嶈璁?collector_runs 琛ㄣ€?
-- 涓嶄慨鏀规暟鎹簱缁撴瀯 / 涓嶆柊澧炶縼绉?/ 涓嶅紩鍏?Celery / Redis / 瀹氭椂浠诲姟銆?
+  # Future: 若增加定时采集，再设计 collector_runs 表。
+- 不修改数据库结构 / 不新增迁移 / 不引入 Celery / Redis / 定时任务。
 """
 from __future__ import annotations
 
@@ -28,17 +28,12 @@ from sqlalchemy.orm import Session
 
 from app.collectors.base import BaseCollector
 from app.collectors.government_collector import GovernmentCollector
-from app.collectors.baidu_news_collector import BaiduNewsCollector
-from app.collectors.weibo_collector import WeiboCollector
-from app.collectors.hebei_news_collector import HebeiNewsCollector
 from app.collectors.mock_collector import MockCollector
 from app.collectors.rss_collector import RSSCollector
 from app.core.config import settings
 from app.models.opinion import Opinion
 from app.models.region import Region
-from app.models.collector_run import CollectorRun
 from app.services.ai import AIService
-from app.services.alert_service import AlertService
 
 # ---------------------------------------------------------------------------
 # Phase 3A temporary implementation.
@@ -46,68 +41,64 @@ from app.services.alert_service import AlertService
 # Future: if scheduled collection is added, design a `collector_runs` table.
 # ---------------------------------------------------------------------------
 _COLLECTOR_STATUS: dict = {
-    "last_run": None,   # datetime | None锛屾渶杩戜竴娆￠噰闆嗘椂闂?
-    "total_collected": 0,  # int锛岀疮璁￠噰闆嗭紙鏈杩涚▼鍐咃級
-    "collector_type": None,  # str | None锛屾渶杩戜竴娆￠噰闆嗘柟寮忥紙government/mock锛?
+    "last_run": None,   # datetime | None，最近一次采集时间
+    "total_collected": 0,  # int，累计采集（本次进程内）
+    "collector_type": None,  # str | None，最近一次采集方式（government/mock）
 }
 
-# Phase 3B锛氭斂搴滅綉绔欓噰闆嗛槻鎶栨椂闂存埑锛堟ā鍧楃骇鍐呭瓨锛岄噸鍚涪澶憋級銆?
-# 姣忔 government 閲囬泦鍚庢洿鏂帮紱THROTTLE_SECONDS 鍐呴噸澶嶈Е鍙?鈫?CollectorThrottled銆?
+# Phase 3B：政府网站采集防抖时间戳（模块级内存，重启丢失）。
+# 每次 government 采集后更新；THROTTLE_SECONDS 内重复触发 → CollectorThrottled。
 _GOV_LAST_RUN_AT: Optional[datetime] = None
 THROTTLE_SECONDS = 5.0
 
 
 class CollectorThrottled(Exception):
-    """鏀垮簻缃戠珯閲囬泦瑙﹀彂杩囦簬棰戠箒锛? 绉掗槻鎶栵級锛岀敱 API 灞傝浆 429銆?""
+    """政府网站采集触发过于频繁（5 秒防抖），由 API 层转 429。"""
 
 
 def reset_gov_throttle() -> None:
-    """閲嶇疆鏀垮簻閲囬泦闃叉姈鏃堕棿鎴筹紙渚涙祴璇曚娇鐢級銆?""
+    """重置政府采集防抖时间戳（供测试使用）。"""
     global _GOV_LAST_RUN_AT
     _GOV_LAST_RUN_AT = None
 
 
 def resolve_collectors(collector_type: Optional[str] = None) -> List[BaseCollector]:
-    """Resolve default collectors by type (P0: now includes baidu/weibo in production)."""
+    """按采集方式（Pydantic Settings collector_type）解析默认采集器。
+
+    - government -> [GovernmentCollector]
+    - mock       -> [MockCollector]
+    其余取值按 government 兜底。三种采集器均可独立实例化使用。
+    """
     ctype = (collector_type or settings.collector_type or "government").lower()
     if ctype == "mock":
         return [MockCollector()]
+    return [GovernmentCollector()]
 
-    # Production: government + baidu news + weibo (all enabled by default)
-    collectors: List[BaseCollector] = [GovernmentCollector()]
-    if settings.baidu_news_enabled:
-        collectors.append(BaiduNewsCollector())
-    if settings.weibo_enabled:
-        collectors.append(WeiboCollector())
-    if settings.hebei_news_enabled:
-        collectors.append(HebeiNewsCollector())
-    return collectors
 
 @dataclass
 class CollectorRunResult:
-    """鍗曟閲囬泦杩愯缁撴灉銆?""
+    """单次采集运行结果。"""
 
-    created: int = 0    # 鏈瀹為檯鏂板 Opinion 鏁伴噺
-    analyzed: int = 0   # AI 鍒嗘瀽鎴愬姛锛坈ompleted锛夋暟閲?
-    collector_type: str = ""
-    fetched_raw: int = 0  # 鏈閲囬泦鏂瑰紡锛坓overnment/mock锛?
+    created: int = 0    # 本次实际新增 Opinion 数量
+    analyzed: int = 0   # AI 分析成功（completed）数量
+    collector_type: str = ""  # 本次采集方式（government/mock）
 
     def finalize(self) -> "CollectorRunResult":
-        # 澶辫触 = 鏂板 - 鍒嗘瀽鎴愬姛锛涘け璐ヨ褰曚繚鐣欏湪鏁版嵁搴擄紙status=failed锛夈€?
+        # 失败 = 新增 - 分析成功；失败记录保留在数据库（status=failed）。
         self.failed = max(0, self.created - self.analyzed)
         return self
 
-    # failed 缁?finalize 璁＄畻鍚庡瓨鍦紱澹版槑鍗犱綅閬垮厤 mypy 鎶ユ湭瀹氫箟銆?
+    # failed 经 finalize 计算后存在；声明占位避免 mypy 报未定义。
     failed: int = 0
 
 
 def get_collector_status() -> dict:
-    """杩斿洖閲囬泦鐘舵€侊紙妯″潡绾у唴瀛橈紝閲嶅惎涓㈠け锛涜涓婃柟 Phase 3A 娉ㄩ噴锛夈€?""
+    """返回采集状态（模块级内存，重启丢失；见上方 Phase 3A 注释）。"""
     return dict(_COLLECTOR_STATUS)
 
 
 class CollectorService:
-    """閲囬泦闂幆鏈嶅姟锛歠etch 鈫?鍘婚噸 鈫?寤?Opinion 鈫?AI 鍒嗘瀽 鈫?鐘舵€佹祦杞€?""
+    """采集闭环服务：fetch → 去重 → 建 Opinion → AI 分析 → 状态流转。"""
 
     def __init__(
         self,
@@ -115,12 +106,12 @@ class CollectorService:
         region_id: Optional[int] = None,
         collector_type: Optional[str] = None,
     ) -> None:
-        # 閲囬泦鏂瑰紡锛氭樉寮忎紶鍏?> Pydantic Settings锛坈ollector_type锛夈€?
+        # 采集方式：显式传入 > Pydantic Settings（collector_type）。
         self.collector_type: str = (
             collector_type or settings.collector_type or "government"
         ).lower()
-        # 榛樿閲囬泦鍣細鎸?collector_type 閫夋嫨锛坓overnment / mock锛夈€?
-        # 涔熷彲鏄惧紡娉ㄥ叆 collectors锛堟祴璇曠敤锛夛紝姝ゆ椂 collector_type 浠嶇敤浜庤繑鍥炴爣璇嗐€?
+        # 默认采集器：按 collector_type 选择（government / mock）。
+        # 也可显式注入 collectors（测试用），此时 collector_type 仍用于返回标识。
         self.collectors: List[BaseCollector] = (
             collectors if collectors is not None else resolve_collectors(self.collector_type)
         )
@@ -131,42 +122,42 @@ class CollectorService:
         # reuse by manual analysis API and collector service
 
     def _uses_government(self) -> bool:
-        """鏈閲囬泦鏄惁娑夊強鏀垮簻缃戠珯锛堝喅瀹氭槸鍚﹀惎鐢?5 绉掗槻鎶栵級銆?""
+        """本次采集是否涉及政府网站（决定是否启用 5 秒防抖）。"""
         return any(isinstance(c, GovernmentCollector) for c in self.collectors)
 
     # ------------------------------------------------------------------
-    # 鍐呴儴宸ュ叿
+    # 内部工具
     # ------------------------------------------------------------------
     def _resolve_region_id(self, db: Session) -> int:
-        """瑙ｆ瀽缁戝畾鍖哄煙锛氫紭鍏堜娇鐢ㄦ樉寮?region_id锛涘惁鍒欑敤绉嶅瓙鍖哄煙 131028锛堝ぇ鍘傚幙锛夈€?""
+        """解析绑定区域：优先使用显式 region_id；否则用种子区域 131028（大厂县）。"""
         if self.region_id is not None:
             region = db.get(Region, self.region_id)
             if region is None:
                 raise RuntimeError(
-                    f"Collector region_id={self.region_id} 涓嶅瓨鍦紝璇锋鏌ュ尯鍩熼厤缃€?
+                    f"Collector region_id={self.region_id} 不存在，请检查区域配置。"
                 )
             return self.region_id
 
-        # 榛樿锛氱瀛愬尯鍩?澶у巶鍥炴棌鑷不鍘匡紙code=131028锛?
+        # 默认：种子区域 大厂回族自治县（code=131028）
         region = db.query(Region).filter(Region.code == "131028").first()
         if region is None:
-            # 鍏滃簳锛氬彇浠绘剰棣栦釜鍖哄煙锛堥伩鍏嶇瀛愮己澶辨椂鏁翠綋澶辫触锛?
+            # 兜底：取任意首个区域（避免种子缺失时整体失败）
             region = db.query(Region).first()
         if region is None:
             raise RuntimeError(
-                "鏈厤缃换浣曞尯鍩燂紙region锛夛紝Collector 鏃犳硶缁戝畾 region_id锛?
-                "璇峰厛鎵ц init_db.py 鍒濆鍖栫瀛愬尯鍩熴€?
+                "未配置任何区域（region），Collector 无法绑定 region_id；"
+                "请先执行 init_db.py 初始化种子区域。"
             )
         return region.id
 
     def _already_exists(self, db: Session, item: dict) -> bool:
-        """鍘婚噸鍒ゆ柇锛堜互 opinions.url 涓哄噯锛泆rl 涓虹┖鏃堕€€鍥?title+publish_time锛夈€?""
+        """去重判断（以 opinions.url 为准；url 为空时退回 title+publish_time）。"""
         url = (item.get("url") or "").strip()
         if url:
             exists = db.query(Opinion).filter(Opinion.url == url).first()
             if exists is not None:
                 return True
-        # url 涓虹┖锛堟垨璇?url 鏈懡涓級-> 鐢?title + publish_time 杈呭姪鍒ゆ柇
+        # url 为空（或该 url 未命中）-> 用 title + publish_time 辅助判断
         title = (item.get("title") or "").strip()
         pub = item.get("publish_time")
         exists = (
@@ -181,17 +172,18 @@ class CollectorService:
         return exists is not None
 
     # ------------------------------------------------------------------
-    # 涓绘祦绋?
+    # 主流程
     # ------------------------------------------------------------------
-
     def collect_and_analyze(self, db: Session) -> CollectorRunResult:
-        """Execute one collection + auto AI analysis cycle, returns run result.
+        """执行一次采集 + 自动 AI 分析，返回运行结果。
 
-        Phase 3B: government site collection uses 5-second throttle.
+        Phase 3B：涉及政府网站时启用 5 秒防抖——距上次政府采集不足
+        THROTTLE_SECONDS 秒则抛 CollectorThrottled（API 层转 429），
+        避免误操作连续请求政府网站。
         """
         global _GOV_LAST_RUN_AT
 
-        # 5-second throttle (government site only)
+        # 5 秒防抖（仅政府网站采集）：距上次不足阈值 → 拒绝执行。
         if self._uses_government() and _GOV_LAST_RUN_AT is not None:
             elapsed = (datetime.now(timezone.utc) - _GOV_LAST_RUN_AT).total_seconds()
             if elapsed < THROTTLE_SECONDS:
@@ -200,27 +192,19 @@ class CollectorService:
         region_id = self._resolve_region_id(db)
         result = CollectorRunResult(collector_type=self.collector_type)
         ai = AIService()
-        start_time = datetime.now(timezone.utc)
-        per_collector_stats: dict[str, dict[str, int]] = {}
 
         for collector in self.collectors:
-            name = collector.source_name
-            stats = {"fetched_raw": 0, "created": 0, "analyzed": 0}
-
             items = collector.fetch() or []
-            stats["fetched_raw"] = len(items)
-            result.fetched_raw += len(items)
-
             for item in items:
-                # 1) Dedup: skip existing
+                # 1) 去重：已存在则跳过，不重复创建
                 if self._already_exists(db, item):
                     continue
 
-                # 2) Create Opinion (pending)
+                # 2) 新建 Opinion（默认 pending，先落库保证失败也保留记录）
                 opinion = Opinion(
                     title=(item.get("title") or "").strip(),
                     content=item.get("content") or "",
-                    source=(item.get("source") or "").strip() or name,
+                    source=(item.get("source") or "").strip() or collector.source_name,
                     url=(item.get("url") or "").strip(),
                     publish_time=item.get("publish_time"),
                     region_id=region_id,
@@ -229,65 +213,39 @@ class CollectorService:
                     analysis_status="pending",
                 )
                 db.add(opinion)
-                db.commit()
+                db.commit()  # 先提交，确保失败记录不丢失
                 result.created += 1
-                stats["created"] += 1
 
-                # 3) AI analysis (isolated per-item failure)
+                # 3) AI 分析 + 写回（单条失败隔离）
                 try:
                     analysis = ai.analyze(opinion.title, opinion.content)
                     opinion.summary = analysis.summary
                     opinion.sentiment = analysis.sentiment
                     opinion.risk_score = analysis.risk_score
+                    # keywords 在库中为 TEXT 逗号分隔
                     opinion.keywords = ",".join(analysis.keywords)
                     opinion.analysis_suggestion = analysis.suggestion
                     opinion.analysis_status = "completed"
                     opinion.analysis_time = datetime.now(timezone.utc)
                     db.commit()
                     result.analyzed += 1
-                    stats["analyzed"] += 1
                 except Exception:
+                    # 失败：保留该 Opinion 记录，仅状态置 failed
                     db.rollback()
                     opinion.analysis_status = "failed"
                     db.add(opinion)
                     db.commit()
 
-            per_collector_stats[name] = stats
-
-        # Write CollectorRun record for each collector
-        for cname, stats in per_collector_stats.items():
-            failed = stats["created"] - stats["analyzed"]
-            cr = CollectorRun(
-                collector_name=cname,
-                start_time=start_time,
-                end_time=datetime.now(timezone.utc),
-                fetched_raw=stats["fetched_raw"],
-                created=stats["created"],
-                analyzed=stats["analyzed"],
-                failed=failed,
-                status="completed" if failed == 0 and stats["fetched_raw"] > 0 else ("limited" if failed > 0 else "running"),
-            )
-            db.add(cr)
-        db.commit()
-
         result.finalize()
 
-        # 4) Update in-memory status
+        # 4) 更新内存状态（Phase 3A 临时，重启丢失）
         now = datetime.now(timezone.utc)
         _COLLECTOR_STATUS["last_run"] = now
         _COLLECTOR_STATUS["total_collected"] += result.created
         _COLLECTOR_STATUS["collector_type"] = self.collector_type
 
+        # 政府网站采集成功后更新防抖时间戳（供下次 5 秒判断）。
         if self._uses_government():
             _GOV_LAST_RUN_AT = now
 
-        # Auto-trigger alert evaluation
-        try:
-            alert_result = AlertService.evaluate(db)
-            if alert_result.get("alerts_created", 0) > 0:
-                AlertService.sync_alert_events(db)
-        except Exception:
-            pass
-
         return result
-

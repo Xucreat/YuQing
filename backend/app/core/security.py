@@ -40,10 +40,16 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(subject: str | int, expires_minutes: int | None = None) -> str:
-    """签发简单 JWT（仅包含 sub 与 exp）。"""
+def create_access_token(
+    subject: str | int,
+    expires_minutes: int | None = None,
+    extra_claims: dict[str, Any] | None = None,
+) -> str:
+    """签发 JWT（包含 sub、exp，可附加额外声明如 role）。"""
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=expires_minutes or settings.access_token_expire_minutes
     )
     payload: dict[str, Any] = {"sub": str(subject), "exp": expire}
+    if extra_claims:
+        payload.update(extra_claims)
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)

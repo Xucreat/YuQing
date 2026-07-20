@@ -81,6 +81,25 @@ export interface KeywordCount {
 // 娉ㄦ剰锛氭棤 event_count锛堜簨浠舵暟闇€鍙﹁皟 GET /api/events 鐨?total锛?
 export interface SourceItem { source: string; count: number }
 export interface SentimentItem { label: string; count: number }
+export interface RegionItem { region_id: number; region_name: string; count: number }
+export interface RecentOpinionItem {
+  id: number
+  title: string
+  source: string
+  sentiment: string
+  risk_score: number
+  region_name: string
+  created_at: string
+}
+export interface DashboardAlertItem {
+  id: number
+  rule_name: string
+  risk_level: string
+  opinion_title: string
+  trigger_reason: string
+  handled: boolean
+  created_at: string
+}
 
 export interface DashboardStats {
   total: number
@@ -91,16 +110,19 @@ export interface DashboardStats {
   keywords: KeywordCount[]
   sources: SourceItem[]
   sentiments: SentimentItem[]
+  regions: RegionItem[]
   // 鈫?鏃у瓧娈碉細鍚庣鏈繑鍥烇紝淇濈暀 optional 闃叉鍘嗗彶寮曠敤鎶ラ敊锛屽嬁浣跨敤
   today_new?: number
   trend_7d?: { date: string; count: number }[]
   top_keywords?: { keyword: string; count: number }[]
 }
 
-// POST /api/login 鍝嶅簲
+// POST /api/login 响应
 export interface LoginResult {
   access_token: string
   token_type: string
+  role: string
+  permissions: string[]
 }
 
 // POST /api/collector/run 鍝嶅簲锛圥hase 3A/3B锛涘墠绔殏鏈娇鐢紝琛ュ厖绫诲瀷瀹屾暣鎬э級
@@ -192,6 +214,19 @@ export interface PropagationGraph {
   event_title: string
   total_opinions: number
   source_summary: { source: string; count: number }[]
+  // P2 传播分析增强
+  max_depth: number
+  distinct_sources: number
+  first_time: string | null
+  last_time: string | null
+  sentiment_summary: { label: string; count: number }[]
+  depth_distribution: { depth: number; count: number }[]
+  negative_ratio: number
+}
+
+export interface DepthItem {
+  depth: number
+  count: number
 }
 
 export interface PropagationEventSummary {
@@ -202,6 +237,31 @@ export interface PropagationEventSummary {
   node_count: number
   first_time: string | null
   last_time: string | null
+}
+
+
+// ===== P2 RBAC types =====
+export interface UserItem {
+  id: number
+  username: string
+  role: string
+  is_active: boolean
+  last_login: string | null
+  created_at: string
+}
+
+export interface UserListResponse {
+  items: UserItem[]
+  total: number
+  page: number
+  size: number
+}
+
+export interface RoleItem {
+  id: number
+  name: string
+  display_name: string
+  permissions: string[]
 }
 
 export interface PropagationRebuildResponse {

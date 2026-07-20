@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="propagation" v-loading="loading">
     <el-row :gutter="16" class="prop-layout">
       <el-col :span="8">
@@ -41,6 +41,15 @@
               </div>
             </template>
 
+            <!-- 事件级指标条 -->
+            <div v-if="graphData" class="metrics-strip">
+              <div class="metric"><span class="m-val">{{ graphData.total_opinions }}</span><span class="m-lab">节点数</span></div>
+              <div class="metric"><span class="m-val">{{ graphData.max_depth }}</span><span class="m-lab">最大传播深度</span></div>
+              <div class="metric"><span class="m-val">{{ graphData.distinct_sources }}</span><span class="m-lab">来源平台数</span></div>
+              <div class="metric"><span class="m-val">{{ spanText }}</span><span class="m-lab">时间跨度</span></div>
+              <div class="metric"><span class="m-val danger">{{ graphData.negative_ratio }}%</span><span class="m-lab">负面占比</span></div>
+            </div>
+
             <el-row :gutter="16">
               <el-col :span="24">
                 <div ref="graphRef" class="graph-box"></div>
@@ -48,8 +57,8 @@
             </el-row>
 
             <el-row :gutter="16" style="margin-top: 16px">
-              <el-col :span="12">
-                <el-card shadow="hover" class="source-card">
+              <el-col :span="8">
+                <el-card shadow="hover" class="mini-card">
                   <template #header><span>来源分布</span></template>
                   <div v-if="graphData?.source_summary && graphData.source_summary.length > 0" class="source-list">
                     <div v-for="s in graphData.source_summary" :key="s.source" class="source-item">
@@ -61,23 +70,34 @@
                   <el-empty v-else description="暂无传播数据" />
                 </el-card>
               </el-col>
-              <el-col :span="12">
-                <el-card shadow="hover" class="timeline-card">
-                  <template #header><span>传播时间线</span></template>
-                  <div v-if="timelineData.length > 0" class="timeline-list">
-                    <div v-for="t in timelineData" :key="t.time" class="tl-item">
-                      <div class="tl-dot"></div>
-                      <div class="tl-content">
-                        <div class="tl-time">{{ t.time }}</div>
-                        <div class="tl-title">{{ t.title }}</div>
-                        <div class="tl-source">{{ t.source }}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <el-empty v-else description="暂无时间线数据" />
+              <el-col :span="8">
+                <el-card shadow="hover" class="mini-card">
+                  <template #header><span>情感分布</span></template>
+                  <div ref="sentimentRef" class="mini-chart"></div>
+                </el-card>
+              </el-col>
+              <el-col :span="8">
+                <el-card shadow="hover" class="mini-card">
+                  <template #header><span>传播深度</span></template>
+                  <div ref="depthRef" class="mini-chart"></div>
                 </el-card>
               </el-col>
             </el-row>
+
+            <el-card shadow="hover" class="timeline-card">
+              <template #header><span>传播时间线</span></template>
+              <div v-if="timelineData.length > 0" class="timeline-list">
+                <div v-for="t in timelineData" :key="t.time" class="tl-item">
+                  <div class="tl-dot"></div>
+                  <div class="tl-content">
+                    <div class="tl-time">{{ t.time }}</div>
+                    <div class="tl-title">{{ t.title }}</div>
+                    <div class="tl-source">{{ t.source }}</div>
+                  </div>
+                </div>
+              </div>
+              <el-empty v-else description="暂无时间线数据" />
+            </el-card>
           </el-card>
         </div>
       </el-col>
@@ -103,11 +123,23 @@ const graphData = ref<PropagationGraph | null>(null)
 
 const graphRef = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
+const sentimentRef = ref<HTMLElement>()
+let sentimentChart: echarts.ECharts | null = null
+const depthRef = ref<HTMLElement>()
+let depthChart: echarts.ECharts | null = null
 
 const filteredEvents = computed(() => {
   if (!searchKeyword.value) return events.value
   const kw = searchKeyword.value.toLowerCase()
   return events.value.filter(e => e.event_title.toLowerCase().includes(kw))
+})
+
+const spanText = computed(() => {
+  const g = graphData.value
+  if (!g || !g.first_time) return '-'
+  const a = g.first_time.slice(0, 10)
+  const b = (g.last_time || g.first_time).slice(0, 10)
+  return a === b ? a : `${a} ~ ${b}`
 })
 
 const timelineData = computed(() => {
@@ -142,10 +174,12 @@ async function selectEvent(ev: PropagationEventSummary) {
   selectedEvent.value = ev
   graphData.value = null
   try {
-      const { data } = await api.get<PropagationGraph>(`/propagation/graph/${ev.event_id}`)
+    const { data } = await api.get<PropagationGraph>(`/propagation/graph/${ev.event_id}`)
     graphData.value = data
     await nextTick()
     renderGraph()
+    renderSentiment()
+    renderDepth()
   } catch (_) { /* nodes may not exist yet */ }
 }
 
@@ -153,9 +187,8 @@ async function handleRebuild() {
   if (!selectedEvent.value || rebuilding.value) return
   rebuilding.value = true
   try {
-      const { data } = await api.post<PropagationRebuildResponse>(`/propagation/rebuild/${selectedEvent.value.event_id}`)
+    const { data } = await api.post<PropagationRebuildResponse>(`/propagation/rebuild/${selectedEvent.value.event_id}`)
     ElMessage.success(`传播链构建完成：创建 ${data.nodes_created} 个节点`)
-    
     await loadEvents()
     await selectEvent(selectedEvent.value)
   } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '构建失败') } finally { rebuilding.value = false }
@@ -207,10 +240,40 @@ function renderGraph() {
   }, true)
 }
 
+const SENT_COLORS: Record<string, string> = { negative: '#ff3b30', neutral: '#86868b', positive: '#34c759' }
+function renderSentiment() {
+  if (!sentimentChart || !graphData.value?.sentiment_summary?.length) return
+  const data = graphData.value.sentiment_summary.map(s => ({
+    name: ({ negative: '负面', neutral: '中性', positive: '正面' } as any)[s.label] || s.label,
+    value: s.count,
+    itemStyle: { color: SENT_COLORS[s.label] || '#0071e3' },
+  }))
+  sentimentChart.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { bottom: 0, textStyle: { fontSize: 11 } },
+    series: [{
+      type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'],
+      label: { show: false }, data,
+    }],
+  })
+}
+
+function renderDepth() {
+  if (!depthChart || !graphData.value?.depth_distribution?.length) return
+  const dd = graphData.value.depth_distribution
+  depthChart.setOption({
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(29,29,31,0.94)', borderColor: 'transparent', textStyle: { color: '#fff', fontSize: 12 } },
+    grid: { left: 36, right: 14, top: 14, bottom: 24 },
+    xAxis: { type: 'category', data: dd.map(d => 'L' + d.depth), axisLine: { lineStyle: { color: '#e8e8ed' } }, axisLabel: { color: '#86868b', fontSize: 11 }, name: '层级', nameTextStyle: { color: '#86868b', fontSize: 10 } },
+    yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#f0f0f2' } }, axisLabel: { color: '#86868b', fontSize: 11 } },
+    series: [{ type: 'bar', data: dd.map(d => d.count), barWidth: '52%', itemStyle: { borderRadius: [6, 6, 0, 0], color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#0071e3' }, { offset: 1, color: '#5ac8fa' }]) } }],
+  })
+}
+
 function handleResize() {
-  if (chart && graphRef.value) {
-    chart.resize()
-  }
+  if (chart && graphRef.value) chart.resize()
+  sentimentChart?.resize()
+  depthChart?.resize()
 }
 
 onMounted(async () => {
@@ -222,6 +285,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   if (chart) { chart.dispose(); chart = null }
+  if (sentimentChart) { sentimentChart.dispose(); sentimentChart = null }
+  if (depthChart) { depthChart.dispose(); depthChart = null }
 })
 </script>
 
@@ -242,12 +307,23 @@ onBeforeUnmount(() => {
 .no-selection { display: flex; align-items: center; justify-content: center; height: 100%; }
 .detail-panel { height: 100%; overflow-y: auto; max-height: calc(100vh - 140px); }
 .detail-header { display: flex; align-items: center; justify-content: space-between; }
-.dh-title { font-size: 16px; font-weight: 600; color: #1d1d1f; }
+.dh-title-link { font-size: 16px; font-weight: 600; color: #0071e3; text-decoration: none; }
+.dh-title-link:hover { text-decoration: underline; }
+
+.metrics-strip { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.metric { flex: 1; min-width: 96px; background: #f6f8fb; border-radius: 12px; padding: 12px 14px; text-align: center; }
+.metric .m-val { display: block; font-size: 22px; font-weight: 700; color: #1d1d1f; line-height: 1.1; }
+.metric .m-val.danger { color: #ff3b30; }
+.metric .m-lab { font-size: 12px; color: #86868b; margin-top: 4px; }
+
 .graph-box { width: 100%; height: 320px; }
+.mini-card { margin-bottom: 0; }
+.mini-chart { width: 100%; height: 200px; }
 .source-list { display: flex; flex-direction: column; gap: 8px; }
 .source-item { display: flex; align-items: center; gap: 8px; }
 .source-name { width: 70px; font-size: 13px; color: #6e6e73; flex-shrink: 0; }
 .source-num { width: 30px; text-align: right; font-size: 13px; color: #1d1d1f; font-weight: 600; }
+.timeline-card { margin-top: 16px; }
 .timeline-list { max-height: 300px; overflow-y: auto; }
 .tl-item { display: flex; gap: 10px; margin-bottom: 8px; }
 .tl-dot { width: 8px; height: 8px; border-radius: 50%; background: #0071e3; margin-top: 6px; flex-shrink: 0; }
@@ -255,7 +331,4 @@ onBeforeUnmount(() => {
 .tl-time { font-size: 11px; color: #86868b; }
 .tl-title { font-size: 13px; color: #1d1d1f; line-height: 1.4; }
 .tl-source { font-size: 11px; color: #86868b; }
-
-.dh-title-link { font-size: 16px; font-weight: 600; color: #0071e3; text-decoration: none; }
-.dh-title-link:hover { text-decoration: underline; }
 </style>

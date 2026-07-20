@@ -70,6 +70,8 @@ async function handleLogin() {
     })
     authStore.setToken(data.access_token)
     authStore.setUsername(form.username)
+    authStore.setRole(data.role || 'analyst')
+    authStore.setPermissions(data.permissions || [])
     ElMessage.success('登录成功')
     router.push('/dashboard')
   } catch (err: any) {

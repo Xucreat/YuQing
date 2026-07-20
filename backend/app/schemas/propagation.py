@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.dashboard import SentimentItem
+
 class PropagationNodeOut(BaseModel):
     id: int
     event_id: Optional[int] = None
@@ -31,6 +33,10 @@ class SourceSummaryItem(BaseModel):
     source: str
     count: int
 
+class DepthItem(BaseModel):
+    depth: int
+    count: int
+
 class PropagationGraphResponse(BaseModel):
     nodes: List[PropagationNodeOut]
     links: List[PropagationLink]
@@ -38,6 +44,14 @@ class PropagationGraphResponse(BaseModel):
     event_title: str = ""
     total_opinions: int = 0
     source_summary: List[SourceSummaryItem] = []
+    # ===== P2 传播分析增强：事件级聚合指标 =====
+    max_depth: int = 0
+    distinct_sources: int = 0
+    first_time: Optional[str] = None
+    last_time: Optional[str] = None
+    sentiment_summary: List[SentimentItem] = []
+    depth_distribution: List[DepthItem] = []
+    negative_ratio: float = 0.0
 
 class PropagationRebuildResponse(BaseModel):
     success: bool = True

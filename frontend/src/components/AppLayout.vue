@@ -23,6 +23,12 @@
         <router-link to="/alerts" class="nav-item" :class="{ active: activeMenu === '/alerts' }">
           <span class="ico">🔔</span><span>预警中心</span>
         </router-link>
+        <router-link to="/keywords" class="nav-item" :class="{ active: activeMenu === '/keywords' }">
+          <span class="ico">☷</span><span>关键词管理</span>
+        </router-link>
+        <router-link to="/sources" class="nav-item" :class="{ active: activeMenu === '/sources' }">
+          <span class="ico">✴</span><span>数据源管理</span>
+        </router-link>
         <router-link to="/propagation" class="nav-item" :class="{ active: activeMenu === '/propagation' }">
           <span class="ico">📡</span><span>传播溯源</span>
         </router-link>
@@ -34,7 +40,7 @@
         <div class="avatar">{{ (authStore.username || 'A')[0].toUpperCase() }}</div>
         <div>
           <div class="u-name">{{ authStore.username || 'admin' }}</div>
-          <div class="u-role">管理员</div>
+          <div class="u-role">{{ roleLabel }}</div>
         </div>
         <button class="u-out" title="退出登录" @click="handleLogout">↩</button>
       </div>
@@ -64,11 +70,18 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores'
+import { usePermission } from '@/composables/usePermission'
 import api from '@/api'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const { role } = usePermission()
+const isAdmin = computed(() => role.value === 'admin')
+const roleLabel = computed(() => {
+  const map: Record<string, string> = { admin: '管理员', analyst: '分析员', viewer: '观察员' }
+  return map[role.value] || role.value || '未登录'
+})
 const collecting = ref(false)
 
 const activeMenu = computed(() => {
@@ -83,6 +96,7 @@ const pageTitle = computed(() => {
     '/opinions': '舆情列表',
     '/events': '事件中心',
     '/alerts': '预警中心',
+    '/users': '用户管理',
     '/propagation': '传播溯源',
   }
   if (route.path.startsWith('/opinion/')) return '舆情详情'
@@ -96,6 +110,7 @@ const pageSub = computed(() => {
     '/opinions': '查看和管理所有舆情信息',
     '/events': '跟踪和管理舆情事件',
     '/alerts': '预警规则配置与预警记录',
+    '/users': '管理系统用户与角色权限',
     '/propagation': '溯源分析舆情传播路径',
   }
   if (route.path.startsWith('/opinion/')) return '舆情详细信息与AI分析'

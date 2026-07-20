@@ -9,10 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.models.opinion import Opinion
 from app.models.event import Event
+from app.models.region import Region
 
 HIGH_RISK_THRESHOLD = 70
 TREND_DAYS = 7
 TOP_KEYWORDS = 10
+TOP_REGIONS = 10
 
 
 def get_dashboard_stats(db: Session, days: int = 7) -> dict:
@@ -89,6 +91,19 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
     ).all()
     sentiments = [{"label": s, "count": c} for s, c in sentiment_rows]
 
+    # P2 指挥大屏：地理分布（按地区聚合舆情数量）
+    region_rows = db.execute(
+        select(Region.id, Region.name, sfunc.count(Opinion.id))
+        .join(Opinion, Opinion.region_id == Region.id)
+        .group_by(Region.id, Region.name)
+        .order_by(sfunc.count(Opinion.id).desc())
+        .limit(TOP_REGIONS)
+    ).all()
+    regions = [
+        {"region_id": rid, "region_name": rname or "未知", "count": c}
+        for rid, rname, c in region_rows
+    ]
+
     return {
         "total": total,
         "today": today,
@@ -98,4 +113,5 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
         "keywords": keywords,
         "sources": sources,
         "sentiments": sentiments,
+        "regions": regions,
     }

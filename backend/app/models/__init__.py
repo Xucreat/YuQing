@@ -13,6 +13,8 @@ from app.models.event_opinion import EventOpinion
 from app.models.alert import AlertRule, AlertRecord
 from app.models.propagation import PropagationNode
 from app.models.collector_run import CollectorRun
+from app.models.role import Role
+from app.models.role import Role
 
 __all__ = [
     "Base",
@@ -26,4 +28,6 @@ __all__ = [
     "AlertRecord",
     "PropagationNode",
     "CollectorRun",
+    "Role",
+    "Role",
 ]

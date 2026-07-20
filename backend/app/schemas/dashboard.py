@@ -33,6 +33,38 @@ class SentimentItem(BaseModel):
     count: int
 
 
+class RegionItem(BaseModel):
+    """单个地区的舆情数量（地理分布的一项）。"""
+
+    region_id: int
+    region_name: str
+    count: int
+
+
+class RecentOpinionItem(BaseModel):
+    """实时快讯中的一条最新舆情（精简字段）。"""
+
+    id: int
+    title: str
+    source: str
+    sentiment: str
+    risk_score: int
+    region_name: str
+    created_at: str
+
+
+class DashboardAlertItem(BaseModel):
+    """预警滚动中的一条最新预警记录（精简字段）。"""
+
+    id: int
+    rule_name: str
+    risk_level: str
+    opinion_title: str
+    trigger_reason: str
+    handled: bool
+    created_at: str
+
+
 class DashboardStatsResponse(BaseModel):
     """驾驶舱统计总览。
 
@@ -41,6 +73,7 @@ class DashboardStatsResponse(BaseModel):
     - high_risk:  高风险数量（risk_score >= 阈值，当前 70）
     - trend:      最近 7 日趋势（无数据日期 count=0，已补齐）
     - keywords:   TOP10 关键词（依据 opinions.keywords 逗号拆分统计）
+    - regions:    地区舆情分布（依据 opinions.region_id 关联 regions.name）
     """
 
     total: int
@@ -51,3 +84,4 @@ class DashboardStatsResponse(BaseModel):
     keywords: List[KeywordItem]
     sources: List[SourceItem]
     sentiments: List[SentimentItem]
+    regions: List[RegionItem] = []

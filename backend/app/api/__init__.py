@@ -1,6 +1,6 @@
-"""API 路由聚合（Phase 2A / 2B / 3C-0）。
+﻿"""API 璺敱鑱氬悎锛圥hase 2A / 2B / 3C-0锛夈€?
 
-各子路由在此汇总，由 main.py 以 prefix="/api" 统一挂载：
+鍚勫瓙璺敱鍦ㄦ姹囨€伙紝鐢?main.py 浠?prefix="/api" 缁熶竴鎸傝浇锛?
   - auth_router       -> /login
   - opinions_router   -> /opinions, /opinions/{id}
   - dashboard_router  -> /dashboard/stats   (Phase 2B)
@@ -17,26 +17,31 @@ from app.api.events import events_router
 from app.api.propagation import propagation_router
 from app.api.keywords import keywords_router
 from app.api.sources import sources_router
+from app.api.users import users_router
 from app.api.opinions import opinions_router
+from app.api.reports import reports_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
-# opinions_router 内部路由使用 "" / "/{opinion_id}" 等相对路径，
-# 在此统一加 prefix="/opinions"，最终挂载为 /api/opinions、/api/opinions/{id}。
-# （若不在本层加前缀，空路径 "" 与无前缀的父路由会触发
-#  "Prefix and path cannot be both empty" 错误。）
+# opinions_router 鍐呴儴璺敱浣跨敤 "" / "/{opinion_id}" 绛夌浉瀵硅矾寰勶紝
+# 鍦ㄦ缁熶竴鍔?prefix="/opinions"锛屾渶缁堟寕杞戒负 /api/opinions銆?api/opinions/{id}銆?
+# 锛堣嫢涓嶅湪鏈眰鍔犲墠缂€锛岀┖璺緞 "" 涓庢棤鍓嶇紑鐨勭埗璺敱浼氳Е鍙?
+#  "Prefix and path cannot be both empty" 閿欒銆傦級
 api_router.include_router(opinions_router, prefix="/opinions")
 api_router.include_router(dashboard_router)
-# analysis_router 路由本身为 /analyze/{opinion_id}，无需额外前缀，
-# 最终挂载为 /api/analyze/{opinion_id}。
+# analysis_router 璺敱鏈韩涓?/analyze/{opinion_id}锛屾棤闇€棰濆鍓嶇紑锛?
+# 鏈€缁堟寕杞戒负 /api/analyze/{opinion_id}銆?
 api_router.include_router(analysis_router)
-# collecter_router 路由本身为 /run、/status，在此统一加 prefix="/collector"，
-# 最终挂载为 /api/collector/run、/api/collector/status（Phase 3A）。
+# collecter_router 璺敱鏈韩涓?/run銆?status锛屽湪姝ょ粺涓€鍔?prefix="/collector"锛?
+# 鏈€缁堟寕杞戒负 /api/collector/run銆?api/collector/status锛圥hase 3A锛夈€?
 api_router.include_router(collector_router, prefix="/collector")
-# events_router 路由本身为 /aggregate、""（列表），在此统一加 prefix="/events"，
-# 最终挂载为 /api/events/aggregate、/api/events（Phase 3C-0）。
+# events_router 璺敱鏈韩涓?/aggregate銆?"锛堝垪琛級锛屽湪姝ょ粺涓€鍔?prefix="/events"锛?
+# 鏈€缁堟寕杞戒负 /api/events/aggregate銆?api/events锛圥hase 3C-0锛夈€?
 api_router.include_router(alerts_router, prefix="/alerts")
 api_router.include_router(events_router, prefix="/events")
 api_router.include_router(propagation_router, prefix="/propagation")
 api_router.include_router(keywords_router, prefix="/keywords")
+api_router.include_router(users_router)
 api_router.include_router(sources_router)
+api_router.include_router(reports_router)
+

@@ -16,8 +16,10 @@ from sqlalchemy import func, or_, select, delete as sa_delete, text
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.opinion import Opinion
+from app.models.user import User
 from app.models.region import Region
 from app.models.event_opinion import EventOpinion
 from app.models.alert import AlertRecord
@@ -102,7 +104,11 @@ def get_opinion(opinion_id: int, db: Session = Depends(get_db)) -> Opinion:
 
 
 @opinions_router.post("", response_model=OpinionOut, status_code=status.HTTP_201_CREATED)
-def create_opinion(payload: OpinionCreate, db: Session = Depends(get_db)) -> Opinion:
+def create_opinion(
+    payload: OpinionCreate,
+    _: User = Depends(require_permission("opinions:write")),
+    db: Session = Depends(get_db),
+) -> Opinion:
     """创建舆情（供未来 Collector 写入）。
 
     创建后默认 risk_score=0、sentiment="neutral"（AI 阶段再更新）。
@@ -132,7 +138,11 @@ def create_opinion(payload: OpinionCreate, db: Session = Depends(get_db)) -> Opi
 
 
 @opinions_router.delete("/{opinion_id}", status_code=status.HTTP_200_OK)
-def delete_opinion(opinion_id: int, db: Session = Depends(get_db)) -> dict:
+def delete_opinion(
+    opinion_id: int,
+    _: User = Depends(require_permission("opinions:write")),
+    db: Session = Depends(get_db),
+) -> dict:
     """Delete opinion with cascade cleanup of related records."""
     opinion = db.get(Opinion, opinion_id)
     if opinion is None:

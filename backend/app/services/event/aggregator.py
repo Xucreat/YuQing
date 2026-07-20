@@ -69,6 +69,7 @@ class EventAggregator:
         )
 
         created = 0
+        created_ids: set[int] = set()
         updated_ids: set[int] = set()
         linked = 0
 
@@ -86,6 +87,7 @@ class EventAggregator:
                     event = self._create_event(db, cluster)
                     db.flush()
                     created += 1
+                    created_ids.add(event.id)
                     linked += self._link_all(db, event.id, cluster)
                 else:
                     n = self._link_all(db, existing.id, cluster)
@@ -95,6 +97,23 @@ class EventAggregator:
                         self._recompute_event(db, existing, cluster)
 
         db.commit()
+
+        # P2: auto-trigger propagation rebuild for created & updated events
+        try:
+            from app.services.propagation_service import PropagationService
+            for eid in created_ids:
+                try:
+                    PropagationService.rebuild_for_event(db, eid)
+                except ValueError:
+                    pass
+            for eid in updated_ids:
+                try:
+                    PropagationService.rebuild_for_event(db, eid)
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+
         return {
             "created": created,
             "updated": len(updated_ids),
