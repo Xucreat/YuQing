@@ -45,7 +45,8 @@ class ChangchengCollector(BaseCollector):
         kw = keywords if keywords is not None else settings.collector_keywords
         self.keywords: list[str] = [k.strip() for k in kw.split(",") if k.strip()]
 
-    def fetch(self) -> list[dict[str, Any]]:
+    def fetch(self, keywords=None) -> list[dict[str, Any]]:
+        effective_kw = keywords if keywords is not None else self.keywords
         results: list[dict[str, Any]] = []
         seen: set[str] = set()
 
@@ -73,7 +74,7 @@ class ChangchengCollector(BaseCollector):
                 content = extract_article_text(dsoup, CONTENT_SELECTORS, use_paragraphs=False)
                 if not content:
                     continue
-                if not matches_keywords(title + " " + content[:800], self.keywords):
+                if not matches_keywords(title + " " + content[:800], effective_kw):
                     continue
                 results.append(
                     {

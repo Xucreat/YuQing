@@ -7,6 +7,7 @@ from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.keyword import Keyword
 from app.models.user import User
+from app.services.keyword_service import clear_monitoring_keywords_cache
 from pydantic import BaseModel
 
 keywords_router = APIRouter(
@@ -81,6 +82,7 @@ def create_keyword(payload: KeywordCreate, _: User = Depends(require_permission(
     db.add(kw)
     db.commit()
     db.refresh(kw)
+    clear_monitoring_keywords_cache()
     return kw
 
 
@@ -97,6 +99,7 @@ def update_keyword(keyword_id: int, payload: KeywordUpdate, _: User = Depends(re
         kw.category = payload.category
     db.commit()
     db.refresh(kw)
+    clear_monitoring_keywords_cache()
     return kw
 
 
@@ -107,6 +110,7 @@ def delete_keyword(keyword_id: int, _: User = Depends(require_permission("keywor
         raise HTTPException(status_code=404, detail="Keyword not found")
     db.delete(kw)
     db.commit()
+    clear_monitoring_keywords_cache()
     return {"detail": "Keyword deleted", "id": keyword_id}
 
 

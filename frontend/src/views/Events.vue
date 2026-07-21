@@ -30,7 +30,7 @@
               <span class="pill" :class="riskPill(row.risk_level)"><span class="dot"></span>{{ riskText(row.risk_level) }}</span>
             </td>
             <td class="col-center risk-num">{{ row.opinion_count }}</td>
-            <td class="col-center"><span class="pill pill-green"><span class="dot"></span>{{ row.status }}</span></td>
+            <td class="col-center"><span class="pill" :class="statusPill(row.status)"><span class="dot"></span>{{ statusText(row.status) }}</span></td>
             <td>{{ formatTime(row.first_time) }}</td>
             <td>{{ formatTime(row.last_time) }}</td>
             <td class="col-center" @click.stop>
@@ -81,6 +81,12 @@ function riskPill(level: string): string {
   return ({ high: 'pill-red', medium: 'pill-orange', low: 'pill-green' } as const)[level] || 'pill-gray'
 }
 function riskText(level: string): string { return { high: '高风险', medium: '中风险', low: '低风险' }[level] || level }
+function statusText(s: string): string {
+  return ({ active: '进行中', resolved: '已处置', monitoring: '监测中', closed: '已关闭' } as const)[s] || s
+}
+function statusPill(s: string): string {
+  return ({ active: 'pill-green', resolved: 'pill-gray', monitoring: 'pill-orange', closed: 'pill-gray' } as const)[s] || 'pill-gray'
+}
 function formatTime(t: string | null): string { if (!t) return '-'; return t.replace('T', ' ').slice(0, 19) }
 
 async function loadData() {

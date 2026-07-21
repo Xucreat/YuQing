@@ -47,8 +47,9 @@ class BaiduNewsCollector(BaseCollector):
         kw = keywords if keywords is not None else settings.collector_keywords
         self.keywords: list[str] = [k.strip() for k in kw.split(",") if k.strip()]
 
-    def fetch(self) -> list[dict[str, Any]]:
-        if not self.keywords:
+    def fetch(self, keywords=None) -> list[dict[str, Any]]:
+        kws = keywords if keywords is not None else self.keywords
+        if not kws:
             return []
 
         results: list[dict[str, Any]] = []
@@ -56,7 +57,7 @@ class BaiduNewsCollector(BaseCollector):
         session = requests.Session()
         session.headers.update({"User-Agent": DEFAULT_UA})
 
-        for kw in self.keywords:
+        for kw in kws:
             if len(results) >= MAX_ARTICLES:
                 break
             params = {

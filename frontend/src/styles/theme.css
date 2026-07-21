@@ -98,6 +98,9 @@
 
 /* ======================  Global resets & apple-style additions  ====================== */
 
+html {
+  zoom: 0.8; /* 整体缩放 80%：在不改变布局结构与功能的前提下，让界面整体更紧凑、避免空泛 */
+}
 html, body, #app {
   margin: 0;
   padding: 0;

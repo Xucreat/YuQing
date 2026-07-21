@@ -252,14 +252,76 @@ DEFAULT_KEYWORDS = [
 ]
 
 
+# 默认监测关键词种子（keywords 表 = 采集过滤 + 预警匹配的唯一权威源）。
+# 覆盖河北省全域（省 + 11 地级市 + 雄安 + 重点县）+ 常见舆情主题。
+MONITORING_KEYWORD_SEED = [
+    # —— 地域锚点（全省监测）——
+    ("河北", 5, "地域"),
+    ("石家庄", 5, "地域"),
+    ("唐山", 4, "地域"),
+    ("保定", 4, "地域"),
+    ("邯郸", 4, "地域"),
+    ("秦皇岛", 4, "地域"),
+    ("邢台", 4, "地域"),
+    ("沧州", 4, "地域"),
+    ("衡水", 4, "地域"),
+    ("张家口", 4, "地域"),
+    ("承德", 4, "地域"),
+    ("廊坊", 5, "地域"),
+    ("雄安", 4, "地域"),
+    ("大厂", 6, "地域"),
+    ("大厂回族自治县", 5, "地域"),
+    # —— 主题词 ——
+    ("消防", 6, "主题"),
+    ("安全生产", 6, "主题"),
+    ("安全事故", 5, "主题"),
+    ("民生", 5, "主题"),
+    ("投诉", 4, "主题"),
+    ("环保", 4, "主题"),
+    ("征地", 4, "主题"),
+    ("拆迁", 4, "主题"),
+    ("食品安全", 4, "主题"),
+    ("教育", 3, "主题"),
+    ("医疗", 3, "主题"),
+    ("交通", 3, "主题"),
+    ("城管", 3, "主题"),
+    ("舆情", 3, "主题"),
+]
+
+
 def _seed_keywords(db) -> None:
-    for word, weight, category in DEFAULT_KEYWORDS:
-        exists = db.query(Keyword).filter(Keyword.word == word).first()
-        if exists is None:
-            db.add(Keyword(word=word, weight=weight, category=category))
-            print(f"[init_db] 已插入敏感词: {word} (weight={weight})")
-        else:
-            print(f"[init_db] 敏感词已存在，跳过: {word}")
+    """以监测关键词初始化 keywords 表（采集过滤 + 预警匹配唯一权威源）。
+
+    - 表为空 → 直接播种 MONITORING_KEYWORD_SEED；
+    - 表仅含旧版误播敏感词（历史 DEFAULT_KEYWORDS 子集）→ 清空重置；
+    - 表已有用户维护的监测词 → 仅补齐缺失项，不破坏既有数据。
+    """
+    existing = db.query(Keyword.word).all()
+    existing_words = {r[0] for r in existing}
+    legacy = {w for w, _, _ in DEFAULT_KEYWORDS}
+    if existing_words and existing_words.issubset(legacy):
+        # 全是历史误播的敏感词 → 重置为监测词
+        db.query(Keyword).delete()
+        db.commit()
+        existing_words = set()
+        print("[init_db] 检测到 keywords 表仅含历史敏感词种子，已重置为监测词")
+
+    if not existing_words:
+        for word, weight, category in MONITORING_KEYWORD_SEED:
+            if db.query(Keyword).filter(Keyword.word == word).first() is None:
+                db.add(Keyword(word=word, weight=weight, category=category))
+                print(f"[init_db] 已插入监测词: {word} (weight={weight})")
+        db.commit()
+    else:
+        # 补齐缺失的监测词（不删除用户已有词）
+        added = 0
+        for word, weight, category in MONITORING_KEYWORD_SEED:
+            if word not in existing_words and db.query(Keyword).filter(Keyword.word == word).first() is None:
+                db.add(Keyword(word=word, weight=weight, category=category))
+                added += 1
+        if added:
+            db.commit()
+        print("[init_db] keywords 表已存在监测词，仅补齐缺失项")
 
 
 def _seed_regions(db) -> None:

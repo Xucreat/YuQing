@@ -58,8 +58,9 @@ class HebeiNewsCollector(BaseCollector):
         kw = settings.collector_keywords
         self.keywords = [k.strip() for k in kw.split(",") if k.strip()]
 
-    def fetch(self) -> list[dict[str, Any]]:
-        if not self.urls or not self.keywords:
+    def fetch(self, keywords=None) -> list[dict[str, Any]]:
+        effective_kw = keywords if keywords is not None else self.keywords
+        if not self.urls or not effective_kw:
             return []
 
         # 1) collect article links from listing pages
@@ -101,7 +102,7 @@ class HebeiNewsCollector(BaseCollector):
 
             # Keyword filter
             text = title + " " + content[:800]
-            if not matches_keywords(text, self.keywords):
+            if not matches_keywords(text, effective_kw):
                 continue
 
             results.append(

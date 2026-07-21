@@ -78,12 +78,12 @@
 
       <div class="card card-pad-lg area-source">
         <div class="chart-head"><h3 class="section-title">来源分布</h3></div>
-        <div ref="sourceRef" class="chart-box" style="height:280px;"></div>
+        <div ref="sourceRef" class="chart-box" style="height:240px;"></div>
       </div>
 
       <div class="card card-pad-lg area-cloud">
         <div class="chart-head"><h3 class="section-title">热点词云</h3></div>
-        <div ref="wordcloudRef" class="chart-box" style="height:280px;"></div>
+        <div ref="wordcloudRef" class="chart-box" style="height:240px;"></div>
       </div>
 
       <div class="card card-pad-lg feed-card area-feed">
@@ -126,7 +126,7 @@
 
       <div class="card card-pad-lg area-geo">
         <div class="chart-head"><h3 class="section-title">地理分布（地区舆情 TOP）</h3></div>
-        <div ref="regionRef" class="chart-box" style="height:300px;"></div>
+        <div ref="regionRef" class="chart-box"></div>
       </div>
 
       <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
@@ -399,23 +399,23 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .dashboard { min-height: 100%; }
-.stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; margin-bottom: 18px; }
-.stat-card { padding: 22px 24px; position: relative; }
-.stat-card .s-ico { float: right; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 19px; background: #e8f1fd; color: #0071e3; line-height: 1; }
+.stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
+.stat-card { padding: 16px 18px; position: relative; }
+.stat-card .s-ico { float: right; width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; background: #e8f1fd; color: #0071e3; line-height: 1; }
 .stat-card.is-red .s-ico { background: rgba(255,59,48,0.1); color: #ff3b30; }
 .stat-card.is-green .s-ico { background: rgba(52,199,89,0.12); color: #1a8e3c; }
 .stat-card.is-amber .s-ico { background: rgba(255,159,10,0.12); color: #c77700; }
 .stat-card.is-blue .s-ico { background: rgba(0,122,255,0.1); color: #007aff; }
-.stat-card .s-label { font-size: 14px; color: #6e6e73; margin-bottom: 10px; }
-.stat-card .s-value { font-size: 38px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; color: #1d1d1f; }
+.stat-card .s-label { font-size: 13px; color: #6e6e73; margin-bottom: 6px; }
+.stat-card .s-value { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; color: #1d1d1f; }
 .stat-card .s-value.danger { color: #ff3b30; }
-.s-foot-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
-.s-foot { font-size: 12.5px; color: #86868b; }
-.card { background: #ffffff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05); padding: 24px; }
-.card-pad-lg { padding: 28px 30px; }
+.s-foot-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; }
+.s-foot { font-size: 12px; color: #86868b; }
+.card { background: #ffffff; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 10px 26px rgba(0,0,0,0.05); padding: 20px; }
+.card-pad-lg { padding: 20px 22px; }
 
 /* 全局态势 */
-.situation { display: flex; align-items: center; gap: 24px; margin-bottom: 18px; padding: 20px 26px; border-left: 5px solid #34c759; transition: border-color .3s; }
+.situation { display: flex; align-items: center; gap: 18px; margin-bottom: 12px; padding: 14px 20px; border-left: 5px solid #34c759; transition: border-color .3s; }
 .situation.lvl-yellow { border-left-color: #ff9f0a; }
 .situation.lvl-red { border-left-color: #ff3b30; }
 .sit-left { flex: 1; min-width: 0; }
@@ -425,23 +425,24 @@ onBeforeUnmount(() => {
 .lvl-red .lvl-dot { background: #ff3b30; box-shadow: 0 0 0 4px rgba(255,59,48,0.18); animation: pulse 1.4s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 .sit-text { font-size: 13.5px; color: #6e6e73; margin-top: 6px; }
-.sit-kpis { display: flex; gap: 22px; }
+.sit-kpis { display: flex; gap: 16px; }
 .sit-kpi { display: flex; flex-direction: column; align-items: center; min-width: 52px; }
-.sit-kpi .k { font-size: 22px; font-weight: 700; color: #1d1d1f; line-height: 1.1; }
+.sit-kpi .k { font-size: 18px; font-weight: 700; color: #1d1d1f; line-height: 1.1; }
 .sit-kpi .k.danger { color: #ff3b30; }
 .sit-kpi .l { font-size: 12px; color: #86868b; margin-top: 4px; }
 .sit-action { flex-shrink: 0; }
 
-/* Analytics + live-monitoring grid: wide left = analytics, narrow right = live rail */
+/* 总览驾驶舱：三栏式「中心聚焦」结构
+   中栏(焦点)= 地理分布纵向贯通(2 行) + 热点词云(底部贯通) → 不再独占显空；
+   左栏=分析(趋势/来源)，右栏=实时监测(情感/实时快讯/预警) */
 .content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr) minmax(0, 1fr);
   grid-template-areas:
-    "trend  donut"
-    "source cloud"
-    "feed   alert"
-    "geo    geo";
-  gap: 18px;
+    "trend  geo    donut"
+    "source geo    feed"
+    "cloud  cloud  alert";
+  gap: 14px;
   align-items: stretch;
 }
 .area-trend  { grid-area: trend; }
@@ -450,14 +451,15 @@ onBeforeUnmount(() => {
 .area-cloud  { grid-area: cloud; }
 .area-feed   { grid-area: feed; }
 .area-alert  { grid-area: alert; }
-.area-geo    { grid-area: geo; }
-.chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.chart-box { width: 100%; height: 300px; }
-.section-title { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: #1d1d1f; }
+.area-geo    { grid-area: geo; display: flex; flex-direction: column; }
+.area-geo .chart-box { flex: 1; min-height: 360px; height: auto; }
+.chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.chart-box { width: 100%; height: 250px; }
+.section-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: #1d1d1f; }
 
 /* 实时快讯 / 预警滚动 */
 .feed-card { display: flex; flex-direction: column; }
-.scroll-wrap { position: relative; height: 300px; overflow: hidden; }
+.scroll-wrap { position: relative; height: 248px; overflow: hidden; }
 .scroll-wrap::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: linear-gradient(transparent, #fff); pointer-events: none; }
 .scroll-inner { animation: scroll-up linear infinite; }
 .scroll-wrap:hover .scroll-inner { animation-play-state: paused; }
@@ -479,21 +481,35 @@ onBeforeUnmount(() => {
 .live-dot.warn { color: #ff9f0a; }
 .feed-empty { text-align: center; color: #a0a0a5; font-size: 13px; padding: 40px 0; }
 
-/* Collapse the live rail under the analytics column on narrower screens */
-@media (max-width: 1100px) {
+/* 平板：两栏驾驶舱，地理分布通栏 */
+@media (max-width: 1200px) {
+  .content-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "trend  donut"
+      "source feed"
+      "cloud  alert"
+      "geo    geo";
+    gap: 14px;
+  }
+  .stat-grid { grid-template-columns: repeat(3, 1fr); }
+}
+/* 手机：单栏，监测优先的阅读顺序（趋势→地理→情感→实时→预警→来源→词云） */
+@media (max-width: 760px) {
   .content-grid {
     grid-template-columns: 1fr;
     grid-template-areas:
       "trend"
+      "geo"
+      "donut"
       "feed"
       "alert"
       "source"
-      "cloud"
-      "donut"
-      "geo";
+      "cloud";
+    gap: 14px;
   }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .situation { flex-wrap: wrap; }
 }
-@media (max-width: 1200px) { .stat-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } .situation { flex-wrap: wrap; } }
-@media (max-width: 600px) { .stat-grid { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .stat-grid { grid-template-columns: 1fr; } }
 </style>

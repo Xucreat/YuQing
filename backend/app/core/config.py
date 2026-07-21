@@ -48,8 +48,9 @@ class Settings(BaseSettings):
     # P0: scheduled collection
     collector_schedule_enabled: bool = True
     collector_schedule_cron: str = "*/30 * * * *"
-    # 监测关键词：原为大厂县视角；扩展至河北省后补充「河北」，使省级数据源能命中本省舆情。
-    # 既有的大厂/廊坊等关键词保留，保证县级源行为不变。
+    # 监测关键词（兜底用）：keywords 表已成为采集过滤 + 预警匹配的唯一权威源
+    # （见 app/services/keyword_service.py，表空时回退到此配置）。
+    # 历史上为大厂县视角；扩省时仅加「河北」。现由 keywords 表驱动，此值仅作应急兜底。
     collector_keywords: str = "河北,大厂,舆情,消防,安全生产,民生,投诉,廊坊,大厂回族"
     # P0: new data sources
     # 以下开关已在 collectors/service.py:resolve_collectors 中真正生效（此前为死配置）。

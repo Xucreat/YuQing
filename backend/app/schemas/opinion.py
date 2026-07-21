@@ -46,6 +46,15 @@ class OpinionOut(OpinionBase):
     # ===== Phase 2C-1：AI 研判建议 =====
     analysis_suggestion: Optional[str] = None
 
+    # ===== AI 研判报告（DeepSeek，手动「触发 AI 分析」生成；与系统研判报告区分）=====
+    ai_summary: str = ""
+    ai_sentiment: str = "neutral"
+    ai_risk_score: int = 0
+    ai_keywords: str = ""
+    ai_analysis_status: str = "pending"
+    ai_analysis_time: Optional[datetime] = None
+    ai_analysis_suggestion: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 

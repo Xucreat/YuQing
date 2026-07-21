@@ -47,7 +47,7 @@ def run_collector(
 
     流程：按 settings.collector_type 选择 Collector（government / mock）
           -> Collector.fetch() -> 按 url 去重 -> 建 Opinion(pending)
-          -> AIService.analyze -> 写回字段 + 状态流转(completed/failed)。
+          -> RuleFallbackProvider.analyze（系统研判报告）-> 写回字段 + 状态流转(completed/failed)。
     返回：collector_type（采集方式）/ created / analyzed / failed。
 
     Phase 3B：政府网站采集 5 秒内重复触发 → 返回 429（success=false），

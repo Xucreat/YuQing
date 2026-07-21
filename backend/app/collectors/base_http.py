@@ -66,6 +66,9 @@ class BaseHttpCollector(BaseCollector):
             if isinstance(kw, str)
             else list(kw or [])
         )
+        # 是否通过 config_json 显式配置过 keywords（含空串=放行全部）。
+        # 显式配置时逐源覆盖全局监测词；未配置时由 fetch 注入全局监测词。
+        self.keywords_explicit: bool = "keywords" in self.config
 
     # ------------------------------------------------------------------
     # 共享能力
@@ -90,6 +93,11 @@ class BaseHttpCollector(BaseCollector):
         """按优先级降级提取正文（复用 common）。"""
         return extract_article_text(soup, selectors or self.CONTENT_SELECTORS, use_paragraphs=True)
 
-    def match(self, text: str) -> bool:
-        """关键词过滤：空关键词放行全部。"""
-        return matches_keywords(text, self.keywords)
+    def match(self, text: str, keywords: Optional[List[str]] = None) -> bool:
+        """关键词过滤：空关键词放行全部。
+
+        keywords 优先级：显式传入（来自 keywords 表，经 fetch 注入）>
+        self.keywords（来自 config_json.keywords 或 settings 兜底）。
+        """
+        kws = keywords if keywords is not None else self.keywords
+        return matches_keywords(text, kws)

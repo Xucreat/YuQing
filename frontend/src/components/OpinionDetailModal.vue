@@ -41,10 +41,12 @@
                 </div>
               </div>
 
-              <!-- Right: AI flowing judgment report -->
-              <div class="card card-pad ai-card">
+              <!-- Right column: 系统研判报告 + AI 研判报告 叠放 -->
+              <div class="detail-right">
+              <!-- Right-top: 系统研判报告（抓取后默认由规则降级生成，情感列以此为来源） -->
+              <div class="card card-pad sys-card">
                 <div class="ai-header">
-                  <span class="section-title">AI 研判报告</span>
+                  <span class="section-title">系统研判报告</span>
                   <span class="pill" :class="statusPill(detail.analysis_status)">{{ statusText(detail.analysis_status) }}</span>
                 </div>
 
@@ -60,7 +62,7 @@
 
                 <div class="report-body">
                   <p v-if="detail.summary" class="report-p">{{ detail.summary }}</p>
-                  <p v-else class="report-p report-muted">暂无 AI 摘要。</p>
+                  <p v-else class="report-p report-muted">暂无系统研判摘要。</p>
                   <p v-if="detail.analysis_suggestion" class="report-p">{{ detail.analysis_suggestion }}</p>
                 </div>
 
@@ -72,23 +74,64 @@
                 <div class="report-time" v-if="detail.analysis_time">
                   分析时间：{{ formatTime(detail.analysis_time) }}
                 </div>
+              </div>
+
+              <!-- Right-bottom: AI 研判报告（仅用户点击「触发 AI 分析」时由 DeepSeek 生成） -->
+              <div class="card card-pad ai-card">
+                <div class="ai-header">
+                  <span class="section-title">AI 研判报告</span>
+                  <span class="pill" :class="statusPill(detail.ai_analysis_status)">{{ statusText(detail.ai_analysis_status) }}</span>
+                </div>
+
+                <div class="detail-divider"></div>
+
+                <div class="report-meta">
+                  <span class="meta-item">风险评分 <b :style="{ color: riskColor(detail.ai_risk_score ?? 0) }">{{ detail.ai_risk_score ?? 0 }}</b></span>
+                  <span class="meta-sep">·</span>
+                  <span class="meta-item">级别 <b>{{ levelText(detail.ai_risk_score ?? 0) }}</b></span>
+                  <span class="meta-sep">·</span>
+                  <span class="meta-item">情感 <b>{{ sentimentText(detail.ai_sentiment) }}</b></span>
+                </div>
+
+                <div class="report-body">
+                  <template v-if="detail.ai_analysis_status === 'completed'">
+                    <p v-if="detail.ai_summary" class="report-p">{{ detail.ai_summary }}</p>
+                    <p v-if="detail.ai_analysis_suggestion" class="report-p">{{ detail.ai_analysis_suggestion }}</p>
+                  </template>
+                  <p v-else-if="detail.ai_analysis_status === 'failed'" class="report-p report-muted">
+                    AI 分析失败（DeepSeek 未配置或余额不足），请稍后重试。
+                  </p>
+                  <p v-else class="report-p report-muted">
+                    尚未生成 AI 研判报告，点击下方按钮由 DeepSeek 生成。
+                  </p>
+                </div>
+
+                <div class="report-keywords" v-if="aiKeywordList.length">
+                  <span class="kw-label">关键词</span>
+                  <span v-for="k in aiKeywordList" :key="k" class="kw-tag">{{ k }}</span>
+                </div>
+
+                <div class="report-time" v-if="detail.ai_analysis_time">
+                  分析时间：{{ formatTime(detail.ai_analysis_time) }}
+                </div>
 
                 <div class="detail-divider"></div>
 
                 <div class="ai-actions">
                   <button
-                    v-if="detail.analysis_status !== 'processing'"
+                    v-if="detail.ai_analysis_status !== 'processing'"
                     class="btn btn-primary btn-block"
                     :disabled="analyzing"
                     @click="triggerAnalyze"
                   >
-                    {{ analyzing ? '分析中...' : '触发 AI 分析' }}
+                    {{ analyzing ? '分析中...' : (detail.ai_analysis_status === 'completed' ? '重新触发 AI 分析' : '触发 AI 分析') }}
                   </button>
                   <div v-else class="ai-status-line">
                     <span class="spinner"></span>
                     <span class="ai-text">AI 分析进行中...</span>
                   </div>
                 </div>
+              </div>
               </div>
             </div>
           </template>
@@ -124,6 +167,10 @@ const originalFetched = ref(false)
 
 const keywordList = computed(() =>
   (detail.value?.keywords || '').split(',').map(k => k.trim()).filter(Boolean)
+)
+
+const aiKeywordList = computed(() =>
+  (detail.value?.ai_keywords || '').split(',').map(k => k.trim()).filter(Boolean)
 )
 
 interface OriginalResult {
@@ -238,15 +285,23 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05);
 }
 .card-pad { padding: 22px 24px; }
-/* AI report pane reads as a subtly tinted inspector panel */
+/* 系统研判报告：与左侧原文卡一致的白底（默认自动生成） */
+.sys-card {
+  background: #ffffff;
+  border-color: #e8e8ed;
+}
+/* AI 研判报告：淡蓝高亮，强调其为手动触发的 DeepSeek 结果 */
 .ai-card {
+  margin-top: 0;
   background: linear-gradient(180deg, #f7faff 0%, #ffffff 72%);
   border-color: #e3eefb;
 }
 
+/* 两栏布局：左=原文(1.4fr) · 右=系统研判报告+AI研判报告叠放(1fr) */
 .detail-grid {
   display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start;
 }
+.detail-right { display: flex; flex-direction: column; gap: 16px; }
 .detail-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: #6e6e73; margin-bottom: 6px; }
 .detail-divider { height: 1px; background: #e8e8ed; margin: 16px 0; }
 .detail-content { font-size: 15px; line-height: 1.85; color: #2b2b2e; white-space: pre-wrap; }

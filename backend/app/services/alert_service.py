@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.alert import AlertRule, AlertRecord
 from app.models.opinion import Opinion
 from app.models.event import Event
+from app.services.keyword_service import get_monitoring_keywords
 
 MAX_SIZE = 100
 
@@ -25,21 +26,25 @@ class AlertService:
             q = db.query(Opinion)
             if rule.risk_threshold > 0:
                 q = q.where(Opinion.risk_score >= rule.risk_threshold)
-            if rule.keywords:
+            # 关键词来源：规则显式指定的 keywords > keywords 表（监测词，全局复用）。
+            kw_str = rule.keywords
+            if kw_str and kw_str.strip():
+                kw_list = [k.strip() for k in kw_str.split(",") if k.strip()]
+            else:
+                # 规则未指定关键词：自动复用 keywords 表（一处配置管抓取与预警）。
+                kw_list = get_monitoring_keywords(db)
+            if kw_list:
                 kw_conds = []
-                for kw in rule.keywords.split(","):
-                    kw = kw.strip()
-                    if kw:
-                        like = f"%{kw}%"
-                        kw_conds.append(
-                            or_(
-                                Opinion.keywords.ilike(like),
-                                Opinion.title.ilike(like),
-                                Opinion.content.ilike(like),
-                            )
+                for kw in kw_list:
+                    like = f"%{kw}%"
+                    kw_conds.append(
+                        or_(
+                            Opinion.keywords.ilike(like),
+                            Opinion.title.ilike(like),
+                            Opinion.content.ilike(like),
                         )
-                if kw_conds:
-                    q = q.where(or_(*kw_conds))
+                    )
+                q = q.where(or_(*kw_conds))
             if rule.sources:
                 src_list = [s.strip() for s in rule.sources.split(",") if s.strip()]
                 if src_list:
@@ -63,8 +68,8 @@ class AlertService:
                 trigger_parts = []
                 if rule.risk_threshold > 0 and opinion.risk_score >= rule.risk_threshold:
                     trigger_parts.append(f"risk_score({opinion.risk_score})>=threshold({rule.risk_threshold})")
-                if rule.keywords:
-                    trigger_parts.append(f"keywords matched: {rule.keywords}")
+                if kw_list:
+                    trigger_parts.append(f"keywords matched: {','.join(kw_list)}")
                 if rule.sources:
                     trigger_parts.append(f"source matched: {opinion.source}")
 

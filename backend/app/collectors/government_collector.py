@@ -66,7 +66,7 @@ class GovernmentCollector(BaseCollector):
             href_regex=_ARTICLE_PATH_RE,
         )
 
-    def fetch(self) -> list[dict[str, Any]]:
+    def fetch(self, keywords=None) -> list[dict[str, Any]]:
         """采集栏目页文章 → 抓详情正文 → 返回标准化 dict 列表。
 
         - 单次最多 MAX_ARTICLES 篇；详情页请求间隔 REQUEST_INTERVAL。

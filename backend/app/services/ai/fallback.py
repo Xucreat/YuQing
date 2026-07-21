@@ -38,11 +38,25 @@ DEFAULT_KEYWORDS: List[Tuple[str, int]] = [
     ("舆情", 3),
 ]
 
+# 情感极性词表（与风险分解耦）：仅表达情感倾向，剔除领域噪声词。
+# 「舆情/投诉/维权」为监测语境常用词，本身不表达负面情感，故不计入负面极性，
+# 避免正常民生/政务新闻被误判为负面。
+NEGATIVE_SENTIMENT: List[str] = [
+    "火灾", "爆炸", "事故", "伤亡", "死亡", "冲突", "群体",
+    "上访", "谣言", "诈骗", "腐败", "贪污", "涉警",
+]
+POSITIVE_SENTIMENT: List[str] = [
+    "解决", "落实", "成效", "竣工", "通车", "获奖", "提升", "改善",
+    "感谢", "点赞", "喜讯", "顺利", "圆满", "进展", "帮扶", "暖心",
+    "表彰", "丰收", "突破", "惠及",
+]
+
 # 评分常量
 BASE_RISK = 20          # 无命中时的默认风险分
 WEIGHT_FACTOR = 10       # 每个命中词增量 = WEIGHT_FACTOR * weight
 MAX_RISK = 100          # 封顶
-NEGATIVE_THRESHOLD = 70   # 风险 >= 此值判为 negative
+# 情感极性已与风险分解耦，NEGATIVE_THRESHOLD 仅保留作风险语义参考，不再参与 sentiment 判定。
+NEGATIVE_THRESHOLD = 70   # 风险分阈值（仅用于风险语义）
 
 
 class RuleFallbackProvider(BaseAIProvider):
@@ -69,7 +83,24 @@ class RuleFallbackProvider(BaseAIProvider):
         )
         risk_score = min(risk_score, MAX_RISK)
 
-        sentiment = "negative" if risk_score >= NEGATIVE_THRESHOLD else "neutral"
+        # 情感极性：与风险分完全解耦，仅依据情感词表判断，
+        # 不再把「命中敏感词→风险高」等同于「负面情感」。
+        neg_hits = [w for w in NEGATIVE_SENTIMENT if w and w in text]
+        pos_hits = [w for w in POSITIVE_SENTIMENT if w and w in text]
+        if neg_hits and not pos_hits:
+            sentiment = "negative"
+        elif pos_hits and not neg_hits:
+            sentiment = "positive"
+        elif neg_hits and pos_hits:
+            # 正负词同在：按命中数量多者定；数量相同判中性（舆情系统谨慎，避免误伤）。
+            if len(pos_hits) > len(neg_hits):
+                sentiment = "positive"
+            elif len(neg_hits) > len(pos_hits):
+                sentiment = "negative"
+            else:
+                sentiment = "neutral"
+        else:
+            sentiment = "neutral"
 
         if hits:
             summary = (

@@ -17,7 +17,7 @@ from app.collectors.base import BaseCollector
 class MockCollector(BaseCollector):
     source_name = "mock"
 
-    def fetch(self) -> list[dict]:
+    def fetch(self, keywords=None) -> list[dict]:
         items: list[dict] = []
         idx = 0
 

@@ -26,6 +26,14 @@ export interface Opinion {
   analysis_status: AnalysisStatus
   analysis_time?: string | null
   analysis_suggestion?: string | null
+  // ===== AI 研判报告（DeepSeek，手动触发，与系统研判报告区分）=====
+  ai_summary?: string
+  ai_sentiment?: Sentiment
+  ai_risk_score?: number
+  ai_keywords?: string
+  ai_analysis_status?: AnalysisStatus
+  ai_analysis_time?: string | null
+  ai_analysis_suggestion?: string | null
 }
 
 // GET /api/opinions 鍒嗛〉鍝嶅簲

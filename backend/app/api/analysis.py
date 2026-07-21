@@ -1,15 +1,15 @@
-"""AI 单条舆情分析 API（Phase 2C-1）。
+"""AI 单条舆情分析 API（手动「触发 AI 分析」）。
 
 路由（挂载在 /api 下，由 main.py 统一加前缀）：
-  POST /analyze/{opinion_id}   触发单条舆情 AI 分析并写库（Bearer JWT 保护）
+  POST /analyze/{opinion_id}   触发单条舆情 DeepSeek 分析并写库（Bearer JWT 保护）
 
-严格范围（本阶段）：
-- 仅「手动触发单条分析」，不做批量 / 定时 / Celery / Redis。
-- 业务不直接调用 DeepSeek / Provider，统一经 AIService。
-- 流程：404 校验 -> 置 processing -> 调用 AIService.analyze ->
-  成功写库（summary/sentiment/risk_score/keywords/analysis_suggestion/
-          analysis_status=completed/analysis_time=now）/
-  失败置 analysis_status=failed 并返回 500。
+设计（与「系统研判报告」区分）：
+- 采集阶段已由 RuleFallbackProvider 生成「系统研判报告」（opinion.summary/sentiment/...），
+  情感列恒以该规则路径为准。
+- 本接口仅由用户手动触发，直接调用 DeepSeekProvider 生成「AI 研判报告」，
+  结果写入独立的 ai_* 字段，**不覆盖**系统研判报告字段。
+- DeepSeek 未配置或调用失败 -> 置 ai_analysis_status='failed' 并返回 500，
+  前端在 AI 研判报告卡片中展示失败状态；系统报告不受影响。
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from app.db.session import get_db
 from app.models.opinion import Opinion
 from app.models.user import User
 from app.schemas.opinion import OpinionOut
-from app.services.ai import AIService
+from app.services.ai.providers.deepseek import DeepSeekProvider
 
 analysis_router = APIRouter(
     tags=["analysis"],
@@ -54,33 +54,41 @@ def analyze_opinion(
             detail="Opinion not found",
         )
 
-    # 1) 开始：置 processing
-    opinion.analysis_status = "processing"
+    # 1) 开始：置 AI 分析 processing（不影响系统研判报告字段）
+    opinion.ai_analysis_status = "processing"
     db.commit()
 
-    # 2) 调用 AIService（不直接连 DeepSeek / Provider）
-    ai_service = AIService()
-    try:
-        result = ai_service.analyze(opinion.title, opinion.content)
-    except Exception:
-        # 3) 失败：保留 failed 状态，返回 500
-        db.rollback()
-        opinion.analysis_status = "failed"
+    # 2) 直接调用 DeepSeek（不走 AIService 兜底规则）：本接口即「触发 AI 分析」
+    provider = DeepSeekProvider()
+    if not provider.is_configured:
+        opinion.ai_analysis_status = "failed"
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="AI 分析失败，请稍后重试",
+            detail="DeepSeek 未配置，无法生成 AI 研判报告",
         )
 
-    # 4) 成功：写库
-    opinion.summary = result.summary
-    opinion.sentiment = result.sentiment
-    opinion.risk_score = result.risk_score
-    # keywords 在库中为 TEXT 逗号分隔
-    opinion.keywords = ",".join(result.keywords)
-    opinion.analysis_suggestion = result.suggestion
-    opinion.analysis_status = "completed"
-    opinion.analysis_time = datetime.now(timezone.utc)
+    text = f"标题：{opinion.title}\n正文：{opinion.content}"
+    try:
+        result = provider.analyze(text)
+    except Exception:
+        # 3) 失败：保留 failed 状态，返回 500（系统报告不受影响）
+        db.rollback()
+        opinion.ai_analysis_status = "failed"
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="DeepSeek 调用失败，请检查 API 余额或网络后重试",
+        )
+
+    # 4) 成功：仅写 AI 研判报告字段（ai_*），不覆盖系统研判报告
+    opinion.ai_summary = result.summary
+    opinion.ai_sentiment = result.sentiment
+    opinion.ai_risk_score = result.risk_score
+    opinion.ai_keywords = ",".join(result.keywords)
+    opinion.ai_analysis_suggestion = result.suggestion
+    opinion.ai_analysis_status = "completed"
+    opinion.ai_analysis_time = datetime.now(timezone.utc)
     db.commit()
     db.refresh(opinion)
     return opinion

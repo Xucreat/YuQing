@@ -4,14 +4,16 @@
   1. 调度各 Collector.fetch() 拿到标准化 dict 列表。
   2. 按 url 去重（url 为空时退回 title+publish_time 辅助判断），跳过已存在项。
   3. 新建 Opinion（默认 risk_score=0 / sentiment=neutral / analysis_status=pending）。
-  4. 调用 AIService.analyze(title, content) 做 AI 分析并写回字段 + 状态流转。
+  4. 调用 RuleFallbackProvider.analyze(title, content) 做规则降级分析，生成
+     「系统研判报告」并写回字段 + 状态流转。DeepSeek 不在采集阶段调用
+     （仅由用户手动「触发 AI 分析」时调用，见 api/analysis.py）。
   5. 单条 AI 失败隔离：该条置 analysis_status="failed"（保留数据库记录），
      不影响其余数据；失败计数 failed = created - analyzed。
 
 设计约束（来自用户确认）：
-- 复用 AIService.analyze（与手动分析 API 共用分析能力），不抽取公共
-  AIAnalysisHelper（MVP 快速验证）；但已在下方标注 TODO Phase 4 待抽取。
-- CollectorService 不直接调用 DeepSeek / Provider，统一经 AIService。
+- 采集阶段直接复用 RuleFallbackProvider（规则降级）生成系统研判报告，
+  不抽取公共 AIAnalysisHelper（MVP 快速验证）；但已在下方标注 TODO Phase 4 待抽取。
+- 采集阶段不调用 DeepSeek / 不依赖 AIService，避免消耗 API 额度。
 - 采集状态存**模块级内存变量**（见 _COLLECTOR_STATUS），重启丢失、不持久化。
   # Phase 3A temporary implementation.
   # Persistent collector task history is postponed.
@@ -33,7 +35,8 @@ from app.core.config import settings
 from app.models.opinion import Opinion
 from app.models.region import Region
 from app.models.collector_run import CollectorRun
-from app.services.ai import AIService
+from app.services.ai.fallback import RuleFallbackProvider
+from app.services.keyword_service import get_monitoring_keywords
 
 # ---------------------------------------------------------------------------
 # Phase 3A temporary implementation.
@@ -184,6 +187,10 @@ class CollectorService:
         if not self._collectors_injected:
             self.collectors = resolve_collectors(db, self.collector_type)
 
+        # 监测关键词（采集过滤唯一权威源 = keywords 表；表空回退配置）。
+        # 一次采集运行内只解析一次，注入到每个采集器的 fetch(keywords=...)。
+        monitoring_kw = get_monitoring_keywords(db)
+
         # 5 秒防抖（仅政府网站采集）：距上次不足阈值 → 拒绝执行。
         if self._uses_government() and _GOV_LAST_RUN_AT is not None:
             elapsed = (datetime.now(timezone.utc) - _GOV_LAST_RUN_AT).total_seconds()
@@ -191,7 +198,9 @@ class CollectorService:
                 raise CollectorThrottled("collector running too frequently")
 
         result = CollectorRunResult(collector_type=self.collector_type)
-        ai = AIService()
+        # 采集阶段默认使用规则降级路径生成「系统研判报告」，
+        # 不调用 DeepSeek（节省额度；DeepSeek 仅由用户手动「触发 AI 分析」时调用）。
+        ai = RuleFallbackProvider()
 
         run_start = datetime.now(timezone.utc)
         for collector in self.collectors:
@@ -204,7 +213,7 @@ class CollectorService:
             db.add(run)
             db.commit()
 
-            items = collector.fetch() or []
+            items = collector.fetch(keywords=monitoring_kw) or []
             # 统计采集器实际抓取的原始条数（去重前），供前端提示真实抓取量。
             result.fetched_raw += len(items)
             run.fetched_raw = len(items)
@@ -236,8 +245,12 @@ class CollectorService:
                 c_created += 1
 
                 # 3) AI 分析 + 写回（单条失败隔离）
+                # RuleFallbackProvider.analyze(text) 接收拼接后的文本（与 AIService 不同，
+                # 它不接收 (title, content)，故此处显式拼为"标题：…\n正文：…"）
                 try:
-                    analysis = ai.analyze(opinion.title, opinion.content)
+                    analysis = ai.analyze(
+                        f"标题：{opinion.title}\n正文：{opinion.content}"
+                    )
                     opinion.summary = analysis.summary
                     opinion.sentiment = analysis.sentiment
                     opinion.risk_score = analysis.risk_score

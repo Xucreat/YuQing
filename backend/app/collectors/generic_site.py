@@ -97,10 +97,21 @@ class GenericSiteCollector(BaseHttpCollector):
                 links.append(a)
         return links
 
-    def fetch(self) -> List[dict[str, Any]]:
-        """列表 → 详情正文 → 标准化 dict（关键词过滤 + 防御式跳过）。"""
+    def fetch(self, monitoring_keywords: Optional[List[str]] = None) -> List[dict[str, Any]]:
+        """列表 → 详情正文 → 标准化 dict（关键词过滤 + 防御式跳过）。
+
+        monitoring_keywords：来自 keywords 表的全局监测词；仅在未通过
+        config_json 显式配置 keywords 时使用（逐源覆盖优先）。
+        """
         results: List[dict[str, Any]] = []
         seen: set = set()
+        # 逐源显式配置过 keywords（含空串=放行全部）→ 用 self.keywords；
+        # 否则用全局监测词（来自 keywords 表）。
+        effective_kw = (
+            self.keywords
+            if self.keywords_explicit
+            else (monitoring_keywords or self.keywords)
+        )
         for art in self._collect_links():
             if art["url"] in seen:
                 continue
@@ -116,7 +127,7 @@ class GenericSiteCollector(BaseHttpCollector):
             if not content:
                 continue
             # 关键词过滤（national 源靠关键词命中本省舆情；空关键词放行全部）
-            if not self.match(art["title"] + " " + content[:800]):
+            if not self.match(art["title"] + " " + content[:800], effective_kw):
                 continue
             results.append(
                 {

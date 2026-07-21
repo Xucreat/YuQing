@@ -37,7 +37,7 @@ class ChinanewsCollector(BaseCollector):
         kw = keywords if keywords is not None else settings.collector_keywords
         self.keywords: list[str] = [k.strip() for k in kw.split(",") if k.strip()]
 
-    def fetch(self) -> list[dict[str, Any]]:
+    def fetch(self, keywords=None) -> list[dict[str, Any]]:
         xml = http_get(self.session, RSS_URL, TIMEOUT)
         if not xml:
             return []
@@ -45,7 +45,8 @@ class ChinanewsCollector(BaseCollector):
         results: list[dict[str, Any]] = []
         for it in items:
             text = (it["title"] or "") + " " + (it["content"] or "")
-            if not matches_keywords(text, self.keywords):
+            effective_kw = keywords if keywords is not None else self.keywords
+            if not matches_keywords(text, effective_kw):
                 continue
             results.append(
                 {

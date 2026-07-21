@@ -19,6 +19,7 @@ from app.collectors.service import CollectorService
 from app.db.session import SessionLocal
 from app.models.opinion import Opinion
 from app.services.ai import AIService
+from app.services.ai.fallback import RuleFallbackProvider
 
 
 def _clean_source(db: Session, source: str) -> None:
@@ -145,14 +146,14 @@ def test_collector_ai_failure_isolated(monkeypatch) -> None:
                  "url": "https://test.local/c", "publish_time": datetime(2026, 7, 16, 9, 2, 0)},
             ]
 
-    _orig_analyze = AIService.analyze
+    _orig_analyze = RuleFallbackProvider.analyze
 
-    def _fake_analyze(self, title: str, content: str):
-        if "需失败" in title:
+    def _fake_analyze(self, text: str):
+        if "需失败" in text:
             raise RuntimeError("simulated AI failure")
-        return _orig_analyze(self, title, content)
+        return _orig_analyze(self, text)
 
-    monkeypatch.setattr(AIService, "analyze", _fake_analyze)
+    monkeypatch.setattr(RuleFallbackProvider, "analyze", _fake_analyze)
 
     db = SessionLocal()
     try:

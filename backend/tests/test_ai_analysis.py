@@ -101,22 +101,24 @@ def test_analyze_api_failure_sets_failed(
     assert create.status_code in (200, 201), create.text
     oid = create.json()["id"]
 
-    # 让 AIService.analyze 抛异常
-    class _FailingAI:
-        def analyze(self, title: str, content: str) -> AIAnalysisResult:
+    # 让 DeepSeekProvider.analyze 抛异常（/analyze 直接调用 DeepSeek）
+    class _FailingDeepSeek:
+        is_configured = True
+
+        def analyze(self, text: str) -> AIAnalysisResult:
             raise RuntimeError("simulated AI failure")
 
-    monkeypatch.setattr("app.api.analysis.AIService", _FailingAI)
+    monkeypatch.setattr("app.api.analysis.DeepSeekProvider", _FailingDeepSeek)
 
     resp = client.post(f"/api/analyze/{oid}", headers=auth_headers)
     assert resp.status_code == 500, resp.text
 
-    # 失败状态被保留
+    # AI 分析失败状态被保留（写入 ai_analysis_status，不覆盖系统报告）
     db: Session = SessionLocal()
     try:
         op = db.get(Opinion, oid)
         assert op is not None
-        assert op.analysis_status == "failed"
+        assert op.ai_analysis_status == "failed"
     finally:
         db.close()
 
