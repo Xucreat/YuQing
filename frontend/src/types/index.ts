@@ -93,6 +93,7 @@ export interface RecentOpinionItem {
 }
 export interface DashboardAlertItem {
   id: number
+  opinion_id?: number | null
   rule_name: string
   risk_level: string
   opinion_title: string
@@ -128,6 +129,7 @@ export interface LoginResult {
 // POST /api/collector/run 鍝嶅簲锛圥hase 3A/3B锛涘墠绔殏鏈娇鐢紝琛ュ厖绫诲瀷瀹屾暣鎬э級
 export interface CollectorRunResponse {
   success: boolean
+  fetched_raw: number
   created: number
   analyzed: number
   failed: number

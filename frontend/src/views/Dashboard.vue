@@ -59,43 +59,41 @@
       </div>
     </div>
 
-    <!-- Row 1: Trend chart + Sentiment donut -->
-    <div class="dash-row">
-      <div class="card card-pad-lg">
+    <!-- Analytics & live-monitoring grid
+         Layout: wide left column = analytical charts, narrow right rail = live monitoring.
+         Live feeds (实时快讯 / 预警滚动) are surfaced higher so operators see them without deep scrolling. -->
+    <div class="content-grid">
+      <div class="card card-pad-lg area-trend">
         <div class="chart-head">
           <h3 class="section-title">舆情趋势</h3>
           <SegmentedControl v-model="trendDays" :options="segOptions" />
         </div>
         <div ref="trendRef" class="chart-box"></div>
       </div>
-      <div class="card card-pad-lg">
+
+      <div class="card card-pad-lg area-donut">
         <div class="chart-head"><h3 class="section-title">情感分布</h3></div>
         <SentimentDonut :data="realSentimentData" />
       </div>
-    </div>
 
-    <!-- Row 2: Source distribution + Word cloud -->
-    <div class="dash-row">
-      <div class="card card-pad-lg">
+      <div class="card card-pad-lg area-source">
         <div class="chart-head"><h3 class="section-title">来源分布</h3></div>
         <div ref="sourceRef" class="chart-box" style="height:280px;"></div>
       </div>
-      <div class="card card-pad-lg">
+
+      <div class="card card-pad-lg area-cloud">
         <div class="chart-head"><h3 class="section-title">热点词云</h3></div>
         <div ref="wordcloudRef" class="chart-box" style="height:280px;"></div>
       </div>
-    </div>
 
-    <!-- Row 3: 实时快讯 + 预警滚动 -->
-    <div class="dash-row">
-      <div class="card card-pad-lg feed-card">
+      <div class="card card-pad-lg feed-card area-feed">
         <div class="chart-head">
           <h3 class="section-title">实时快讯</h3>
           <span class="live-dot">● LIVE</span>
         </div>
         <div class="scroll-wrap">
           <div class="scroll-inner" :style="{ animationDuration: feedDuration + 's' }">
-            <div v-for="(n, i) in doubledNews" :key="'n'+i" class="feed-item">
+            <div v-for="(n, i) in doubledNews" :key="'n'+i" class="feed-item clickable" title="查看舆情详情" @click="goOpinion(n.id)">
               <span class="fi-tag" :class="sentClass(n.sentiment)">{{ sentLabel(n.sentiment) }}</span>
               <div class="fi-body">
                 <div class="fi-title">{{ n.title }}</div>
@@ -107,14 +105,14 @@
         </div>
       </div>
 
-      <div class="card card-pad-lg feed-card">
+      <div class="card card-pad-lg feed-card area-alert">
         <div class="chart-head">
           <h3 class="section-title">预警滚动</h3>
           <span class="live-dot warn">● ALERT</span>
         </div>
         <div class="scroll-wrap">
           <div class="scroll-inner" :style="{ animationDuration: alertDuration + 's' }">
-            <div v-for="(a, i) in doubledAlerts" :key="'a'+i" class="alert-item" :class="{ handled: a.handled }">
+            <div v-for="(a, i) in doubledAlerts" :key="'a'+i" class="alert-item" :class="{ handled: a.handled, clickable: !!a.opinion_id }" :title="a.opinion_id ? '查看舆情详情' : ''" @click="a.opinion_id && goOpinion(a.opinion_id)">
               <span class="ai-tag" :class="riskClass(a.risk_level)">{{ riskText(a.risk_level) }}</span>
               <div class="ai-body">
                 <div class="ai-title">{{ a.opinion_title || a.rule_name }}</div>
@@ -125,14 +123,13 @@
           <div v-if="!alerts.length" class="feed-empty">暂无预警</div>
         </div>
       </div>
-    </div>
 
-    <!-- Row 4: 地理分布 -->
-    <div class="dash-row">
-      <div class="card card-pad-lg geo-card">
+      <div class="card card-pad-lg area-geo">
         <div class="chart-head"><h3 class="section-title">地理分布（地区舆情 TOP）</h3></div>
         <div ref="regionRef" class="chart-box" style="height:300px;"></div>
       </div>
+
+      <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
     </div>
   </div>
 </template>
@@ -147,8 +144,18 @@ import type { DashboardStats, TrendPoint, KeywordCount, RegionItem, RecentOpinio
 import { usePermission } from "@/composables/usePermission"
 import SegmentedControl from "@/components/SegmentedControl.vue"
 import SentimentDonut from "@/components/SentimentDonut.vue"
+import OpinionDetailModal from "@/components/OpinionDetailModal.vue"
 
 const { can } = usePermission()
+
+// 点击实时快讯 / 预警滚动条目 -> 打开舆情详情弹窗（与「舆情列表」一致）
+const detailVisible = ref(false)
+const detailId = ref<number | null>(null)
+function goOpinion(id: number) {
+  if (!id) return
+  detailId.value = id
+  detailVisible.value = true
+}
 
 const loading = ref(false)
 const trendDays = ref(7)
@@ -425,7 +432,25 @@ onBeforeUnmount(() => {
 .sit-kpi .l { font-size: 12px; color: #86868b; margin-top: 4px; }
 .sit-action { flex-shrink: 0; }
 
-.dash-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+/* Analytics + live-monitoring grid: wide left = analytics, narrow right = live rail */
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  grid-template-areas:
+    "trend  donut"
+    "source cloud"
+    "feed   alert"
+    "geo    geo";
+  gap: 18px;
+  align-items: stretch;
+}
+.area-trend  { grid-area: trend; }
+.area-donut  { grid-area: donut; }
+.area-source { grid-area: source; }
+.area-cloud  { grid-area: cloud; }
+.area-feed   { grid-area: feed; }
+.area-alert  { grid-area: alert; }
+.area-geo    { grid-area: geo; }
 .chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .chart-box { width: 100%; height: 300px; }
 .section-title { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: #1d1d1f; }
@@ -438,6 +463,9 @@ onBeforeUnmount(() => {
 .scroll-wrap:hover .scroll-inner { animation-play-state: paused; }
 @keyframes scroll-up { from { transform: translateY(0); } to { transform: translateY(-50%); } }
 .feed-item, .alert-item { display: flex; gap: 10px; padding: 9px 4px; border-bottom: 1px dashed #f0f0f2; align-items: flex-start; }
+.feed-item.clickable, .alert-item.clickable { cursor: pointer; transition: background 0.15s; }
+.feed-item.clickable:hover, .alert-item.clickable:hover { background: #f5f8fd; border-radius: 8px; }
+.feed-item.clickable:hover .fi-title, .alert-item.clickable:hover .ai-title { color: #0071e3; }
 .alert-item.handled { opacity: .55; }
 .fi-tag, .ai-tag { flex-shrink: 0; font-size: 11px; padding: 2px 7px; border-radius: 6px; font-weight: 600; }
 .fi-tag.neg, .ai-tag.crit { background: rgba(255,59,48,0.12); color: #ff3b30; }
@@ -451,9 +479,21 @@ onBeforeUnmount(() => {
 .live-dot.warn { color: #ff9f0a; }
 .feed-empty { text-align: center; color: #a0a0a5; font-size: 13px; padding: 40px 0; }
 
-.geo-card { grid-column: 1 / -1; }
-
+/* Collapse the live rail under the analytics column on narrower screens */
+@media (max-width: 1100px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "trend"
+      "feed"
+      "alert"
+      "source"
+      "cloud"
+      "donut"
+      "geo";
+  }
+}
 @media (max-width: 1200px) { .stat-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } .dash-row { grid-template-columns: 1fr; } .situation { flex-wrap: wrap; } }
+@media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } .situation { flex-wrap: wrap; } }
 @media (max-width: 600px) { .stat-grid { grid-template-columns: 1fr; } }
 </style>

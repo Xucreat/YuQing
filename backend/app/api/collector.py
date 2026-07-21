@@ -67,6 +67,7 @@ def run_collector(
     return CollectorRunResponse(
         success=True,
         collector_type=result.collector_type,
+        fetched_raw=result.fetched_raw,
         created=result.created,
         analyzed=result.analyzed,
         failed=result.failed,

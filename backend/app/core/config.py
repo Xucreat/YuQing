@@ -48,13 +48,25 @@ class Settings(BaseSettings):
     # P0: scheduled collection
     collector_schedule_enabled: bool = True
     collector_schedule_cron: str = "*/30 * * * *"
-    collector_keywords: str = "大厂,舆情,消防,安全生产,民生,投诉,廊坊,大厂回族"
+    # 监测关键词：原为大厂县视角；扩展至河北省后补充「河北」，使省级数据源能命中本省舆情。
+    # 既有的大厂/廊坊等关键词保留，保证县级源行为不变。
+    collector_keywords: str = "河北,大厂,舆情,消防,安全生产,民生,投诉,廊坊,大厂回族"
     # P0: new data sources
+    # 以下开关已在 collectors/service.py:resolve_collectors 中真正生效（此前为死配置）。
     baidu_news_enabled: bool = True
-    weibo_enabled: bool = True
-    weibo_cookie: str = ""
     hebei_news_enabled: bool = True
     hebei_news_feeds: str = ""
+    # Phase 2 新增真实数据源开关（均在 resolve_collectors 中真正生效）。
+    xinhua_enabled: bool = True
+    people_enabled: bool = True
+    chinanews_enabled: bool = True
+    hebei_daily_enabled: bool = True
+    changcheng_enabled: bool = True
+    hebei_gov_enabled: bool = True
+    # 微博采集：维护成本高、稳定性差，已从运行流程移除（保留 WeiboCollector 类以兼容）。
+    # 该开关不再被装配逻辑读取；保留字段仅为向后兼容，建议保持 False。
+    weibo_enabled: bool = False
+    weibo_cookie: str = ""
     # 政府网站栏目页地址（.env 用逗号分隔字符串亦可，见下方 validator）。
     #   今日大厂 /jrdc.jhtml，公告公示 /gggs.jhtml
     gov_news_urls: List[str] = [

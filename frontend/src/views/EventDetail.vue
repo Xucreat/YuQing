@@ -36,7 +36,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in event.opinions" :key="row.id" @click="$router.push('/opinion/' + row.id)" style="cursor:pointer">
+          <tr v-for="row in event.opinions" :key="row.id" @click="openOpinion(row.id)" style="cursor:pointer">
             <td>{{ row.id }}</td>
             <td><span class="t-title">{{ row.title }}</span></td>
             <td>{{ row.source }}</td>
@@ -55,6 +55,8 @@
         </tbody>
       </table>
     </div>
+
+    <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
   </div>
 </template>
 
@@ -63,10 +65,19 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
+import OpinionDetailModal from '@/components/OpinionDetailModal.vue'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
+
+// 关联舆情跳转：打开舆情详情弹窗（与「舆情列表」一致）
+const detailVisible = ref(false)
+const detailId = ref<number | null>(null)
+function openOpinion(id: number) {
+  detailId.value = id
+  detailVisible.value = true
+}
 
 interface EventDetail {
   id: number; title: string; risk_level: string; opinion_count: number

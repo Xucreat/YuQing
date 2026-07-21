@@ -91,6 +91,7 @@ def dashboard_alerts(
     return [
         DashboardAlertItem(
             id=r.id,
+            opinion_id=r.opinion_id,
             rule_name=r.rule_name or "预警规则",
             risk_level=r.risk_level or "low",
             opinion_title=r.opinion_title or "",

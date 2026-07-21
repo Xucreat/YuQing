@@ -62,7 +62,7 @@
             </el-table-column>
                         <el-table-column label="关联舆情" min-width="220">
               <template #default="{ row }">
-                <router-link v-if="row.opinion_id" :to="'/opinion/' + row.opinion_id" class="nav-link">{{ row.opinion_title }}</router-link>
+                <span v-if="row.opinion_id" class="nav-link" style="cursor:pointer" @click="openOpinion(row.opinion_id)">{{ row.opinion_title }}</span>
                 <span v-else>{{ row.opinion_title || '-' }}</span>
               </template>
             </el-table-column>
@@ -116,6 +116,8 @@
         <el-button type="primary" :loading="saving" @click="saveRule">保存</el-button>
       </template>
     </el-dialog>
+
+    <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
   </div>
 </template>
 
@@ -124,6 +126,15 @@ import { onMounted, ref, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import type { AlertRule, AlertRuleListResponse, AlertRecord, AlertRecordListResponse, AlertEvaluateResponse } from '@/types'
+import OpinionDetailModal from '@/components/OpinionDetailModal.vue'
+
+// 关联舆情跳转：打开舆情详情弹窗（与「舆情列表」一致）
+const detailVisible = ref(false)
+const detailId = ref<number | null>(null)
+function openOpinion(id: number) {
+  detailId.value = id
+  detailVisible.value = true
+}
 
 const activeTab = ref('rules')
 const loading = ref(false)

@@ -11,6 +11,11 @@
 """
 from __future__ import annotations
 
+import re
+from datetime import datetime
+from html.parser import HTMLParser
+
+import requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, or_, select, delete as sa_delete, text
 from sqlalchemy.orm import Session
@@ -45,13 +50,16 @@ def list_opinions(
     risk_max: int | None = None,
     keyword: str | None = None,
     sentiment: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     db: Session = Depends(get_db),
 ) -> OpinionListResponse:
-    """分页列表，支持来源 / 风险等级 / 关键词过滤。
+    """分页列表，支持来源 / 风险等级 / 关键词 / 发布日期过滤。
 
     risk_level 映射到 opinions.sentiment（positive|negative|neutral，
     因 opinions 表无 risk_level 列，按用户约束不改动数据库结构）。
     keyword 对 keywords / title / content 做模糊匹配。
+    date_from / date_to 为 YYYY-MM-DD 字符串，按 publish_time 的日期部分过滤。
     """
     page = max(page, 1)
     size = max(min(size, MAX_SIZE), 1)
@@ -80,6 +88,18 @@ def list_opinions(
                 Opinion.content.ilike(like),
             )
         )
+    if date_from:
+        try:
+            d = datetime.strptime(date_from, "%Y-%m-%d").date()
+            stmt = stmt.where(func.date(Opinion.publish_time) >= d)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            d = datetime.strptime(date_to, "%Y-%m-%d").date()
+            stmt = stmt.where(func.date(Opinion.publish_time) <= d)
+        except ValueError:
+            pass
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(
@@ -89,6 +109,183 @@ def list_opinions(
     ).all()
 
     return OpinionListResponse(items=rows, total=total, page=page, size=size)
+
+
+@opinions_router.get("/sources", response_model=list[str])
+def list_opinion_sources(db: Session = Depends(get_db)) -> list[str]:
+    """返回库中全部去重且非空的来源名称（按舆情数量降序）。
+
+    供前端「来源」筛选项下拉使用，避免仅按当前页数据聚合导致选项不全。
+    """
+    rows = db.execute(
+        select(Opinion.source)
+        .where(Opinion.source != "")
+        .group_by(Opinion.source)
+        .order_by(func.count(Opinion.id).desc())
+    ).all()
+    return [r[0] for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# 实时抓取来源页原文（详情弹窗展示比标题更长的原文）
+# ---------------------------------------------------------------------------
+_ORIGINAL_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+# 进程内简单缓存，避免同一 url 重复抓取（重启丢失，演示足够）
+_ORIGINAL_CACHE: dict[str, list[str]] = {}
+
+
+class _TextCollector(HTMLParser):
+    """轻量 HTML 正文抽取：跳过脚本/样式/导航，按块收集可见文本。"""
+
+    _SKIP_TAGS = {"script", "style", "head", "noscript", "header", "footer", "nav", "aside", "iframe", "svg"}
+    _BLOCK_TAGS = {"p", "div", "section", "article", "li"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._skip = 0
+        self._buf: list[str] = []
+        self.paragraphs: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self._SKIP_TAGS:
+            self._skip += 1
+        if tag in self._BLOCK_TAGS:
+            self._flush()
+
+    def handle_endtag(self, tag):
+        if tag in self._SKIP_TAGS:
+            self._skip = max(0, self._skip - 1)
+        if tag in self._BLOCK_TAGS:
+            self._flush()
+
+    def handle_data(self, data):
+        if self._skip:
+            return
+        t = data.strip()
+        if t:
+            self._buf.append(t)
+
+    def _flush(self):
+        if self._buf:
+            text = "".join(self._buf).strip()
+            if text:
+                self.paragraphs.append(text)
+            self._buf = []
+
+
+def _has_cjk(text: str) -> bool:
+    return any("\u4e00" <= ch <= "\u9fff" for ch in text)
+
+
+def _is_sentence(text: str) -> bool:
+    """是否像正文句子：含句末标点，或较长且含句中标点。导航/菜单碎片通常无标点。"""
+    if re.search(r"[。！？]", text):
+        return True
+    return len(text) >= 40 and bool(re.search(r"[，、；：]", text))
+
+
+_NOISE_RE = re.compile(
+    r"(举报|版权所有|copyright|©|all rights reserved|联系我们|邮箱|电话|"
+    r"备案|京icp|公网安备|隐私政策|关于我们|网站地图|"
+    r"关注我们|扫码|分享到|点击查看|登录|注册|免责声明)"
+)
+
+
+def _is_noise(text: str) -> bool:
+    """导航条 / 页脚 / 版权等噪声块。"""
+    low = text.lower()
+    if _NOISE_RE.search(low):
+        return True
+    # 纯英文或纯数字串（统计代码、邮箱、跳转文案）通常不是中文正文
+    cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    if len(text) > 6 and cjk == 0:
+        return True
+    return False
+
+
+def _extract_meta_description(html: str) -> str:
+    """JS 渲染站点静态 HTML 无正文时，退而取 og:description / description。"""
+    for tag in re.findall(r"<meta\b[^>]*>", html, re.I):
+        low = tag.lower()
+        if "og:description" in low or 'name="description"' in low or "name='description'" in low:
+            m = re.search(r'content=["\']([^"\']+)["\']', tag, re.I)
+            if m:
+                return m.group(1).strip()
+    return ""
+
+
+def _extract_paragraphs(html: str, max_paras: int = 8, max_chars: int = 1600) -> list[str]:
+    """从 HTML 抽取正文段落。
+
+    策略：优先保留「带句末标点」的正文句子（导航/菜单碎片通常无标点），
+    过滤极短 / 无中文 / 重复噪声；不足时回退 og:description。
+    """
+    collector = _TextCollector()
+    try:
+        collector.feed(html)
+    except Exception:
+        return []
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for para in collector.paragraphs:
+        c = re.sub(r"\s+", " ", para).strip()
+        if len(c) < 25 or not _has_cjk(c) or c in seen or _is_noise(c):
+            continue
+        seen.add(c)
+        cleaned.append(c)
+    if not cleaned:
+        return []
+
+    # 优先取像正文的句子（含句末标点）；没有则退回全部候选
+    sentences = [c for c in cleaned if _is_sentence(c)]
+    pool = sentences if sentences else cleaned
+    longest = set(sorted(pool, key=len, reverse=True)[:max_paras])
+    ordered = [c for c in pool if c in longest][:max_paras]
+    out: list[str] = []
+    total = 0
+    for c in ordered:
+        if total + len(c) > max_chars:
+            break
+        out.append(c)
+        total += len(c)
+    if not out:
+        meta = _extract_meta_description(html)
+        if len(meta) >= 25 and _has_cjk(meta):
+            out = [meta]
+    return out
+
+
+@opinions_router.get("/{opinion_id}/original")
+def get_opinion_original(opinion_id: int, db: Session = Depends(get_db)):
+    """实时抓取来源页并抽取正文段落，供详情弹窗展示比标题更长的原文。
+
+    抓取失败 / 无 url / 无正文时 original 为空，前端回退到 opinion.content。
+    """
+    opinion = db.get(Opinion, opinion_id)
+    if opinion is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Opinion not found",
+        )
+    url = (opinion.url or "").strip()
+    fallback = opinion.content or ""
+    if not url:
+        return {"url": None, "original": [], "fallback": fallback, "fetched": False}
+    if url in _ORIGINAL_CACHE:
+        return {"url": url, "original": _ORIGINAL_CACHE[url], "fallback": fallback, "fetched": True}
+    try:
+        resp = requests.get(url, timeout=10, headers={"User-Agent": _ORIGINAL_UA})
+        resp.encoding = resp.apparent_encoding or "utf-8"
+        paras = _extract_paragraphs(resp.text)
+    except Exception:
+        paras = []
+    _ORIGINAL_CACHE[url] = paras
+    return {"url": url, "original": paras, "fallback": fallback, "fetched": bool(paras)}
 
 
 @opinions_router.get("/{opinion_id}", response_model=OpinionOut)

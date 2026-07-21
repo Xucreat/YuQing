@@ -30,9 +30,18 @@ from app.collectors.base import BaseCollector
 from app.collectors.government_collector import GovernmentCollector
 from app.collectors.mock_collector import MockCollector
 from app.collectors.rss_collector import RSSCollector
+from app.collectors.baidu_news_collector import BaiduNewsCollector
+from app.collectors.hebei_news_collector import HebeiNewsCollector
+from app.collectors.xinhua_collector import XinhuaCollector
+from app.collectors.people_collector import PeopleCollector
+from app.collectors.chinanews_collector import ChinanewsCollector
+from app.collectors.hebei_daily_collector import HebeiDailyCollector
+from app.collectors.changcheng_collector import ChangchengCollector
+from app.collectors.hebei_gov_collector import HebeiGovCollector
 from app.core.config import settings
 from app.models.opinion import Opinion
 from app.models.region import Region
+from app.models.collector_run import CollectorRun
 from app.services.ai import AIService
 
 # ---------------------------------------------------------------------------
@@ -63,16 +72,40 @@ def reset_gov_throttle() -> None:
 
 
 def resolve_collectors(collector_type: Optional[str] = None) -> List[BaseCollector]:
-    """按采集方式（Pydantic Settings collector_type）解析默认采集器。
+    """按采集方式（Pydantic Settings collector_type）解析启用的采集器列表。
 
-    - government -> [GovernmentCollector]
-    - mock       -> [MockCollector]
-    其余取值按 government 兜底。三种采集器均可独立实例化使用。
+    设计（Phase 扩展，先于架构抽象）：
+    - mock       -> [MockCollector]（离线演示）
+    - government（默认）-> 装配「政府网站 + 所有已启用真实数据源」
+      具体由 config 开关驱动：baidu_news_enabled / hebei_news_enabled。
+      微博（weibo）已从运行流程移除（维护成本高、稳定性差），仅保留类以兼容。
+    其余取值按 government 兜底。
     """
     ctype = (collector_type or settings.collector_type or "government").lower()
     if ctype == "mock":
         return [MockCollector()]
-    return [GovernmentCollector()]
+
+    # government（默认）：政府网站为基，叠加所有已启用的真实数据源。
+    collectors: List[BaseCollector] = [GovernmentCollector()]
+    if getattr(settings, "baidu_news_enabled", False):
+        collectors.append(BaiduNewsCollector())
+    if getattr(settings, "hebei_news_enabled", False):
+        collectors.append(HebeiNewsCollector())
+    # Phase 2 新增国家级 / 省级数据源（开关驱动，默认开启）。
+    if getattr(settings, "xinhua_enabled", False):
+        collectors.append(XinhuaCollector())
+    if getattr(settings, "people_enabled", False):
+        collectors.append(PeopleCollector())
+    if getattr(settings, "chinanews_enabled", False):
+        collectors.append(ChinanewsCollector())
+    if getattr(settings, "hebei_daily_enabled", False):
+        collectors.append(HebeiDailyCollector())
+    if getattr(settings, "changcheng_enabled", False):
+        collectors.append(ChangchengCollector())
+    if getattr(settings, "hebei_gov_enabled", False):
+        collectors.append(HebeiGovCollector())
+    # 微博：已从运行流程移除，不再装配（保留 WeiboCollector 类以兼容）。
+    return collectors
 
 
 @dataclass
@@ -81,6 +114,7 @@ class CollectorRunResult:
 
     created: int = 0    # 本次实际新增 Opinion 数量
     analyzed: int = 0   # AI 分析成功（completed）数量
+    fetched_raw: int = 0  # 采集器实际抓取的原始舆情条数（去重前，fetch() 返回量）
     collector_type: str = ""  # 本次采集方式（government/mock）
 
     def finalize(self) -> "CollectorRunResult":
@@ -193,8 +227,24 @@ class CollectorService:
         result = CollectorRunResult(collector_type=self.collector_type)
         ai = AIService()
 
+        run_start = datetime.now(timezone.utc)
         for collector in self.collectors:
+            # 每个采集器独立记录一次采集运行（CollectorRun），用于审计与历史。
+            # 此前该表已建但从不写入，/sources/history 恒为空；现补上真实写入。
+            run = CollectorRun(
+                collector_name=collector.source_name,
+                start_time=run_start,
+                status="running",
+            )
+            db.add(run)
+            db.commit()
+
             items = collector.fetch() or []
+            # 统计采集器实际抓取的原始条数（去重前），供前端提示真实抓取量。
+            result.fetched_raw += len(items)
+            run.fetched_raw = len(items)
+
+            c_created = c_analyzed = c_failed = 0
             for item in items:
                 # 1) 去重：已存在则跳过，不重复创建
                 if self._already_exists(db, item):
@@ -215,6 +265,7 @@ class CollectorService:
                 db.add(opinion)
                 db.commit()  # 先提交，确保失败记录不丢失
                 result.created += 1
+                c_created += 1
 
                 # 3) AI 分析 + 写回（单条失败隔离）
                 try:
@@ -229,12 +280,22 @@ class CollectorService:
                     opinion.analysis_time = datetime.now(timezone.utc)
                     db.commit()
                     result.analyzed += 1
+                    c_analyzed += 1
                 except Exception:
                     # 失败：保留该 Opinion 记录，仅状态置 failed
                     db.rollback()
                     opinion.analysis_status = "failed"
                     db.add(opinion)
                     db.commit()
+                    c_failed += 1
+
+            # 写回本次采集器运行结果
+            run.created = c_created
+            run.analyzed = c_analyzed
+            run.failed = c_failed
+            run.status = "success" if c_failed == 0 else "partial"
+            run.end_time = datetime.now(timezone.utc)
+            db.commit()
 
         result.finalize()
 

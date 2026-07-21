@@ -123,12 +123,16 @@ async function handleCollect() {
   collecting.value = true
   try {
     const { data } = await api.post('/collector/run');
-    if (data.fetched_raw === 0) {
+    // 安全读取：后端未返回时回退为 0，避免 undefined 拼接到提示文案。
+    const fetchedRaw = data.fetched_raw ?? 0;
+    const created = data.created ?? 0;
+    const analyzed = data.analyzed ?? 0;
+    if (fetchedRaw === 0) {
       ElMessage.warning('采集完成：未抓取到新内容，数据源暂无可读数据');
-    } else if (data.created === 0) {
-      ElMessage.warning('采集完成：抓取 ' + data.fetched_raw + ' 条，均为已存在数据');
+    } else if (created === 0) {
+      ElMessage.warning('采集完成：抓取 ' + fetchedRaw + ' 条，均为已存在数据');
     } else {
-      ElMessage.success('采集完成：新增 ' + data.created + ' 条，分析 ' + data.analyzed + ' 条');
+      ElMessage.success('采集完成：新增 ' + created + ' 条，分析 ' + analyzed + ' 条');
     }
     // trigger a page reload for active view
     window.dispatchEvent(new CustomEvent('data-refresh'))

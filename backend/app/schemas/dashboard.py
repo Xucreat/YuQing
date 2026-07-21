@@ -4,7 +4,7 @@
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -57,6 +57,7 @@ class DashboardAlertItem(BaseModel):
     """预警滚动中的一条最新预警记录（精简字段）。"""
 
     id: int
+    opinion_id: Optional[int] = None
     rule_name: str
     risk_level: str
     opinion_title: str

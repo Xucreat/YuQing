@@ -18,6 +18,7 @@ class CollectorRunResponse(BaseModel):
 
     success: bool = True
     collector_type: str = ""  # 采集方式：government | mock（非数据来源）
+    fetched_raw: int = 0   # 采集器实际抓取到的原始舆情条数（去重前）
     created: int = 0       # 本次新增 Opinion 数
     analyzed: int = 0       # AI 分析成功（completed）数
     failed: int = 0         # 失败数 = created - analyzed（记录保留，状态 failed）

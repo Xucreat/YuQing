@@ -1,20 +1,30 @@
-﻿"""Hebei local news collector (P1): web scraping from hebnews.cn.
+"""Hebei local news collector (P1, Phase 2 复用 common 公共函数).
 
 RSS feeds at hebnews.cn / lfnews.cn are no longer available (301/HTML, 502).
 Now scrapes the actual news listing pages and article detail pages,
-following the same defensive-scraping pattern as GovernmentCollector.
+following the same defensive-scraping pattern, but reusing common.http_get /
+common.extract_links / common.extract_article_text instead of a private copy.
+
+The list link filter (a[href*='content_']) and keyword filter are site-specific
+and kept here; the generic request/parse is delegated to common.
 """
 from __future__ import annotations
 
 import logging
 import time
 from typing import Any
-from urllib.parse import urljoin
 
-import requests
 from bs4 import BeautifulSoup
 
 from app.collectors.base import BaseCollector
+from app.collectors.common import (
+    DEFAULT_UA,
+    extract_article_text,
+    extract_links,
+    http_get,
+    make_session,
+    matches_keywords,
+)
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -25,23 +35,8 @@ DEFAULT_URLS = [
     "https://hebei.hebnews.cn/",   # Hebei province channel
 ]
 
-_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-)
-
-_CONTENT_SELECTORS = [
-    "div.content",
-    "div.article-content",
-    "div.text",
-    "div.TRS_Editor",
-    "div#Zoom",
-    "div.article_con",
-    "article",
-]
-
-_BODY_FALLBACK_CHARS = 500
 REQUEST_INTERVAL = 0.3
+TIMEOUT = 10
 
 
 class HebeiNewsCollector(BaseCollector):
@@ -49,7 +44,7 @@ class HebeiNewsCollector(BaseCollector):
 
     source_name = "河北新闻网"
 
-    def __init__(self, urls: list[str] | None = None):
+    def __init__(self, urls: list[str] | None = None) -> None:
         feed_val = getattr(settings, "hebei_news_feeds", "")
         if feed_val and isinstance(feed_val, str) and feed_val.strip():
             self.urls = [u.strip() for u in feed_val.split(",") if u.strip()]
@@ -58,33 +53,9 @@ class HebeiNewsCollector(BaseCollector):
         else:
             self.urls = list(DEFAULT_URLS)
 
-        self.session = requests.Session()
-        self.session.headers.update({"User-Agent": _UA})
+        self.session = make_session(DEFAULT_UA)
         kw = settings.collector_keywords
         self.keywords = [k.strip() for k in kw.split(",") if k.strip()]
-
-    def _get(self, url: str) -> str | None:
-        """Fetch a single URL, return decoded HTML or None."""
-        try:
-            resp = self.session.get(url, timeout=10)
-            resp.raise_for_status()
-            resp.encoding = resp.apparent_encoding
-            return resp.text
-        except Exception as exc:
-            logger.warning("hebei fetch failed url=%s err=%s", url, exc)
-            return None
-
-    def _parse_content(self, html: str) -> str:
-        """Extract article body by priority."""
-        soup = BeautifulSoup(html, "html.parser")
-        for selector in _CONTENT_SELECTORS:
-            node = soup.select_one(selector)
-            if node:
-                text = node.get_text(separator="\n", strip=True)
-                if text:
-                    return text
-        body = soup.body or soup
-        return body.get_text(separator="\n", strip=True)[:_BODY_FALLBACK_CHARS]
 
     def fetch(self) -> list[dict[str, Any]]:
         if not self.urls or not self.keywords:
@@ -95,22 +66,15 @@ class HebeiNewsCollector(BaseCollector):
         seen: set[str] = set()
 
         for list_url in self.urls:
-            html = self._get(list_url)
+            html = http_get(self.session, list_url, TIMEOUT)
             if not html:
                 continue
             soup = BeautifulSoup(html, "html.parser")
-            for a in soup.select("a[href*='content_']"):
-                href = (a.get("href") or "").strip()
-                if not href:
+            for art in extract_links(soup, list_url, href_contains="content_"):
+                if art["url"] in seen:
                     continue
-                abs_url = urljoin(list_url, href)
-                if abs_url in seen:
-                    continue
-                title = (a.get("title") or "").strip() or a.get_text(strip=True)
-                if not title:
-                    continue
-                seen.add(abs_url)
-                candidates.append({"title": title, "url": abs_url})
+                seen.add(art["url"])
+                candidates.append(art)
             if len(candidates) >= 20:
                 break
 
@@ -119,32 +83,34 @@ class HebeiNewsCollector(BaseCollector):
         for art in candidates[:20]:
             if len(results) >= 10:
                 break
-            detail_html = self._get(art["url"])
+            detail_html = http_get(self.session, art["url"], TIMEOUT)
             time.sleep(REQUEST_INTERVAL)
             if not detail_html:
                 continue
 
-            soup = BeautifulSoup(detail_html, "html.parser")
-            h1 = soup.select_one("h1")
+            dsoup = BeautifulSoup(detail_html, "html.parser")
+            h1 = dsoup.select_one("h1")
             title = (h1.get_text(strip=True) if h1 else art["title"]).strip()
             if not title:
                 continue
 
-            content = self._parse_content(detail_html)
+            content = extract_article_text(dsoup, use_paragraphs=False)
             if not content:
                 continue
 
             # Keyword filter
             text = title + " " + content[:800]
-            if not any(kw in text for kw in self.keywords):
+            if not matches_keywords(text, self.keywords):
                 continue
 
-            results.append({
-                "title": title,
-                "content": content,
-                "source": self.source_name,
-                "url": art["url"],
-                "publish_time": None,
-            })
+            results.append(
+                {
+                    "title": title,
+                    "content": content,
+                    "source": self.source_name,
+                    "url": art["url"],
+                    "publish_time": None,
+                }
+            )
 
         return results
