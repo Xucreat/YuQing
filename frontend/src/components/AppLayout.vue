@@ -96,6 +96,8 @@ const pageTitle = computed(() => {
     '/opinions': '舆情列表',
     '/events': '事件中心',
     '/alerts': '预警中心',
+    '/keywords': '关键词管理',
+    '/sources': '数据源管理',
     '/users': '用户管理',
     '/propagation': '传播溯源',
   }
@@ -110,6 +112,8 @@ const pageSub = computed(() => {
     '/opinions': '查看和管理所有舆情信息',
     '/events': '跟踪和管理舆情事件',
     '/alerts': '预警规则配置与预警记录',
+    '/keywords': '管理舆情监测关键词与命中规则',
+    '/sources': '配置舆情采集的数据来源',
     '/users': '管理系统用户与角色权限',
     '/propagation': '溯源分析舆情传播路径',
   }

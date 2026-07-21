@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>舆情指挥中枢 · 指挥大屏</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg-void:#05070D; --bg-panel:#0A0F1A; --bg-panel-2:#0E1626; --bg-elev:#121C30;
+    --border-glow:rgba(45,226,230,0.20); --border-soft:rgba(120,170,230,0.10); --grid-line:rgba(110,160,220,0.06);
+    --accent-cyan:#2DE2E6; --accent-cyan-dim:#1A9DA8; --accent-amber:#FFB440; --accent-red:#FF4D6D; --accent-green:#3DDC97;
+    --text-hi:#EAF2FF; --text-mid:#9FB3D1; --text-lo:#8699B5;
+    --fs-hero:clamp(34px,3.4vw,56px); --fs-xl:clamp(22px,1.8vw,32px); --fs-lg:22px; --fs-md:16px; --fs-sm:13px; --fs-xs:11px;
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --radius:4px;
+    --notch:14px;
+    --ff-disp:"Chakra Petch","Sora",sans-serif; --ff-body:"Sora",system-ui,sans-serif; --ff-mono:"JetBrains Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--ff-body); background:var(--bg-void); color:var(--text-hi);
+    overflow:hidden; -webkit-font-smoothing:antialiased; position:relative;
+  }
+  /* 背景：网格 + 顶部青色辉光 + 暗角 */
+  body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+    background-size:42px 42px; mask-image:radial-gradient(ellipse 90% 80% at 50% 40%,#000 50%,transparent 100%);}
+  body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:radial-gradient(120% 70% at 50% -10%,rgba(45,226,230,0.10),transparent 60%),radial-gradient(140% 100% at 50% 120%,rgba(45,226,230,0.04),transparent 60%);}
+  /* 扫描线 */
+  .scan{position:fixed;left:0;right:0;height:120px;z-index:1;pointer-events:none;opacity:.5;
+    background:linear-gradient(180deg,transparent,rgba(45,226,230,0.06) 50%,transparent);
+    animation:scan 7s linear infinite;}
+  @keyframes scan{0%{top:-120px}100%{top:100%}}
+
+  .app{position:relative;z-index:2;height:100vh;display:grid;grid-template-rows:auto 1fr auto;gap:var(--sp-4);padding:var(--sp-4);}
+
+  /* ---------- 顶栏 ---------- */
+  header.topbar{display:flex;align-items:center;gap:var(--sp-5);
+    border-bottom:1px solid var(--border-soft);padding-bottom:var(--sp-3);}
+  .brand{display:flex;align-items:center;gap:var(--sp-3);}
+  .brand .mark{width:34px;height:34px;position:relative;flex:none}
+  .brand .mark::before,.brand .mark::after{content:"";position:absolute;inset:0;border:2px solid var(--accent-cyan);}
+  .brand .mark::before{clip-path:polygon(0 0,60% 0,60% 40%,100% 40%,100% 100%,40% 100%,40% 60%,0 60%);opacity:.9}
+  .brand .mark::after{inset:7px;background:var(--accent-cyan);clip-path:polygon(0 0,60% 0,60% 40%,100% 40%,100% 100%,40% 100%,40% 60%,0 60%);box-shadow:0 0 12px var(--accent-cyan)}
+  .brand h1{font-family:var(--ff-disp);font-size:20px;font-weight:700;letter-spacing:2px}
+  .brand .sub{font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--text-lo);letter-spacing:3px}
+  .topbar .spacer{flex:1}
+  .stat-chip{display:flex;align-items:center;gap:var(--sp-2);font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--text-mid);
+    border:1px solid var(--border-soft);padding:6px 12px;border-radius:var(--radius);background:rgba(14,22,38,.5)}
+  .stat-chip b{color:var(--text-hi);font-weight:500}
+  .clock{font-family:var(--ff-mono);font-size:18px;color:var(--text-hi);letter-spacing:2px;font-weight:500}
+  .conn{display:flex;align-items:center;gap:var(--sp-2);font-family:var(--ff-mono);font-size:var(--fs-xs);letter-spacing:1px}
+  .conn .dot{width:9px;height:9px;border-radius:50%;background:var(--accent-green);box-shadow:0 0 10px var(--accent-green);animation:breathe 1.6s ease-in-out infinite}
+  .conn.syncing .dot{background:var(--accent-cyan);box-shadow:0 0 10px var(--accent-cyan)}
+  @keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
+
+  /* ---------- 主体三栏 ---------- */
+  main{display:grid;grid-template-columns:24% 1fr 24%;gap:var(--sp-4);min-height:0}
+  .col{display:flex;flex-direction:column;gap:var(--sp-4);min-height:0}
+  .col.center{gap:var(--sp-4)}
+
+  /* ---------- 面板（切角 HUD 框） ---------- */
+  .frame{clip-path:polygon(0 0,calc(100% - var(--notch)) 0,100% var(--notch),100% 100%,var(--notch) 100%,0 calc(100% - var(--notch)));
+    background:linear-gradient(160deg,rgba(45,226,230,.35),rgba(45,226,230,.05) 40%,rgba(120,170,230,.12));padding:1px;flex:1;min-height:0;display:flex}
+  .panel{clip-path:polygon(0 0,calc(100% - var(--notch)) 0,100% var(--notch),100% 100%,var(--notch) 100%,0 calc(100% - var(--notch)));
+    background:linear-gradient(180deg,var(--bg-panel),var(--bg-panel-2));flex:1;min-height:0;display:flex;flex-direction:column;
+    box-shadow:inset 0 0 30px rgba(0,0,0,.4)}
+  .panel-hd{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);
+    border-bottom:1px solid var(--border-soft);flex:none}
+  .panel-hd .idx{font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--accent-cyan);opacity:.8}
+  .panel-hd .ttl{font-family:var(--ff-disp);font-size:var(--fs-sm);font-weight:600;letter-spacing:2px;color:var(--text-hi);text-transform:uppercase}
+  .panel-hd .ttl small{color:var(--text-lo);font-family:var(--ff-mono);font-weight:400;letter-spacing:1px;margin-left:6px;font-size:10px}
+  .panel-hd .end{margin-left:auto;font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--text-lo)}
+  .panel-bd{padding:var(--sp-4);flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--accent-red);box-shadow:0 0 10px var(--accent-red);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%{transform:scale(.7);opacity:.5}50%{transform:scale(1.1);opacity:1}100%{transform:scale(.7);opacity:.5}}
+
+  /* ---------- KPI 卡 ---------- */
+  .kpi-grid{display:flex;flex-direction:column;gap:var(--sp-3);flex:1;min-height:0}
+  .kpi{border:1px solid var(--border-soft);border-radius:var(--radius);background:rgba(14,22,38,.5);
+    padding:var(--sp-3) var(--sp-4);display:flex;flex-direction:column;gap:var(--sp-1);position:relative;transition:border-color .25s,transform .25s,box-shadow .25s;flex:1;justify-content:center}
+  .kpi::before{content:"";position:absolute;left:0;top:14%;bottom:14%;width:3px;background:var(--accent-cyan);border-radius:2px;box-shadow:0 0 8px var(--accent-cyan)}
+  .kpi:hover{border-color:var(--accent-cyan);transform:translateY(-2px);box-shadow:0 0 16px rgba(45,226,230,.12)}
+  .kpi .lab{font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--text-lo);letter-spacing:1px}
+  .kpi .num{font-family:var(--ff-mono);font-size:var(--fs-hero);font-weight:700;line-height:1;color:var(--text-hi);letter-spacing:1px}
+  .kpi .num.crit{color:var(--accent-red);text-shadow:0 0 18px rgba(255,77,109,.5)}
+  .kpi .num.warn{color:var(--accent-amber)}
+  .kpi .trend{font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--accent-green)}
+  .kpi .trend.down{color:var(--accent-red)}
+  .kpi.is-crit::before{background:var(--accent-red);box-shadow:0 0 8px var(--accent-red)}
+
+  /* ---------- 风险水位环 ---------- */
+  .gauge-wrap{display:flex;align-items:center;gap:var(--sp-5);flex:1;min-height:0}
+  .gauge{position:relative;width:clamp(120px,9vw,160px);aspect-ratio:1;flex:none}
+  .gauge svg{width:100%;height:100%;transform:rotate(-135deg)}
+  .gauge .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .gauge .center .v{font-family:var(--ff-mono);font-size:var(--fs-xl);font-weight:700;line-height:1}
+  .gauge .center .l{font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--text-lo);letter-spacing:1px;margin-top:4px}
+  .gauge-side{display:flex;flex-direction:column;gap:var(--sp-3);flex:1}
+  .gauge-side .row{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px dashed var(--border-soft);padding-bottom:6px}
+  .gauge-side .row .k{font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--text-lo);letter-spacing:1px}
+  .gauge-side .row .vv{font-family:var(--ff-mono);font-size:var(--fs-lg);font-weight:500;color:var(--text-hi)}
+
+  /* ---------- 地区条 ---------- */
+  .regions{display:flex;flex-direction:column;gap:var(--sp-2);flex:1;min-height:0;overflow:hidden}
+  .region{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:var(--sp-2);font-size:var(--fs-sm)}
+  .region .rk{font-family:var(--ff-mono);color:var(--text-lo);font-size:var(--fs-xs)}
+  .region .rname{color:var(--text-mid);font-family:var(--ff-disp);letter-spacing:1px}
+  .region .rbar{height:8px;background:var(--bg-panel-2);border-radius:3px;overflow:hidden;position:relative;grid-column:2/3}
+  .region .rbar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--accent-cyan-dim),var(--accent-cyan));
+    box-shadow:0 0 10px rgba(45,226,230,.4);border-radius:3px;transition:width .6s cubic-bezier(.2,.7,.2,1)}
+  .region .rc{font-family:var(--ff-mono);color:var(--text-hi);font-size:var(--fs-xs);grid-column:3/4;text-align:right;min-width:48px}
+  .region:hover .rname{color:var(--text-hi)}
+  .region:hover .rbar i{background:linear-gradient(90deg,var(--accent-cyan),#9af7fa)}
+
+  /* ---------- 情感环 ---------- */
+  .donut-wrap{display:flex;align-items:center;gap:var(--sp-4);flex:1;min-height:0}
+  .donut{position:relative;width:clamp(110px,8vw,150px);aspect-ratio:1;flex:none}
+  .donut .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .donut .center .v{font-family:var(--ff-mono);font-size:var(--fs-lg);font-weight:700}
+  .donut .center .l{font-family:var(--ff-mono);font-size:9px;color:var(--text-lo);letter-spacing:1px}
+  .legend{display:flex;flex-direction:column;gap:var(--sp-2);flex:1}
+  .legend .li{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-sm)}
+  .legend .li .sw{width:10px;height:10px;border-radius:2px;flex:none}
+  .legend .li .lk{color:var(--text-mid);font-family:var(--ff-disp);letter-spacing:1px}
+  .legend .li .lv{margin-left:auto;font-family:var(--ff-mono);color:var(--text-hi)}
+
+  /* ---------- 传播图 ---------- */
+  .prop{position:relative;flex:1;min-height:0}
+  .prop svg{width:100%;height:100%;display:block}
+  .prop .edge{stroke:rgba(120,170,230,.25);stroke-width:1}
+  .prop .node circle{transition:r .3s}
+  .prop .node text{font-family:var(--ff-mono);font-size:8px;fill:var(--text-mid)}
+  .prop-side{position:absolute;right:var(--sp-3);top:var(--sp-3);display:flex;flex-direction:column;gap:var(--sp-2);text-align:right}
+  .prop-side .s{font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--text-lo)}
+  .prop-side .s b{display:block;font-size:var(--fs-md);color:var(--text-hi);font-weight:500}
+
+  /* ---------- 实时流 / 预警 列表 ---------- */
+  .feed{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:var(--sp-2)}
+  .feed-item{display:grid;grid-template-columns:auto 8px 1fr auto;gap:var(--sp-2);align-items:start;
+    padding:var(--sp-2) var(--sp-3);border:1px solid var(--border-soft);border-radius:var(--radius);
+    background:rgba(14,22,38,.4);transition:background .25s,border-color .25s}
+  .feed-item:hover{background:rgba(18,28,48,.7);border-color:var(--border-glow)}
+  .feed-item .t{font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--text-lo);white-space:nowrap}
+  .feed-item .d{width:8px;height:8px;border-radius:50%;margin-top:5px}
+  .feed-item .d.low{background:var(--accent-cyan)}
+  .feed-item .d.med{background:var(--accent-amber)}
+  .feed-item .d.high{background:#FF8A3D}
+  .feed-item .d.crit{background:var(--accent-red);box-shadow:0 0 8px var(--accent-red)}
+  .feed-item .txt{font-size:var(--fs-sm);color:var(--text-mid);line-height:1.4;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .feed-item .src{font-family:var(--ff-mono);font-size:9px;color:var(--text-lo);white-space:nowrap;align-self:center}
+  .feed-item.new{animation:slidein .5s ease;border-color:var(--accent-cyan)}
+  @keyframes slidein{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
+
+  .alert-item{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);
+    border:1px solid var(--border-soft);border-left-width:3px;border-radius:var(--radius);background:rgba(14,22,38,.4)}
+  .alert-item.crit{border-left-color:var(--accent-red);animation:critpulse 1.8s infinite}
+  .alert-item.high{border-left-color:#FF8A3D}
+  .alert-item.med{border-left-color:var(--accent-amber)}
+  .alert-item.low{border-left-color:var(--accent-cyan)}
+  @keyframes critpulse{0%,100%{background:rgba(255,77,109,.06)}50%{background:rgba(255,77,109,.16)}}
+  .alert-item .lv{font-family:var(--ff-mono);font-size:9px;letter-spacing:1px;padding:2px 6px;border-radius:2px;flex:none}
+  .alert-item.crit .lv{background:rgba(255,77,109,.18);color:var(--accent-red)}
+  .alert-item.high .lv{background:rgba(255,138,61,.16);color:#FF8A3D}
+  .alert-item.med .lv{background:rgba(255,180,64,.16);color:var(--accent-amber)}
+  .alert-item.low .lv{background:rgba(45,226,230,.14);color:var(--accent-cyan)}
+  .alert-item .rs{font-size:var(--fs-sm);color:var(--text-mid);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .alert-item .at{font-family:var(--ff-mono);font-size:9px;color:var(--text-lo);white-space:nowrap}
+
+  /* ---------- 底字幕 ---------- */
+  footer.ticker{border-top:1px solid var(--border-soft);padding-top:var(--sp-2);display:flex;align-items:center;gap:var(--sp-3);overflow:hidden}
+  footer.ticker .tag{font-family:var(--ff-disp);font-size:var(--fs-xs);letter-spacing:2px;color:var(--bg-void);background:var(--accent-cyan);
+    padding:var(--sp-1) var(--sp-3);border-radius:2px;flex:none;font-weight:600}
+  footer.ticker .track{display:flex;gap:var(--sp-6);white-space:nowrap;animation:marquee 28s linear infinite;font-family:var(--ff-mono);font-size:var(--fs-sm);color:var(--text-mid)}
+  footer.ticker .track:hover{animation-play-state:paused}
+  footer.ticker .track .ti{display:flex;gap:var(--sp-2);align-items:center}
+  footer.ticker .track .ti::before{content:"";width:6px;height:6px;background:var(--accent-amber);border-radius:50%;flex:none;box-shadow:0 0 8px var(--accent-amber)}
+  @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  footer.ticker .pause{margin-left:auto;font-family:var(--ff-mono);font-size:var(--fs-xs);color:var(--text-hi);background:none;border:1px solid var(--border-soft);
+    padding:var(--sp-2) var(--sp-3);min-height:44px;border-radius:2px;cursor:pointer;flex:none;transition:border-color .25s,color .25s,transform .2s}
+  footer.ticker .pause:hover{border-color:var(--accent-cyan);color:var(--text-hi)}
+  footer.ticker .pause:active{transform:scale(.97)}
+  footer.ticker .pause:disabled{opacity:.5;cursor:not-allowed}
+
+  :focus-visible{outline:2px solid var(--accent-cyan);outline-offset:2px}
+
+  @media (max-width:1280px){
+    main{grid-template-columns:1fr;grid-auto-rows:min-content;overflow:auto}
+    body{overflow:auto}
+    .app{height:auto;min-height:100vh}
+    .frame{flex:none}
+    .panel{min-height:220px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .scan,.live-dot,.conn .dot,.feed-item.new,.alert-item.crit,footer.ticker .track{animation:none!important}
+  }
+</style>
+</head>
+<body>
+<div class="scan" aria-hidden="true"></div>
+<div class="app">
+
+  <!-- ===== 顶栏 ===== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"></div>
+      <div>
+        <h1>舆情指挥中枢</h1>
+        <div class="sub">COMMAND&nbsp;SCREEN&nbsp;//&nbsp;GLOBAL&nbsp;SITUATION</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="stat-chip">采集心跳 <b id="heartbeat">--:--:--</b></div>
+    <div class="stat-chip">累计舆情 <b id="totalOpi">48,201</b></div>
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="conn" id="conn"><span class="dot"></span><span id="connTxt">轮询中</span></div>
+  </header>
+
+  <!-- ===== 主体 ===== -->
+  <main>
+
+    <!-- 左栏 24% -->
+    <section class="col left" aria-label="核心指标与情感分布">
+      <div class="frame"><div class="panel">
+        <div class="panel-hd"><span class="idx">01</span><span class="ttl">核心指标 <small>KEY METRICS</small></span></div>
+        <div class="panel-bd">
+          <div class="kpi-grid">
+            <div class="kpi"><span class="lab">今日新增 TODAY</span><span class="num" id="kpiToday">1,284</span><span class="trend" id="kpiTodayT">▲ 6.2%</span></div>
+            <div class="kpi is-crit"><span class="lab">高风险 HIGH-RISK</span><span class="num crit" id="kpiHigh">37</span><span class="trend down" id="kpiHighT">▲ 3</span></div>
+            <div class="kpi"><span class="lab">未处置预警 OPEN ALERTS</span><span class="num warn" id="kpiAlert">12</span><span class="trend" id="kpiAlertT">需关注</span></div>
+            <div class="kpi"><span class="lab">活跃事件 EVENTS</span><span class="num" id="kpiEvt">9</span><span class="trend" id="kpiEvtT">进行中</span></div>
+          </div>
+        </div>
+      </div></div>
+
+      <div class="frame"><div class="panel">
+        <div class="panel-hd"><span class="idx">02</span><span class="ttl">情感分布 <small>SENTIMENT</small></span></div>
+        <div class="panel-bd">
+          <div class="donut-wrap">
+            <div class="donut">
+              <svg viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="var(--bg-panel-2)" stroke-width="12"/>
+                <circle id="segPos" cx="50" cy="50" r="40" fill="none" stroke="var(--accent-green)" stroke-width="12" stroke-linecap="butt" transform="rotate(-90 50 50)"/>
+                <circle id="segMid" cx="50" cy="50" r="40" fill="none" stroke="var(--accent-cyan)" stroke-width="12" stroke-linecap="butt" transform="rotate(-90 50 50)"/>
+                <circle id="segNeg" cx="50" cy="50" r="40" fill="none" stroke="var(--accent-red)" stroke-width="12" stroke-linecap="butt" transform="rotate(-90 50 50)"/>
+              </svg>
+              <div class="center"><div class="v" id="sentTotal">48.2k</div><div class="l">总量</div></div>
+            </div>
+            <div class="legend">
+              <div class="li"><span class="sw" style="background:var(--accent-green)"></span><span class="lk">正面</span><span class="lv" id="legPos">38%</span></div>
+              <div class="li"><span class="sw" style="background:var(--accent-cyan)"></span><span class="lk">中性</span><span class="lv" id="legMid">33%</span></div>
+              <div class="li"><span class="sw" style="background:var(--accent-red)"></span><span class="lk">负面</span><span class="lv" id="legNeg">29%</span></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 中栏 52% -->
+    <section class="col center" aria-label="风险水位与空间态势">
+      <div class="frame"><div class="panel">
+        <div class="panel-hd"><span class="idx">03</span><span class="ttl">全局风险水位 <small>RISK LEVEL</small></span><span class="end" id="riskStamp">实时</span></div>
+        <div class="panel-bd">
+          <div class="gauge-wrap">
+            <div class="gauge">
+              <svg viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="var(--bg-panel-2)" stroke-width="9" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="47.1"/>
+                <circle id="gaugeArc" cx="50" cy="50" r="40" fill="none" stroke="var(--accent-cyan)" stroke-width="9" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="47.1" style="transition:stroke-dashoffset .8s cubic-bezier(.2,.7,.2,1),stroke .4s"/>
+              </svg>
+              <div class="center"><div class="v" id="riskVal">26.3%</div><div class="l">RISK INDEX</div></div>
+            </div>
+            <div class="gauge-side">
+              <div class="row"><span class="k">负面情绪占比 NEG</span><span class="vv" id="negRate">34.7%</span></div>
+              <div class="row"><span class="k">高危事件数 CRIT-EVT</span><span class="vv" id="critEvt">2</span></div>
+              <div class="row"><span class="k">监测数据源 SRC</span><span class="vv" id="srcCnt">18</span></div>
+              <div class="row"><span class="k">平均响应 MIN</span><span class="vv" id="respMin">14</span></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+
+      <div class="frame"><div class="panel">
+        <div class="panel-hd"><span class="idx">04</span><span class="ttl">地区态势 <small>REGION TOP10</small></span><span class="end">单位：条</span></div>
+        <div class="panel-bd"><div class="regions" id="regions"></div></div>
+      </div></div>
+
+      <div class="frame"><div class="panel">
+        <div class="panel-hd"><span class="idx">05</span><span class="ttl">传播态势 <small>PROPAGATION</small></span><span class="end">事件：某品牌质检舆情</span></div>
+        <div class="panel-bd">
+          <div class="prop">
+            <svg id="propSvg" viewBox="0 0 420 240" preserveAspectRatio="xMidYMid meet" aria-label="传播网络图"></svg>
+            <div class="prop-side">
+              <div class="s">最大深度<b id="propDepth">5</b></div>
+              <div class="s">独立信源<b id="propSrc">142</b></div>
+              <div class="s">负面占比<b id="propNeg">41%</b></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 右栏 24% -->
+    <section class="col right" aria-label="实时快讯与预警">
+      <div class="frame"><div class="panel">
+        <div class="panel-hd"><span class="live-dot" aria-hidden="true"></span><span class="ttl">实时快讯 <small>LIVE FEED</small></span><span class="end" id="feedCnt">8</span></div>
+        <div class="panel-bd"><ul class="feed" id="feed" aria-live="polite"></ul></div>
+      </div></div>
+
+      <div class="frame"><div class="panel">
+        <div class="panel-hd"><span class="idx">07</span><span class="ttl">预警滚动 <small>ALERTS</small></span><span class="end" id="alertCnt">5</span></div>
+        <div class="panel-bd"><ul class="feed" id="alerts" aria-live="polite"></ul></div>
+      </div></div>
+    </section>
+
+  </main>
+
+  <!-- ===== 底字幕 ===== -->
+  <footer class="ticker">
+    <span class="tag">实时头条</span>
+    <div class="track" id="ticker">
+      <span class="ti">华东地区某品牌质检话题热度持续上升，2 小时内新增 1.2k 条</span>
+      <span class="ti">金融板块负面情绪占比突破阈值，已触发 medium 级预警</span>
+      <span class="ti">某政务舆情处置完成，风险等级由 high 降至 low</span>
+      <span class="ti">新接入数据源「短视频平台 B」采集正常，累计 3.4k 条</span>
+      <span class="ti">华北区域传播深度达 5 层，疑似出现跨平台联动</span>
+    </div>
+    <button class="pause" id="pauseBtn" aria-label="暂停滚动">暂停</button>
+  </footer>
+
+</div>
+
+<script>
+/* =========================================================================
+   指挥大屏原型 — 实时数据模拟
+   ------------------------------------------------------------------------
+   真实接入：把 setInterval 内的 mock 替换为 fetch('/api/...') 即可。
+   推荐轮询节奏（后端无 WebSocket/SSE，只能轮询，见 DesignBrief §5）：
+     - 实时跳动层(10–15s): /api/dashboard/recent, /api/alerts/records?handled=false, KPI
+     - 中频层(30–60s):     /api/dashboard/stats, /api/reports/overview, /api/propagation/graph/{id}
+   ========================================================================= */
+
+const fmt = n => n.toLocaleString('en-US');
+const pad = n => String(n).padStart(2,'0');
+
+/* ---------- 时钟 + 采集心跳 ---------- */
+function tickClock(){
+  const d = new Date();
+  const s = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  document.getElementById('clock').textContent = s;
+  document.getElementById('heartbeat').textContent = s;
+}
+setInterval(tickClock, 1000); tickClock();
+
+/* ---------- 风险水位环 ---------- */
+function setGauge(pct){
+  const C = 188.5, len = C * (1 - pct/100); // 270° 弧(0.75*2πr), r=40 => 188.5
+  const arc = document.getElementById('gaugeArc');
+  arc.style.strokeDashoffset = len + 47.1; // 47.1 = 余下 90° 隐藏段
+  arc.setAttribute('stroke', pct>70?'var(--accent-red)':pct>40?'var(--accent-amber)':'var(--accent-cyan)');
+  document.getElementById('riskVal').textContent = pct.toFixed(1)+'%';
+}
+
+/* ---------- 情感环 ---------- */
+function setDonut(pos,mid,neg){
+  const C=251.3; // 2πr, r=40
+  const seg=(id,startPct,valPct,color)=>{
+    const el=document.getElementById(id);
+    el.setAttribute('stroke',color);
+    el.setAttribute('stroke-dasharray',`${C*valPct/100} ${C}`);
+    el.setAttribute('transform',`rotate(${-90+360*startPct/100} 50 50)`);
+  };
+  seg('segPos',0,pos,'var(--accent-green)');
+  seg('segMid',pos,mid,'var(--accent-cyan)');
+  seg('segNeg',pos+mid,neg,'var(--accent-red)');
+  document.getElementById('legPos').textContent=pos+'%';
+  document.getElementById('legMid').textContent=mid+'%';
+  document.getElementById('legNeg').textContent=neg+'%';
+}
+
+/* ---------- 地区条 ---------- */
+const regionsData=[
+  {n:'广东',v:4820},{n:'北京',v:3960},{n:'江苏',v:3510},{n:'浙江',v:3180},
+  {n:'上海',v:2940},{n:'山东',v:2360},{n:'四川',v:1980},{n:'河南',v:1640},
+  {n:'湖北',v:1320},{n:'湖南',v:1180}
+];
+function renderRegions(){
+  const max=regionsData[0].v;
+  document.getElementById('regions').innerHTML = regionsData.map((r,i)=>`
+    <div class="region">
+      <span class="rk">${pad(i+1)}</span>
+      <span class="rname">${r.n}</span>
+      <span class="rbar"><i style="width:${(r.v/max*100).toFixed(1)}%"></i></span>
+      <span class="rc">${fmt(r.v)}</span>
+    </div>`).join('');
+}
+
+/* ---------- 传播图（确定性布局） ---------- */
+const propNodes=[
+  {id:'root',x:46,y:120,r:13,risk:'crit',label:'源头'},
+  {id:'a',x:130,y:50,r:9,risk:'high',label:''},
+  {id:'b',x:130,y:110,r:10,risk:'high',label:''},
+  {id:'c',x:130,y:175,r:8,risk:'med',label:''},
+  {id:'d',x:130,y:225,r:7,risk:'low',label:''},
+  {id:'a1',x:225,y:30,r:7,risk:'med',label:''},
+  {id:'a2',x:225,y:75,r:6,risk:'low',label:''},
+  {id:'b1',x:225,y:120,r:8,risk:'high',label:''},
+  {id:'b2',x:225,y:160,r:6,risk:'med',label:''},
+  {id:'c1',x:225,y:205,r:6,risk:'low',label:''},
+  {id:'a11',x:330,y:40,r:5,risk:'low',label:''},
+  {id:'b11',x:330,y:115,r:6,risk:'med',label:''},
+  {id:'b12',x:330,y:160,r:5,risk:'low',label:''},
+  {id:'c11',x:330,y:210,r:5,risk:'low',label:''},
+  {id:'b111',x:400,y:130,r:4,risk:'low',label:''}
+];
+const propEdges=[['root','a'],['root','b'],['root','c'],['root','d'],
+  ['a','a1'],['a','a2'],['b','b1'],['b','b2'],['c','c1'],
+  ['a1','a11'],['b1','b11'],['b1','b12'],['c1','c11'],['b11','b111']];
+const riskColor={low:'var(--accent-cyan)',med:'var(--accent-amber)',high:'#FF8A3D',crit:'var(--accent-red)'};
+function renderProp(){
+  const svg=document.getElementById('propSvg');
+  let h='';
+  propEdges.forEach(([p,c])=>{
+    const a=propNodes.find(n=>n.id===p), b=propNodes.find(n=>n.id===c);
+    h+=`<line class="edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
+  });
+  propNodes.forEach(n=>{
+    h+=`<g class="node"><circle cx="${n.x}" cy="${n.y}" r="${n.r}" fill="${riskColor[n.risk]}" fill-opacity=".85" stroke="${riskColor[n.risk]}" stroke-opacity=".3"/>${n.label?`<text x="${n.x}" y="${n.y-n.r-3}" text-anchor="middle">${n.label}</text>`:''}</g>`;
+  });
+  svg.innerHTML=h;
+}
+
+/* ---------- 实时快讯流 ---------- */
+const sources=['微博','抖音','新闻','论坛','微信','客户端'];
+const samples=[
+  '某品牌质检结果引热议，多地消费者发声','地铁运营调整通知获正面反馈','高校食堂卫生问题引发家长关注',
+  '台风预警发布，沿海地区讨论升温','新能源车补贴政策解读传播广泛','本地楼盘交付延期遭集中投诉',
+  '文旅局活动策划受年轻人欢迎','医疗改革方案网络解读量上升','电商大促虚假宣传被点名',
+  '社区健身设施改造获居民点赞','跨省高速拥堵成出行热点','演唱会退票规则争议持续'
+];
+let feedSeq=0;
+function makeFeedItem(isNew){
+  const risk=['low','med','high','crit'][Math.floor(Math.random()*4)];
+  const d=new Date(Date.now()-Math.floor(Math.random()*600000));
+  const t=`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const txt=samples[Math.floor(Math.random()*samples.length)];
+  const src=sources[Math.floor(Math.random()*sources.length)];
+  const el=document.createElement('li');
+  el.className='feed-item'+(isNew?' new':'');
+  el.innerHTML=`<span class="t">${t}</span><span class="d ${risk}"></span><span class="txt">${txt}</span><span class="src">${src}</span>`;
+  return el;
+}
+function renderFeed(init){
+  const box=document.getElementById('feed');
+  box.innerHTML='';
+  for(let i=0;i<8;i++) box.appendChild(makeFeedItem(false));
+  document.getElementById('feedCnt').textContent='8';
+}
+function pushFeed(){
+  const box=document.getElementById('feed');
+  box.insertBefore(makeFeedItem(true),box.firstChild);
+  while(box.children.length>8) box.removeChild(box.lastChild);
+  document.getElementById('feedCnt').textContent=box.children.length;
+}
+
+/* ---------- 预警滚动 ---------- */
+const alertData=[
+  {lv:'crit',rs:'某事件传播量突增 320%，疑似跨平台联动',t:'08:12'},
+  {lv:'high',rs:'负面情感占比连续 15min 超阈值',t:'08:05'},
+  {lv:'med',rs:'新数据源接入异常，重试中',t:'07:58'},
+  {lv:'low',rs:'关键词「交付延期」命中预警规则',t:'07:44'},
+  {lv:'high',rs:'高危舆情 37 条未下钻分析',t:'07:30'}
+];
+function renderAlerts(){
+  document.getElementById('alerts').innerHTML=alertData.map(a=>`
+    <li class="alert-item ${a.lv}">
+      <span class="lv">${a.lv.toUpperCase()}</span>
+      <span class="rs">${a.rs}</span>
+      <span class="at">${a.t}</span>
+    </li>`).join('');
+  document.getElementById('alertCnt').textContent=alertData.length;
+}
+
+/* ---------- 初始化 + 实时轮询模拟 ---------- */
+renderRegions(); renderProp(); renderFeed(); renderAlerts();
+setGauge(26.3); setDonut(38,33,29);
+
+// 实时跳动层（模拟 10–15s 轮询）
+setInterval(()=>{
+  // 今日新增小幅增长
+  const today=document.getElementById('kpiToday');
+  let v=parseInt(today.textContent.replace(/,/g,''))+Math.floor(Math.random()*9);
+  today.textContent=fmt(v);
+  // 预警/快讯刷新
+  pushFeed();
+}, 9000);
+
+// 风险水位中频刷新（30s）
+setInterval(()=>{
+  const pct=Math.max(18,Math.min(72, 26.3 + (Math.random()*8-4)));
+  setGauge(pct);
+  document.getElementById('negRate').textContent=(34.7+(Math.random()*4-2)).toFixed(1)+'%';
+  document.getElementById('riskStamp').textContent='更新 '+new Date().toLocaleTimeString('zh-CN',{hour12:false});
+}, 30000);
+
+// 连接态闪烁（模拟轮询握手）
+setInterval(()=>{
+  const c=document.getElementById('conn');
+  c.classList.add('syncing'); document.getElementById('connTxt').textContent='已连接';
+  setTimeout(()=>{c.classList.remove('syncing');},900);
+}, 12000);
+
+/* 字幕暂停按钮（键盘可达） */
+document.getElementById('pauseBtn').addEventListener('click',e=>{
+  const tr=document.getElementById('ticker');
+  const running=tr.style.animationPlayState!=='paused';
+  tr.style.animationPlayState=running?'paused':'running';
+  e.target.textContent=running?'继续':'暂停';
+});
+</script>
+</body>
+</html>

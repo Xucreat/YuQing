@@ -202,6 +202,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   background: #ffffff;
   border-radius: 20px;
   box-shadow: 0 24px 70px rgba(0,0,0,0.30);
+  border: 1px solid rgba(0,0,0,0.06);
   display: flex; flex-direction: column;
   overflow: hidden;
   animation: cardIn 0.18s ease;
@@ -229,6 +230,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .modal-close:hover { background: #dededf; }
 .modal-body { padding: 18px 22px 22px; overflow-y: auto; }
 
+/* Apple-style grouped cards — the modal's own .card/.card-pad (not provided globally) */
+.card {
+  background: #ffffff;
+  border: 1px solid #e8e8ed;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05);
+}
+.card-pad { padding: 22px 24px; }
+/* AI report pane reads as a subtly tinted inspector panel */
+.ai-card {
+  background: linear-gradient(180deg, #f7faff 0%, #ffffff 72%);
+  border-color: #e3eefb;
+}
+
 .detail-grid {
   display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start;
 }
@@ -243,12 +258,24 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .ai-header { display: flex; align-items: center; justify-content: space-between; }
 .section-title { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: #1d1d1f; }
 
+/* Semantic status pills (Apple pill) */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 11px; border-radius: 980px;
+  font-size: 12.5px; font-weight: 600; line-height: 1.4;
+}
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill-red { background: rgba(255,59,48,0.10); color: #ff3b30; }
+.pill-orange { background: rgba(255,159,10,0.12); color: #c77700; }
+.pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
+
 /* Flowing judgment report */
 .report-meta {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
   font-size: 14px; color: #6e6e73; margin-bottom: 14px;
 }
-.report-meta .meta-item b { color: #1d1d1f; font-weight: 600; }
+.report-meta .meta-item b { color: #1d1d1f; font-weight: 700; font-size: 15px; }
 .report-meta .meta-sep { color: #d2d2d7; }
 .report-body { margin-bottom: 14px; }
 .report-p {
@@ -262,7 +289,21 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .kw-tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .kw-tag { background: #e8f1fd; color: #0071e3; padding: 5px 12px; border-radius: 980px; font-size: 13px; font-weight: 500; }
 .report-time { font-size: 12.5px; color: #86868b; }
-.ai-actions { margin-top: 6px; }
+/* Apple capsule primary button (mirrors the app's .btn system, scoped here) */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: none; border-radius: 980px; padding: 11px 22px;
+  font-size: 15px; font-weight: 500; cursor: pointer; font-family: inherit;
+  user-select: none;
+  transition: background-color 0.18s ease, transform 0.12s ease, opacity 0.18s ease;
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: #0071e3; color: #fff; }
+.btn-primary:hover { background: #0077ed; }
+.btn-primary:disabled { opacity: 0.55; cursor: default; }
+.btn-block { width: 100%; justify-content: center; }
+
+.ai-actions { margin-top: 10px; }
 .ai-status-line { display: flex; align-items: center; gap: 10px; }
 .spinner {
   width: 15px; height: 15px; border-radius: 50%;

@@ -9,6 +9,7 @@
 import os
 
 from app.collectors.base import BaseCollector
+from app.collectors.common import _feed_publish_time
 
 
 def _parse_rss_urls_env() -> list[str]:
@@ -45,8 +46,7 @@ class RSSCollector(BaseCollector):
                         "content": (entry.get("summary") or entry.get("description") or "").strip(),
                         "source": "rss",
                         "url": (entry.get("link") or "").strip(),
-                        # RSS 通常无精确发布时间，留给 CollectorService 兜底去重。
-                        "publish_time": None,
+                        "publish_time": _feed_publish_time(entry),
                     }
                 )
         return items

@@ -28,16 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.collectors.base import BaseCollector
 from app.collectors.government_collector import GovernmentCollector
-from app.collectors.mock_collector import MockCollector
-from app.collectors.rss_collector import RSSCollector
-from app.collectors.baidu_news_collector import BaiduNewsCollector
-from app.collectors.hebei_news_collector import HebeiNewsCollector
-from app.collectors.xinhua_collector import XinhuaCollector
-from app.collectors.people_collector import PeopleCollector
-from app.collectors.chinanews_collector import ChinanewsCollector
-from app.collectors.hebei_daily_collector import HebeiDailyCollector
-from app.collectors.changcheng_collector import ChangchengCollector
-from app.collectors.hebei_gov_collector import HebeiGovCollector
+from app.collectors.registry import resolve_collectors
 from app.core.config import settings
 from app.models.opinion import Opinion
 from app.models.region import Region
@@ -71,41 +62,11 @@ def reset_gov_throttle() -> None:
     _GOV_LAST_RUN_AT = None
 
 
-def resolve_collectors(collector_type: Optional[str] = None) -> List[BaseCollector]:
-    """按采集方式（Pydantic Settings collector_type）解析启用的采集器列表。
+# resolve_collectors 已迁至 collectors/registry.py（表驱动装配 + 灰度回退）。
+# 此处重新导出，保持 app.collectors.service.resolve_collectors 可用（测试依赖）。
 
-    设计（Phase 扩展，先于架构抽象）：
-    - mock       -> [MockCollector]（离线演示）
-    - government（默认）-> 装配「政府网站 + 所有已启用真实数据源」
-      具体由 config 开关驱动：baidu_news_enabled / hebei_news_enabled。
-      微博（weibo）已从运行流程移除（维护成本高、稳定性差），仅保留类以兼容。
-    其余取值按 government 兜底。
-    """
-    ctype = (collector_type or settings.collector_type or "government").lower()
-    if ctype == "mock":
-        return [MockCollector()]
 
-    # government（默认）：政府网站为基，叠加所有已启用的真实数据源。
-    collectors: List[BaseCollector] = [GovernmentCollector()]
-    if getattr(settings, "baidu_news_enabled", False):
-        collectors.append(BaiduNewsCollector())
-    if getattr(settings, "hebei_news_enabled", False):
-        collectors.append(HebeiNewsCollector())
-    # Phase 2 新增国家级 / 省级数据源（开关驱动，默认开启）。
-    if getattr(settings, "xinhua_enabled", False):
-        collectors.append(XinhuaCollector())
-    if getattr(settings, "people_enabled", False):
-        collectors.append(PeopleCollector())
-    if getattr(settings, "chinanews_enabled", False):
-        collectors.append(ChinanewsCollector())
-    if getattr(settings, "hebei_daily_enabled", False):
-        collectors.append(HebeiDailyCollector())
-    if getattr(settings, "changcheng_enabled", False):
-        collectors.append(ChangchengCollector())
-    if getattr(settings, "hebei_gov_enabled", False):
-        collectors.append(HebeiGovCollector())
-    # 微博：已从运行流程移除，不再装配（保留 WeiboCollector 类以兼容）。
-    return collectors
+
 
 
 @dataclass
@@ -146,6 +107,7 @@ class CollectorService:
         ).lower()
         # 默认采集器：按 collector_type 选择（government / mock）。
         # 也可显式注入 collectors（测试用），此时 collector_type 仍用于返回标识。
+        self._collectors_injected: bool = collectors is not None
         self.collectors: List[BaseCollector] = (
             collectors if collectors is not None else resolve_collectors(self.collector_type)
         )
@@ -162,20 +124,21 @@ class CollectorService:
     # ------------------------------------------------------------------
     # 内部工具
     # ------------------------------------------------------------------
-    def _resolve_region_id(self, db: Session) -> int:
-        """解析绑定区域：优先使用显式 region_id；否则用种子区域 131028（大厂县）。"""
-        if self.region_id is not None:
-            region = db.get(Region, self.region_id)
-            if region is None:
-                raise RuntimeError(
-                    f"Collector region_id={self.region_id} 不存在，请检查区域配置。"
-                )
-            return self.region_id
+    def _resolve_region_id(self, db: Session, collector: BaseCollector) -> int:
+        """按采集器声明的 scope_region_codes 绑定区域（省→市→县）。
 
-        # 默认：种子区域 大厂回族自治县（code=131028）
-        region = db.query(Region).filter(Region.code == "131028").first()
+        - 取 scope 中最具体的 code（最长 = 县>市>省）；
+        - scope 为空/None（国家级源，靠关键词过滤河北）→ 绑定河北省(130000)；
+        - 若目标区域不存在，回退 130000，再回退任意区域（避免种子缺失时整体失败）。
+        """
+        codes = getattr(collector, "scope_region_codes", None)
+        target_code = max(codes, key=len) if codes else None
+        region = None
+        if target_code:
+            region = db.query(Region).filter(Region.code == target_code).first()
         if region is None:
-            # 兜底：取任意首个区域（避免种子缺失时整体失败）
+            region = db.query(Region).filter(Region.code == "130000").first()
+        if region is None:
             region = db.query(Region).first()
         if region is None:
             raise RuntimeError(
@@ -209,13 +172,17 @@ class CollectorService:
     # 主流程
     # ------------------------------------------------------------------
     def collect_and_analyze(self, db: Session) -> CollectorRunResult:
-        """执行一次采集 + 自动 AI 分析，返回运行结果。
+        """执行一次采集 + 自动 AI 分析，返回运行结果（Phase 3 表驱动 + 按区域绑定）。
 
-        Phase 3B：涉及政府网站时启用 5 秒防抖——距上次政府采集不足
-        THROTTLE_SECONDS 秒则抛 CollectorThrottled（API 层转 429），
-        避免误操作连续请求政府网站。
+        - 未显式注入 collectors 时，按 db 中的 data_sources 表装配（灰度回退默认源）。
+        - 每个采集器独立绑定其 scope_region_codes 对应的 region_id。
+        - 5 秒防抖仅对政府网站采集生效。
         """
         global _GOV_LAST_RUN_AT
+
+        # 表驱动装配（优先 data_sources 表，表空回退默认源）；注入模式不覆盖。
+        if not self._collectors_injected:
+            self.collectors = resolve_collectors(db, self.collector_type)
 
         # 5 秒防抖（仅政府网站采集）：距上次不足阈值 → 拒绝执行。
         if self._uses_government() and _GOV_LAST_RUN_AT is not None:
@@ -223,14 +190,12 @@ class CollectorService:
             if elapsed < THROTTLE_SECONDS:
                 raise CollectorThrottled("collector running too frequently")
 
-        region_id = self._resolve_region_id(db)
         result = CollectorRunResult(collector_type=self.collector_type)
         ai = AIService()
 
         run_start = datetime.now(timezone.utc)
         for collector in self.collectors:
             # 每个采集器独立记录一次采集运行（CollectorRun），用于审计与历史。
-            # 此前该表已建但从不写入，/sources/history 恒为空；现补上真实写入。
             run = CollectorRun(
                 collector_name=collector.source_name,
                 start_time=run_start,
@@ -243,6 +208,9 @@ class CollectorService:
             # 统计采集器实际抓取的原始条数（去重前），供前端提示真实抓取量。
             result.fetched_raw += len(items)
             run.fetched_raw = len(items)
+
+            # 按采集器声明的覆盖范围绑定区域（省/市/县）
+            region_id = self._resolve_region_id(db, collector)
 
             c_created = c_analyzed = c_failed = 0
             for item in items:

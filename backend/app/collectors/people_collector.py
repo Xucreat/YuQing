@@ -17,6 +17,7 @@ from app.collectors.common import (
     DEFAULT_UA,
     extract_article_text,
     extract_links,
+    extract_publish_time,
     http_get,
     make_session,
     matches_keywords,
@@ -87,7 +88,7 @@ class PeopleCollector(BaseCollector):
                         "content": content,
                         "source": self.source_name,
                         "url": art["url"],
-                        "publish_time": None,
+                        "publish_time": extract_publish_time(dsoup),
                     }
                 )
         return results

@@ -20,6 +20,7 @@ from urllib.parse import quote, urljoin
 import requests
 
 from app.collectors.base import BaseCollector
+from app.collectors.common import extract_publish_time
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -102,7 +103,7 @@ class BaiduNewsCollector(BaseCollector):
                     "content": content,
                     "source": self.source_name,
                     "url": href,
-                    "publish_time": None,
+                    "publish_time": extract_publish_time(item),
                 })
 
         session.close()

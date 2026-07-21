@@ -21,6 +21,7 @@ from app.collectors.common import (
     DEFAULT_UA,
     extract_article_text,
     extract_links,
+    extract_publish_time,
     http_get,
     make_session,
 )
@@ -95,9 +96,8 @@ class GovernmentCollector(BaseCollector):
                 continue  # 详情失败：跳过该条，保证入库正文非空
             from bs4 import BeautifulSoup
 
-            content = extract_article_text(
-                BeautifulSoup(detail_html, "html.parser"), use_paragraphs=True
-            )
+            dsoup = BeautifulSoup(detail_html, "html.parser")
+            content = extract_article_text(dsoup, use_paragraphs=True)
             if not content:
                 continue
             results.append(
@@ -106,8 +106,7 @@ class GovernmentCollector(BaseCollector):
                     "url": art["url"],
                     "content": content,
                     "source": self.source_name,
-                    # 政府站发布时间解析脆弱，MVP 统一 None；去重以 url 为准。
-                    "publish_time": None,
+                    "publish_time": extract_publish_time(dsoup),
                 }
             )
         return results
