@@ -1,6 +1,63 @@
 ﻿<template>
   <div class="events" v-loading="loading">
     <div class="toolbar">
+      <!-- 搜索框（苹果风：内嵌图标 + 毛玻璃 + 蓝色聚焦环） -->
+      <div class="search-box" :class="{ 'is-focused': searchFocused }">
+        <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input
+          class="search-input"
+          v-model="title"
+          type="text"
+          placeholder="搜索事件标题"
+          @focus="searchFocused = true"
+          @blur="searchFocused = false"
+          @input="onSearchInput"
+          @keydown.enter="onSearchEnter"
+        />
+        <transition name="fade">
+          <button v-if="title" class="search-clear" title="清除" @click="clearSearch" @mousedown.prevent>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </transition>
+      </div>
+
+      <!-- 风险等级筛选（自定义苹果风下拉：毛玻璃浮层 + 平滑展开 + 选中勾选） -->
+      <div class="risk-filter">
+        <button class="risk-trigger" :class="{ open: riskOpen, active: !!riskFilter }" @click="riskOpen = !riskOpen" @keydown.esc="riskOpen = false">
+          <span class="risk-trigger-label">
+            <span v-if="riskFilter" class="risk-trigger-dot" :class="'dot-' + riskFilter"></span>
+            {{ riskLabel }}
+          </span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+        <div v-if="riskOpen" class="risk-backdrop" @click="riskOpen = false"></div>
+        <transition name="pop">
+          <div v-if="riskOpen" class="risk-menu" role="listbox">
+            <button
+              v-for="opt in riskOptions"
+              :key="opt.value"
+              class="risk-opt"
+              :class="{ active: riskFilter === opt.value }"
+              @click="selectRisk(opt.value)"
+            >
+              <span v-if="opt.value" class="risk-opt-dot" :class="'dot-' + opt.value"></span>
+              <span class="risk-opt-text">{{ opt.label }}</span>
+              <svg v-if="riskFilter === opt.value" class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </button>
+          </div>
+        </transition>
+      </div>
+
       <button class="btn btn-ghost" :disabled="aggregating" @click="handleAggregate">{{ aggregating ? '聚合中...' : '手动聚合' }}</button>
       <button class="btn btn-ghost" @click="loadData">刷新</button>
       <span v-if="lastResult" class="agg-result">
@@ -56,7 +113,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import api from '@/api'
+import api, { pollTask } from '@/api'
 import type { EventItem, EventListResponse, EventCreateResponse } from '@/types'
 
 const loading = ref(false)
@@ -66,6 +123,18 @@ const total = ref(0)
 const page = ref(1)
 const size = ref(20)
 const lastResult = ref<EventCreateResponse | null>(null)
+const title = ref('')          // 标题搜索关键字
+const riskFilter = ref('')     // 风险等级筛选：''=全部 / low / medium / high
+const searchFocused = ref(false) // 搜索框聚焦态（驱动苹果蓝聚焦环）
+const riskOpen = ref(false)      // 风险下拉浮层开合
+const riskOptions = [
+  { value: '', label: '全部风险' },
+  { value: 'low', label: '低风险' },
+  { value: 'medium', label: '中风险' },
+  { value: 'high', label: '高风险' },
+]
+const riskLabel = computed(() => (riskOptions.find((o) => o.value === riskFilter.value) || riskOptions[0]).label)
+let searchTimer: number | undefined
 
 const maxPage = computed(() => Math.ceil(total.value / size.value) || 1)
 const pages = computed(() => {
@@ -92,19 +161,56 @@ function formatTime(t: string | null): string { if (!t) return '-'; return t.rep
 async function loadData() {
   loading.value = true
   try {
-    const { data } = await api.get<EventListResponse>('/events', { params: { page: page.value, size: size.value } })
+    const params: Record<string, unknown> = { page: page.value, size: size.value }
+    const kw = title.value.trim()
+    if (kw) params.title = kw
+    if (riskFilter.value) params.risk_level = riskFilter.value
+    const { data } = await api.get<EventListResponse>('/events', { params })
     rows.value = data.items; total.value = data.total
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '加载事件列表失败') } finally { loading.value = false }
+}
+
+// 标题搜索：输入防抖 350ms，避免每次按键都打接口；变化时回到第 1 页。
+function onSearchInput() {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = window.setTimeout(() => { page.value = 1; loadData() }, 350)
+}
+function clearSearch() {
+  title.value = ''
+  page.value = 1
+  loadData()
+}
+// 回车立即搜索（不走防抖），给到即时的苹果式反馈。
+function onSearchEnter() {
+  if (searchTimer) clearTimeout(searchTimer)
+  page.value = 1
+  loadData()
+}
+// 风险等级筛选：选中即关闭浮层、回到第 1 页重新查询。
+function selectRisk(v: string) {
+  riskFilter.value = v
+  riskOpen.value = false
+  page.value = 1
+  loadData()
 }
 
 async function handleAggregate() {
   if (aggregating.value) return
   aggregating.value = true
   try {
-    const { data } = await api.post<EventCreateResponse>('/events/aggregate', {}, { timeout: 300000 })
-    lastResult.value = data
-    ElMessage.success('聚合完成：新建 ' + data.created + '，更新 ' + data.updated + '，关联 ' + data.linked)
-    page.value = 1; await loadData()
+    // 聚合改为后台任务：接口立即返回 task_id，前端轮询进度直到完成。
+    const { data } = await api.post<{ task_id: string }>('/events/aggregate')
+    ElMessage.info('聚合任务已启动，后台运行中…')
+    const res = await pollTask(data.task_id)
+    if (res.status === 'success') {
+      const r = res.result || {}
+      lastResult.value = r as EventCreateResponse
+      const tag = r.incremental ? '（增量）' : ''
+      ElMessage.success('聚合完成' + tag + '：新建 ' + r.created + '，更新 ' + r.updated + '，关联 ' + r.linked)
+      page.value = 1; await loadData()
+    } else if (res.status === 'failed') {
+      ElMessage.error('聚合失败：' + (res.error || res.message || '未知错误'))
+    }
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '聚合失败') } finally { aggregating.value = false }
 }
 
@@ -126,11 +232,99 @@ onMounted(loadData)
 </script>
 
 <style scoped>
-.toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; position: relative; z-index: 30; }
 .agg-result { font-size: 13px; color: #34c759; margin-left: 8px; }
 .btn { display: inline-flex; align-items: center; gap: 8px; border: none; border-radius: 980px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 0.18s ease; }
 .btn-ghost { background: #e8e8ed; color: #1d1d1f; }
 .btn-ghost:hover { background: #dededf; }
+
+/* ── 苹果风搜索框：毛玻璃 + 蓝色聚焦环 + 线性图标 ── */
+.search-box {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; min-width: 264px; padding: 0 14px;
+  background: rgba(245,245,247,0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 12px;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.search-box.is-focused {
+  background: rgba(255,255,255,0.92);
+  border-color: #0071e3;
+  box-shadow: 0 0 0 4px rgba(0,113,227,0.18);
+}
+.search-ico { width: 16px; height: 16px; color: #8e8e93; flex: none; }
+.search-input {
+  flex: 1; min-width: 0; height: 100%;
+  border: none; outline: none; background: transparent;
+  font-size: 14px; color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.search-input::placeholder { color: #a1a1a6; }
+.search-clear {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: none; width: 20px; height: 20px; padding: 0;
+  border: none; border-radius: 50%; background: rgba(0,0,0,0.16); color: #fff; cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.search-clear:hover { background: rgba(0,0,0,0.28); }
+.search-clear svg { width: 12px; height: 12px; }
+
+/* ── 苹果风风险筛选下拉：毛玻璃浮层 + 平滑展开 + 选中勾选 ── */
+.risk-filter { position: relative; }
+.risk-trigger {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 14px;
+  background: rgba(245,245,247,0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 12px;
+  font-size: 14px; font-weight: 500; color: #1d1d1f; cursor: pointer; white-space: nowrap;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+.risk-trigger:hover { background: rgba(255,255,255,0.92); }
+.risk-trigger.open { border-color: #0071e3; box-shadow: 0 0 0 4px rgba(0,113,227,0.18); }
+.risk-trigger.active { color: #0071e3; }
+.risk-trigger-label { display: inline-flex; align-items: center; gap: 7px; }
+.risk-trigger-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.chev { width: 15px; height: 15px; color: #8e8e93; flex: none; transition: transform 0.25s cubic-bezier(0.16,1,0.3,1); }
+.risk-trigger.open .chev { transform: rotate(180deg); }
+
+.risk-backdrop { position: fixed; inset: 0; z-index: 40; }
+.risk-menu {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 50;
+  min-width: 184px; padding: 6px;
+  background: rgba(250,250,252,0.92);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.14);
+  transform-origin: top left;
+}
+.risk-opt {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; border: none; background: transparent;
+  border-radius: 9px; font-size: 14px; color: #1d1d1f; cursor: pointer; text-align: left; font-family: inherit;
+  transition: background 0.12s ease;
+}
+.risk-opt:hover { background: rgba(0,0,0,0.05); }
+.risk-opt.active { color: #0071e3; font-weight: 600; }
+.risk-opt-text { flex: 1; }
+.risk-opt-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.dot-low { background: #34c759; }
+.dot-medium { background: #ff9f0a; }
+.dot-high { background: #ff3b30; }
+.check { width: 16px; height: 16px; color: #0071e3; flex: none; }
+
+/* 过渡动画 */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.18s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.pop-enter-active, .pop-leave-active { transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16,1,0.3,1); }
+.pop-enter-from, .pop-leave-to { opacity: 0; transform: translateY(-8px) scale(0.97); }
 
 .card { background: #ffffff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05); }
 .table-card { padding: 6px 6px 14px; overflow: hidden; }

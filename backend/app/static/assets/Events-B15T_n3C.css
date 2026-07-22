@@ -1,0 +1,187 @@
+
+.toolbar[data-v-2fd5cfcc] { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; position: relative; z-index: 30;
+}
+.agg-result[data-v-2fd5cfcc] { font-size: 13px; color: #34c759; margin-left: 8px;
+}
+.btn[data-v-2fd5cfcc] { display: inline-flex; align-items: center; gap: 8px; border: none; border-radius: 980px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 0.18s ease;
+}
+.btn-ghost[data-v-2fd5cfcc] { background: #e8e8ed; color: #1d1d1f;
+}
+.btn-ghost[data-v-2fd5cfcc]:hover { background: #dededf;
+}
+
+/* ── 苹果风搜索框：毛玻璃 + 蓝色聚焦环 + 线性图标 ── */
+.search-box[data-v-2fd5cfcc] {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; min-width: 264px; padding: 0 14px;
+  background: rgba(245,245,247,0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 12px;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.search-box.is-focused[data-v-2fd5cfcc] {
+  background: rgba(255,255,255,0.92);
+  border-color: #0071e3;
+  box-shadow: 0 0 0 4px rgba(0,113,227,0.18);
+}
+.search-ico[data-v-2fd5cfcc] { width: 16px; height: 16px; color: #8e8e93; flex: none;
+}
+.search-input[data-v-2fd5cfcc] {
+  flex: 1; min-width: 0; height: 100%;
+  border: none; outline: none; background: transparent;
+  font-size: 14px; color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.search-input[data-v-2fd5cfcc]::placeholder { color: #a1a1a6;
+}
+.search-clear[data-v-2fd5cfcc] {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: none; width: 20px; height: 20px; padding: 0;
+  border: none; border-radius: 50%; background: rgba(0,0,0,0.16); color: #fff; cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.search-clear[data-v-2fd5cfcc]:hover { background: rgba(0,0,0,0.28);
+}
+.search-clear svg[data-v-2fd5cfcc] { width: 12px; height: 12px;
+}
+
+/* ── 苹果风风险筛选下拉：毛玻璃浮层 + 平滑展开 + 选中勾选 ── */
+.risk-filter[data-v-2fd5cfcc] { position: relative;
+}
+.risk-trigger[data-v-2fd5cfcc] {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 14px;
+  background: rgba(245,245,247,0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 12px;
+  font-size: 14px; font-weight: 500; color: #1d1d1f; cursor: pointer; white-space: nowrap;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+.risk-trigger[data-v-2fd5cfcc]:hover { background: rgba(255,255,255,0.92);
+}
+.risk-trigger.open[data-v-2fd5cfcc] { border-color: #0071e3; box-shadow: 0 0 0 4px rgba(0,113,227,0.18);
+}
+.risk-trigger.active[data-v-2fd5cfcc] { color: #0071e3;
+}
+.risk-trigger-label[data-v-2fd5cfcc] { display: inline-flex; align-items: center; gap: 7px;
+}
+.risk-trigger-dot[data-v-2fd5cfcc] { width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+}
+.chev[data-v-2fd5cfcc] { width: 15px; height: 15px; color: #8e8e93; flex: none; transition: transform 0.25s cubic-bezier(0.16,1,0.3,1);
+}
+.risk-trigger.open .chev[data-v-2fd5cfcc] { transform: rotate(180deg);
+}
+.risk-backdrop[data-v-2fd5cfcc] { position: fixed; inset: 0; z-index: 40;
+}
+.risk-menu[data-v-2fd5cfcc] {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 50;
+  min-width: 184px; padding: 6px;
+  background: rgba(250,250,252,0.92);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.14);
+  transform-origin: top left;
+}
+.risk-opt[data-v-2fd5cfcc] {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; border: none; background: transparent;
+  border-radius: 9px; font-size: 14px; color: #1d1d1f; cursor: pointer; text-align: left; font-family: inherit;
+  transition: background 0.12s ease;
+}
+.risk-opt[data-v-2fd5cfcc]:hover { background: rgba(0,0,0,0.05);
+}
+.risk-opt.active[data-v-2fd5cfcc] { color: #0071e3; font-weight: 600;
+}
+.risk-opt-text[data-v-2fd5cfcc] { flex: 1;
+}
+.risk-opt-dot[data-v-2fd5cfcc] { width: 9px; height: 9px; border-radius: 50%; flex: none;
+}
+.dot-low[data-v-2fd5cfcc] { background: #34c759;
+}
+.dot-medium[data-v-2fd5cfcc] { background: #ff9f0a;
+}
+.dot-high[data-v-2fd5cfcc] { background: #ff3b30;
+}
+.check[data-v-2fd5cfcc] { width: 16px; height: 16px; color: #0071e3; flex: none;
+}
+
+/* 过渡动画 */
+.fade-enter-active[data-v-2fd5cfcc], .fade-leave-active[data-v-2fd5cfcc] { transition: opacity 0.18s ease;
+}
+.fade-enter-from[data-v-2fd5cfcc], .fade-leave-to[data-v-2fd5cfcc] { opacity: 0;
+}
+.pop-enter-active[data-v-2fd5cfcc], .pop-leave-active[data-v-2fd5cfcc] { transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16,1,0.3,1);
+}
+.pop-enter-from[data-v-2fd5cfcc], .pop-leave-to[data-v-2fd5cfcc] { opacity: 0; transform: translateY(-8px) scale(0.97);
+}
+.card[data-v-2fd5cfcc] { background: #ffffff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05);
+}
+.table-card[data-v-2fd5cfcc] { padding: 6px 6px 14px; overflow: hidden;
+}
+table.tbl[data-v-2fd5cfcc] { width: 100%; border-collapse: collapse; font-size: 14px;
+}
+table.tbl thead th[data-v-2fd5cfcc] {
+  text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b;
+  padding: 14px 18px; border-bottom: 1px solid #e8e8ed; white-space: nowrap;
+}
+table.tbl tbody td[data-v-2fd5cfcc] {
+  padding: 15px 18px; border-bottom: 1px solid #e8e8ed; color: #1d1d1f; vertical-align: middle;
+}
+table.tbl tbody tr[data-v-2fd5cfcc] { transition: background-color 0.12s ease;
+}
+table.tbl tbody tr[data-v-2fd5cfcc]:hover { background: #fafafc;
+}
+table.tbl tbody tr:last-child td[data-v-2fd5cfcc] { border-bottom: none;
+}
+.col-center[data-v-2fd5cfcc] { text-align: center;
+}
+.t-title[data-v-2fd5cfcc] { font-weight: 500; color: #1d1d1f;
+}
+.risk-num[data-v-2fd5cfcc] { font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.empty-row td[data-v-2fd5cfcc] { text-align: center; color: #86868b; padding: 40px 0;
+}
+.pill[data-v-2fd5cfcc] {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px;
+  border-radius: 980px; font-size: 13px; font-weight: 500; line-height: 1.4; white-space: nowrap;
+}
+.pill .dot[data-v-2fd5cfcc] { width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+}
+.pill-red[data-v-2fd5cfcc] { background: rgba(255,59,48,0.1); color: #ff3b30;
+}
+.pill-orange[data-v-2fd5cfcc] { background: rgba(255,159,10,0.12); color: #c77700;
+}
+.pill-green[data-v-2fd5cfcc] { background: rgba(52,199,89,0.12); color: #1a8e3c;
+}
+.pill-gray[data-v-2fd5cfcc] { background: rgba(110,110,115,0.12); color: #6e6e73;
+}
+.pager[data-v-2fd5cfcc] { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 18px 0;
+}
+.pager .p-info[data-v-2fd5cfcc] { color: #86868b; font-size: 13px; margin-right: auto;
+}
+.pager button[data-v-2fd5cfcc] {
+  min-width: 34px; height: 34px; padding: 0 10px; border: 1px solid #d2d2d7;
+  background: #ffffff; border-radius: 9px; color: #1d1d1f; font-size: 13.5px;
+  cursor: pointer; transition: background 0.15s ease;
+}
+.pager button[data-v-2fd5cfcc]:hover:not(:disabled) { background: #e8e8ed;
+}
+.pager button.active[data-v-2fd5cfcc] { background: #1d1d1f; color: #fff; border-color: #1d1d1f;
+}
+.pager button[data-v-2fd5cfcc]:disabled { opacity: 0.4; cursor: default;
+}
+.btn-icon[data-v-2fd5cfcc] {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: none; border-radius: 8px;
+  background: transparent; cursor: pointer; font-size: 16px;
+  transition: background 0.15s ease;
+}
+.btn-delete[data-v-2fd5cfcc]:hover { background: rgba(255,59,48,0.1);
+}

@@ -24,7 +24,7 @@ import type {
   DashboardAlertItem,
   FeedStatus,
 } from '@/types/command-screen'
-import type { RegionChildren } from '@/types'
+import type { RegionChildren, KpiTrends } from '@/types'
 
 /** 集中定义的刷新间隔常量（毫秒），未来按真实运行情况调整 */
 export const REFRESH_INTERVALS = {
@@ -188,6 +188,18 @@ export async function fetchRegionChildren(
 ): Promise<RegionChildren> {
   const { data } = await api.get<RegionChildren>('/dashboard/region-children', {
     params: { province, days },
+  })
+  return data
+}
+
+/**
+ * KPI sparkline 趋势数据（14 天日值序列）。
+ * 返回 opinions / high_risk / events 三组趋势，前端据此绘制 SVG 折线图。
+ * 调用频率与 stats 一致（30s），后端有 TTL 缓存。
+ */
+export async function fetchKpiTrends(days = 14): Promise<KpiTrends> {
+  const { data } = await api.get<KpiTrends>('/dashboard/kpi-trends', {
+    params: { days },
   })
   return data
 }

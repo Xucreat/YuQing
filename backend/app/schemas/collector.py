@@ -31,3 +31,15 @@ class CollectorStatusResponse(BaseModel):
     last_run: Optional[datetime] = None
     total_collected: int = 0
     collector_type: Optional[str] = None  # 最近一次采集方式（government / mock）
+
+
+class CollectorTaskResponse(BaseModel):
+    """采集任务已启动（后台异步执行）。
+
+    success 表示「任务已成功入队」，不代表采集已完成；进度/结果通过
+    GET /api/tasks/{task_id} 轮询获取。
+    """
+
+    success: bool = True
+    task_id: str
+    message: str = "采集中"

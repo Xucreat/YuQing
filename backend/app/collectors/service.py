@@ -22,11 +22,16 @@
 """
 from __future__ import annotations
 
+import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.collectors.base import BaseCollector
 from app.collectors.government_collector import GovernmentCollector
@@ -116,6 +121,11 @@ class CollectorService:
         )
         self.region_id: Optional[int] = region_id
 
+        # 并发抓取时，多个采集器线程各自持有独立 DB 会话，但「查重 + 新建 Opinion」
+        # 的临界区需串行化，避免不同源抓到相同 url 时重复入库。网络 I/O（fetch）
+        # 在锁外并行，仅 DB 写入短暂串行，整体耗时≈最慢单个源而非各源之和。
+        self._write_lock = threading.Lock()
+
         # TODO Phase 4:
         # extract shared opinion analysis workflow
         # reuse by manual analysis API and collector service
@@ -200,30 +210,69 @@ class CollectorService:
         result = CollectorRunResult(collector_type=self.collector_type)
         # 采集阶段默认使用规则降级路径生成「系统研判报告」，
         # 不调用 DeepSeek（节省额度；DeepSeek 仅由用户手动「触发 AI 分析」时调用）。
-        ai = RuleFallbackProvider()
 
         run_start = datetime.now(timezone.utc)
         for collector in self.collectors:
-            # 每个采集器独立记录一次采集运行（CollectorRun），用于审计与历史。
-            run = CollectorRun(
-                collector_name=collector.source_name,
-                start_time=run_start,
-                status="running",
-            )
-            db.add(run)
-            db.commit()
+            sub = self._process_collector(db, collector, monitoring_kw, run_start)
+            result.fetched_raw += sub.fetched_raw
+            result.created += sub.created
+            result.analyzed += sub.analyzed
+            result.failed += sub.failed
 
-            items = collector.fetch(keywords=monitoring_kw) or []
-            # 统计采集器实际抓取的原始条数（去重前），供前端提示真实抓取量。
-            result.fetched_raw += len(items)
-            run.fetched_raw = len(items)
+        result.finalize()
 
-            # 按采集器声明的覆盖范围绑定区域（省/市/县）
-            region_id = self._resolve_region_id(db, collector)
+        # 4) 更新内存状态（Phase 3A 临时，重启丢失）
+        now = datetime.now(timezone.utc)
+        _COLLECTOR_STATUS["last_run"] = now
+        _COLLECTOR_STATUS["total_collected"] += result.created
+        _COLLECTOR_STATUS["collector_type"] = self.collector_type
 
-            c_created = c_analyzed = c_failed = 0
-            for item in items:
-                # 1) 去重：已存在则跳过，不重复创建
+        # 政府网站采集成功后更新防抖时间戳（供下次 5 秒判断）。
+        if self._uses_government():
+            _GOV_LAST_RUN_AT = now
+
+        return result
+
+    # ------------------------------------------------------------------
+    # 单采集器处理（供顺序 / 并发两种主流程复用）
+    # ------------------------------------------------------------------
+    def _process_collector(
+        self,
+        db: Session,
+        collector: BaseCollector,
+        monitoring_kw: List[str],
+        run_start: datetime,
+    ) -> "CollectorRunResult":
+        """对单个采集器执行 fetch → 去重 → 建 Opinion → AI 分析 → 状态流转。
+
+        返回该采集器的局部运行结果。注意：本方法内所有 DB 写入（查重+新建+
+        分析写回）须在同一把实例锁 ``self._write_lock`` 下完成，以防并发抓取时
+        不同源抓到同一 url 导致重复入库。
+        """
+        # 每个采集器独立记录一次采集运行（CollectorRun），用于审计与历史。
+        run = CollectorRun(
+            collector_name=collector.source_name,
+            start_time=run_start,
+            status="running",
+        )
+        db.add(run)
+        db.commit()
+
+        items = collector.fetch(keywords=monitoring_kw) or []
+        # 统计采集器实际抓取的原始条数（去重前），供前端提示真实抓取量。
+        fetched_raw = len(items)
+        run.fetched_raw = fetched_raw
+
+        # 按采集器声明的覆盖范围绑定区域（省/市/县）
+        region_id = self._resolve_region_id(db, collector)
+
+        # 每条 Opinion 的 AI 分析独立（无共享可变状态），逐采集器新建 Provider。
+        ai = RuleFallbackProvider()
+
+        c_created = c_analyzed = c_failed = 0
+        for item in items:
+            # 1) 去重：已存在则跳过，不重复创建（临界区串行化）
+            with self._write_lock:
                 if self._already_exists(db, item):
                     continue
 
@@ -241,53 +290,130 @@ class CollectorService:
                 )
                 db.add(opinion)
                 db.commit()  # 先提交，确保失败记录不丢失
-                result.created += 1
-                c_created += 1
+            c_created += 1
 
-                # 3) AI 分析 + 写回（单条失败隔离）
-                # RuleFallbackProvider.analyze(text) 接收拼接后的文本（与 AIService 不同，
-                # 它不接收 (title, content)，故此处显式拼为"标题：…\n正文：…"）
+            # 3) AI 分析 + 写回（单条失败隔离；分析写回也在锁内，避免并发更新冲突）
+            try:
+                analysis = ai.analyze(
+                    f"标题：{opinion.title}\n正文：{opinion.content}"
+                )
+                opinion.summary = analysis.summary
+                opinion.sentiment = analysis.sentiment
+                opinion.risk_score = analysis.risk_score
+                opinion.keywords = ",".join(analysis.keywords)
+                opinion.analysis_suggestion = analysis.suggestion
+                opinion.analysis_status = "completed"
+                opinion.analysis_time = datetime.now(timezone.utc)
+                with self._write_lock:
+                    db.commit()
+                c_analyzed += 1
+            except Exception:
+                # 失败：保留该 Opinion 记录，仅状态置 failed
+                db.rollback()
+                opinion.analysis_status = "failed"
+                db.add(opinion)
+                with self._write_lock:
+                    db.commit()
+                c_failed += 1
+
+        # 写回本次采集器运行结果
+        run.created = c_created
+        run.analyzed = c_analyzed
+        run.failed = c_failed
+        run.status = "success" if c_failed == 0 else "partial"
+        run.end_time = datetime.now(timezone.utc)
+        db.commit()
+
+        return CollectorRunResult(
+            collector_type=self.collector_type,
+            fetched_raw=fetched_raw,
+            created=c_created,
+            analyzed=c_analyzed,
+            failed=c_failed,
+        )
+
+    # ------------------------------------------------------------------
+    # 并发主流程（后台任务使用）：每个采集器独立线程 + 独立 DB 会话并行抓取
+    # ------------------------------------------------------------------
+    def collect_and_analyze_concurrent(
+        self,
+        session_factory,
+        max_workers: int = 6,
+        on_progress: Optional[Callable[[int, int, str], None]] = None,
+    ) -> "CollectorRunResult":
+        """并发版采集：各采集器在独立线程内 fetch（网络 I/O 并行），整体耗时≈最慢单源。
+
+        - 表驱动装配与监测关键词解析在主线程完成（需 DB，仅读）；
+        - 每个采集器线程使用 ``session_factory()`` 新建独立 Session（会话不跨线程）；
+        - on_progress(done, total, source_name) 用于上报进度（后台任务轮询）。
+        """
+        global _GOV_LAST_RUN_AT
+
+        # 表驱动装配（优先 data_sources 表，表空回退默认源）；注入模式不覆盖。
+        if not self._collectors_injected:
+            resolve_db = session_factory()
+            try:
+                self.collectors = resolve_collectors(resolve_db, self.collector_type)
+            finally:
+                resolve_db.close()
+
+        # 监测关键词（采集过滤唯一权威源 = keywords 表；表空回退配置）。
+        kw_db = session_factory()
+        try:
+            monitoring_kw = get_monitoring_keywords(kw_db)
+        finally:
+            kw_db.close()
+
+        # 5 秒防抖（仅政府网站采集）：距上次不足阈值 → 拒绝执行。
+        if self._uses_government() and _GOV_LAST_RUN_AT is not None:
+            elapsed = (datetime.now(timezone.utc) - _GOV_LAST_RUN_AT).total_seconds()
+            if elapsed < THROTTLE_SECONDS:
+                raise CollectorThrottled("collector running too frequently")
+
+        if not self.collectors:
+            result = CollectorRunResult(collector_type=self.collector_type)
+            result.finalize()
+            return result
+
+        run_start = datetime.now(timezone.utc)
+        total = len(self.collectors)
+
+        def _work(collector: BaseCollector) -> "CollectorRunResult":
+            cdb = session_factory()
+            try:
+                return self._process_collector(cdb, collector, monitoring_kw, run_start)
+            finally:
+                cdb.close()
+
+        merged = CollectorRunResult(collector_type=self.collector_type)
+        done = 0
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = {ex.submit(_work, c): c for c in self.collectors}
+            for fut in as_completed(futures):
+                collector = futures[fut]
                 try:
-                    analysis = ai.analyze(
-                        f"标题：{opinion.title}\n正文：{opinion.content}"
-                    )
-                    opinion.summary = analysis.summary
-                    opinion.sentiment = analysis.sentiment
-                    opinion.risk_score = analysis.risk_score
-                    # keywords 在库中为 TEXT 逗号分隔
-                    opinion.keywords = ",".join(analysis.keywords)
-                    opinion.analysis_suggestion = analysis.suggestion
-                    opinion.analysis_status = "completed"
-                    opinion.analysis_time = datetime.now(timezone.utc)
-                    db.commit()
-                    result.analyzed += 1
-                    c_analyzed += 1
+                    sub = fut.result()
                 except Exception:
-                    # 失败：保留该 Opinion 记录，仅状态置 failed
-                    db.rollback()
-                    opinion.analysis_status = "failed"
-                    db.add(opinion)
-                    db.commit()
-                    c_failed += 1
+                    logger.exception("采集器 %s 执行异常", collector.source_name)
+                    sub = CollectorRunResult(collector_type=self.collector_type)
+                merged.fetched_raw += sub.fetched_raw
+                merged.created += sub.created
+                merged.analyzed += sub.analyzed
+                merged.failed += sub.failed
+                done += 1
+                if on_progress is not None:
+                    on_progress(done, total, getattr(collector, "source_name", ""))
 
-            # 写回本次采集器运行结果
-            run.created = c_created
-            run.analyzed = c_analyzed
-            run.failed = c_failed
-            run.status = "success" if c_failed == 0 else "partial"
-            run.end_time = datetime.now(timezone.utc)
-            db.commit()
+        merged.finalize()
 
-        result.finalize()
-
-        # 4) 更新内存状态（Phase 3A 临时，重启丢失）
+        # 更新内存状态（Phase 3A 临时，重启丢失）
         now = datetime.now(timezone.utc)
         _COLLECTOR_STATUS["last_run"] = now
-        _COLLECTOR_STATUS["total_collected"] += result.created
+        _COLLECTOR_STATUS["total_collected"] += merged.created
         _COLLECTOR_STATUS["collector_type"] = self.collector_type
 
         # 政府网站采集成功后更新防抖时间戳（供下次 5 秒判断）。
         if self._uses_government():
             _GOV_LAST_RUN_AT = now
 
-        return result
+        return merged

@@ -6,7 +6,7 @@
         <div class="brand-logo">YQ</div>
         <div class="brand-name">
           舆情监测研判平台
-          <small>大厂县公安</small>
+          <small>河北省公安</small>
         </div>
       </div>
 
@@ -71,7 +71,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores'
 import { usePermission } from '@/composables/usePermission'
-import api from '@/api'
+import api, { pollTask } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -126,27 +126,35 @@ async function handleCollect() {
   if (collecting.value) return
   collecting.value = true
   try {
-    const { data } = await api.post('/collector/run', {}, { timeout: 300000 });
-    // 安全读取：后端未返回时回退为 0，避免 undefined 拼接到提示文案。
-    const fetchedRaw = data.fetched_raw ?? 0;
-    const created = data.created ?? 0;
-    const analyzed = data.analyzed ?? 0;
-    if (fetchedRaw === 0) {
-      ElMessage.warning('采集完成：未抓取到新内容，数据源暂无可读数据');
-    } else if (created === 0) {
-      ElMessage.warning('采集完成：抓取 ' + fetchedRaw + ' 条，均为已存在数据');
-    } else {
-      ElMessage.success('采集完成：新增 ' + created + ' 条，分析 ' + analyzed + ' 条');
-    }
-    // trigger a page reload for active view
-    window.dispatchEvent(new CustomEvent('data-refresh'))
-    // Auto-trigger alert evaluation after collection
-    try {
-      const evalRes = await api.post('/alerts/evaluate')
-      if (evalRes.data.alerts_created > 0) {
-        ElMessage.success('预警评估完成：生成 ' + evalRes.data.alerts_created + ' 条新预警')
+    // 采集改为后台任务：接口立即返回 task_id，前端轮询进度直到完成。
+    const { data } = await api.post('/collector/run')
+    ElMessage.info('采集任务已启动，后台运行中…')
+    const res = await pollTask(data.task_id)
+    if (res.status === 'success') {
+      const r = res.result || {}
+      // 安全读取：后端未返回时回退为 0，避免 undefined 拼接到提示文案。
+      const fetchedRaw = r.fetched_raw ?? 0
+      const created = r.created ?? 0
+      const analyzed = r.analyzed ?? 0
+      if (fetchedRaw === 0) {
+        ElMessage.warning('采集完成：未抓取到新内容，数据源暂无可读数据')
+      } else if (created === 0) {
+        ElMessage.warning('采集完成：抓取 ' + fetchedRaw + ' 条，均为已存在数据')
+      } else {
+        ElMessage.success('采集完成：新增 ' + created + ' 条，分析 ' + analyzed + ' 条')
       }
-    } catch (_) { /* evaluation failure should not block collection */ }
+      // trigger a page reload for active view
+      window.dispatchEvent(new CustomEvent('data-refresh'))
+      // Auto-trigger alert evaluation after collection
+      try {
+        const evalRes = await api.post('/alerts/evaluate')
+        if (evalRes.data.alerts_created > 0) {
+          ElMessage.success('预警评估完成：生成 ' + evalRes.data.alerts_created + ' 条新预警')
+        }
+      } catch (_) { /* evaluation failure should not block collection */ }
+    } else if (res.status === 'failed') {
+      ElMessage.error('采集失败：' + (res.error || res.message || '未知错误'))
+    }
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || err?.response?.data?.message || '采集失败')
   } finally {

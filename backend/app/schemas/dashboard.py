@@ -82,6 +82,28 @@ class RegionChildrenResponse(BaseModel):
     raw: List[RegionChildRaw]
 
 
+class KpiTrendItem(BaseModel):
+    """KPI 趋势单日值（sparkline 的一个数据点）。"""
+
+    date: str
+    value: int
+
+
+class KpiTrendsResponse(BaseModel):
+    """KPI 卡片 sparkline 趋势数据。
+
+    返回最近 days 天各核心指标的日值序列，前端据此绘制 SVG 折线图。
+    - opinions: 每日新增舆情数（与 stats.trend 同源，口径一致）
+    - high_risk: 每日新增高危舆情数（risk_score >= 阈值的当日增量）
+    - events: 每日新增事件数
+    """
+
+    days: int
+    opinions: List[KpiTrendItem]
+    high_risk: List[KpiTrendItem]
+    events: List[KpiTrendItem]
+
+
 class HotKeywordItem(BaseModel):
     """指挥大屏「热门关键词」的一项。
 

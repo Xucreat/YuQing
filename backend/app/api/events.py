@@ -8,12 +8,15 @@
 """
 from __future__ import annotations
 
+from typing import Literal, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
 from app.core.permissions import require_permission
-from app.db.session import get_db
+from app.core.task_manager import start_task
+from app.db.session import SessionLocal, get_db
 from app.models.event import Event
 from app.models.event_opinion import EventOpinion
 from app.models.opinion import Opinion
@@ -25,6 +28,7 @@ from app.schemas.event import (
     EventDetailResponse,
     EventListResponse,
     EventOut,
+    EventTaskResponse,
 )
 from app.schemas.opinion import OpinionListResponse, OpinionOut
 from app.services.event.aggregator import EventAggregator
@@ -37,18 +41,38 @@ events_router = APIRouter(
 MAX_SIZE = 100
 
 
+def _run_aggregate_task(task, session_factory, rebuild: bool) -> dict:
+    """后台任务体：执行聚合（增量或全量 rebuild）。"""
+    task.step = "聚合计算中…"
+    db = session_factory()
+    try:
+        if rebuild:
+            result = EventAggregator().aggregate(db, rebuild=True)
+        else:
+            result = EventAggregator().aggregate(db, incremental=True)
+        task.step = "重建传播树…"
+        return result
+    finally:
+        db.close()
+
+
 @events_router.post(
     "/aggregate",
-    response_model=EventCreateResponse,
+    response_model=EventTaskResponse,
     status_code=status.HTTP_200_OK,
 )
 def aggregate_events(
-    db: Session = Depends(get_db),
+    rebuild: bool = Query(False, description="true=全量重建活跃事件关联；默认增量聚合"),
     _: User = Depends(require_permission("events:write")),
-) -> EventCreateResponse:
-    """手动触发一次 Event 聚合。"""
-    result = EventAggregator().aggregate(db)
-    return EventCreateResponse(success=True, **result)
+) -> EventTaskResponse:
+    """手动触发一次 Event 聚合（后台异步执行，默认增量）。
+
+    接口立即返回 task_id，前端通过 ``GET /api/tasks/{task_id}`` 轮询进度与结果。
+    默认走增量路径（仅处理未关联舆情，存量不变时秒回）；传 ``?rebuild=true``
+    执行全量重聚类（重建活跃事件关联）。
+    """
+    task_id = start_task("aggregate", _run_aggregate_task, SessionLocal, rebuild)
+    return EventTaskResponse(success=True, task_id=task_id, message="聚合中")
 
 
 @events_router.get(
@@ -153,14 +177,23 @@ def delete_event(
 def list_events(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=MAX_SIZE),
+    title: Optional[str] = Query(None, description="按事件标题模糊搜索（不区分大小写）"),
+    risk_level: Optional[Literal["low", "medium", "high"]] = Query(
+        None, description="风险等级筛选：low=低 / medium=中 / high=高"
+    ),
     db: Session = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> EventListResponse:
-    """Event 列表（分页，按 id DESC）。"""
-    total = db.query(Event).count()
+    """Event 列表（分页，按 id DESC，支持标题模糊搜索 + 风险等级筛选）。"""
+    q = db.query(Event)
+    if title:
+        # ilike 使用绑定参数，模式字符串经占位符传递，无注入风险
+        q = q.filter(Event.title.ilike(f"%{title.strip()}%"))
+    if risk_level:
+        q = q.filter(Event.risk_level == risk_level)
+    total = q.count()
     rows = (
-        db.query(Event)
-        .order_by(Event.id.desc())
+        q.order_by(Event.id.desc())
         .offset((page - 1) * size)
         .limit(size)
         .all()

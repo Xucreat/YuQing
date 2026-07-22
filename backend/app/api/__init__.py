@@ -21,6 +21,7 @@ from app.api.users import users_router
 from app.api.opinions import opinions_router
 from app.api.reports import reports_router
 from app.api.admin_data_sources import admin_ds_router
+from app.api.tasks import tasks_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -47,4 +48,6 @@ api_router.include_router(sources_router)
 api_router.include_router(reports_router)
 # 数据源管理后台（router 内部已带 prefix="/admin/data-sources"）
 api_router.include_router(admin_ds_router)
+# 后台任务状态查询（GET /api/tasks/{task_id}）
+api_router.include_router(tasks_router, prefix="/tasks")
 

@@ -13,7 +13,7 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.collectors.service import (
@@ -22,9 +22,13 @@ from app.collectors.service import (
     get_collector_status,
 )
 from app.core.dependencies import get_current_user
-from app.db.session import get_db
+from app.core.task_manager import start_task
+from app.db.session import SessionLocal, get_db
 from app.models.user import User
-from app.schemas.collector import CollectorRunResponse, CollectorStatusResponse
+from app.schemas.collector import (
+    CollectorStatusResponse,
+    CollectorTaskResponse,
+)
 
 collector_router = APIRouter(
     tags=["collector"],
@@ -33,46 +37,42 @@ collector_router = APIRouter(
 )
 
 
+def _run_collect_task(task, session_factory):
+    """后台任务体：并发采集，并实时上报进度。"""
+    def _on_progress(done: int, total: int, name: str) -> None:
+        task.progress = int(done / total * 100) if total else 100
+        task.step = f"已采集 {done}/{total} 个数据源" + (f"（{name}）" if name else "")
+
+    service = CollectorService()
+    result = service.collect_and_analyze_concurrent(
+        session_factory, on_progress=_on_progress
+    )
+    return {
+        "collector_type": result.collector_type,
+        "fetched_raw": result.fetched_raw,
+        "created": result.created,
+        "analyzed": result.analyzed,
+        "failed": result.failed,
+    }
+
+
 @collector_router.post(
     "/run",
-    response_model=CollectorRunResponse,
+    response_model=CollectorTaskResponse,
     status_code=status.HTTP_200_OK,
 )
 def run_collector(
-    response: Response,
-    db: Session = Depends(get_db),
     _current_user: User = Depends(get_current_user),
-) -> CollectorRunResponse:
-    """触发一次采集 + 自动 AI 分析闭环。
+) -> CollectorTaskResponse:
+    """触发一次采集 + 自动 AI 分析闭环（后台异步执行）。
 
-    流程：按 settings.collector_type 选择 Collector（government / mock）
-          -> Collector.fetch() -> 按 url 去重 -> 建 Opinion(pending)
-          -> RuleFallbackProvider.analyze（系统研判报告）-> 写回字段 + 状态流转(completed/failed)。
-    返回：collector_type（采集方式）/ created / analyzed / failed。
+    本接口立即返回 task_id，采集在后台并发抓取（各数据源独立线程，整体耗时≈最慢
+    单源）。前端通过 ``GET /api/tasks/{task_id}`` 轮询进度与结果。
 
-    Phase 3B：政府网站采集 5 秒内重复触发 → 返回 429（success=false），
-    避免误操作连续请求政府网站（不使用 500）。
+    Phase 3B：政府网站采集 5 秒内重复触发 → 429（任务会直接失败，错误信息提示频繁）。
     """
-    service = CollectorService()
-    try:
-        result = service.collect_and_analyze(db)
-    except CollectorThrottled:
-        # 5 秒防抖：过于频繁 → 429 Too Many Requests（不判为服务错误）。
-        response.status_code = status.HTTP_429_TOO_MANY_REQUESTS
-        return CollectorRunResponse(
-            success=False,
-            collector_type=service.collector_type,
-            message="collector running too frequently",
-        )
-    return CollectorRunResponse(
-        success=True,
-        collector_type=result.collector_type,
-        fetched_raw=result.fetched_raw,
-        created=result.created,
-        analyzed=result.analyzed,
-        failed=result.failed,
-        message="采集完成",
-    )
+    task_id = start_task("collector", _run_collect_task, SessionLocal)
+    return CollectorTaskResponse(success=True, task_id=task_id, message="采集中")
 
 
 @collector_router.get(

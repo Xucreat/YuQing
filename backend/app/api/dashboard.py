@@ -20,6 +20,7 @@ from app.schemas.dashboard import (
     DashboardAlertItem,
     DashboardStatsResponse,
     HotKeywordsResponse,
+    KpiTrendsResponse,
     RecentOpinionItem,
     RegionChildrenResponse,
 )
@@ -102,3 +103,17 @@ def dashboard_region_children(
     if result is None:
         raise HTTPException(status_code=404, detail=f"未找到省份：{province}")
     return RegionChildrenResponse(**result)
+
+
+@dashboard_router.get("/kpi-trends", response_model=KpiTrendsResponse)
+def dashboard_kpi_trends(
+    db: Session = Depends(get_db),
+    _u: User = Depends(get_current_user),
+    days: int = Query(default=14, ge=7, le=90, description="趋势天数（默认 14 天）"),
+) -> KpiTrendsResponse:
+    """KPI 卡片 sparkline 趋势数据。
+
+    返回最近 N 天各核心指标的日值序列（opinions / high_risk / events），
+    前端据此在 KPI 卡片右下角绘制 SVG 迷你折线图。
+    """
+    return KpiTrendsResponse(**dashboard_service.get_kpi_trends(db, days=days))

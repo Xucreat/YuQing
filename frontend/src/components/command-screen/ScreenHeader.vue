@@ -3,7 +3,7 @@
     <div class="cs-header-left">
       <div class="cs-logo">YQ</div>
       <div class="cs-titles">
-        <h1 class="cs-title">大厂县公安互联网舆情监测研判 · 指挥大屏</h1>
+        <h1 class="cs-title">公安互联网舆情监测研判 · 指挥大屏</h1>
         <p class="cs-subtitle">全域舆情态势 · 实时监测</p>
       </div>
     </div>

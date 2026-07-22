@@ -100,6 +100,14 @@ export interface RegionChildren {
   cities: RegionChildCity[]
   raw: RegionChildRaw[]
 }
+// KPI sparkline 趋势数据（/api/dashboard/kpi-trends）
+export interface KpiTrendItem { date: string; value: number }
+export interface KpiTrends {
+  days: number
+  opinions: KpiTrendItem[]
+  high_risk: KpiTrendItem[]
+  events: KpiTrendItem[]
+}
 export interface RecentOpinionItem {
   id: number
   title: string

@@ -37,3 +37,27 @@ api.interceptors.response.use(
 )
 
 export default api
+
+// —— 后台任务轮询 ——
+// 采集/聚合等耗时操作改为后台任务：接口先返回 task_id，前端轮询此任务直到终态。
+// opts.intervalMs 轮询间隔（默认 1.5s），opts.timeoutMs 最长等待（默认 10 分钟）。
+export async function pollTask(
+  taskId: string,
+  opts?: { intervalMs?: number; timeoutMs?: number },
+): Promise<any> {
+  const interval = opts?.intervalMs ?? 1500
+  const timeout = opts?.timeoutMs ?? 10 * 60 * 1000
+  const deadline = Date.now() + timeout
+  // 首次立即查询，避免无谓等待
+  while (true) {
+    const { data } = await api.get(`/tasks/${taskId}`)
+    if (data.status === 'success' || data.status === 'failed') {
+      return data
+    }
+    if (Date.now() >= deadline) {
+      throw new Error('任务轮询超时，请稍后在采集/聚合状态中确认结果')
+    }
+    await new Promise((r) => setTimeout(r, interval))
+  }
+}
+

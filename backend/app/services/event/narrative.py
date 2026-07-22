@@ -44,16 +44,17 @@ from app.models.opinion import Opinion
 from app.schemas.event_narrative import EventNarrative
 # 复用聚合器已测试的字符 n-gram 余弦相似度（不重写相似度算法）。
 from app.services.event.aggregator import _cosine_ngram
+from app.services.event.title_format import (  # 共享标题规则（聚合与回填单一事实来源）
+    TITLE_SOFT_MAX,
+    build_cluster_title,
+    representative_title,
+)
 
 logger = logging.getLogger(__name__)
 
 # 长度硬上限（远低于 DB 列上限 String(512) / Text，留给人类可读空间）。
 TITLE_MAX: int = 120
 DESC_MAX: int = 500
-
-# 标题软上限：与 check_narrative_quality 的 title_too_long(>80) 阈值对齐，
-# 组合标题（具体标题 + 等N条相关舆情聚集）超出时，对具体标题做省略号截断，避免误报质量标记。
-TITLE_SOFT_MAX: int = 80
 
 # 复杂度路由阈值（已由生产 84 Event 真实分布只读验证：阈值=5 时仅 4 个事件进 LLM，节省 95%）。
 LLM_THRESHOLD: int = 5
@@ -188,41 +189,8 @@ def generate_simple_rule(context: EventNarrativeContext) -> EventNarrative:
 
 # ---------------------------------------------------------------------------
 # Layer 2：模板 + 统计（多成员中等复杂度）—— 0 LLM
+# 标题规则复用 app.services.event.title_format（与聚合器共用单一事实来源）。
 # ---------------------------------------------------------------------------
-def _representative_title(members: List[MemberFact]) -> str:
-    """取一条具体（非空）标题作为事件标题的代表；优先最早（members 已按时间升序）。"""
-    for m in members:
-        t = (m.title or "").strip()
-        if t:
-            return t
-    return ""
-
-
-def _build_cluster_title(members: List[MemberFact], risk_level: str) -> str:
-    """多成员事件标题：『一条具体标题 + 等N条相关舆情聚集』。
-
-    示例：「河北多举措推进基础教育扩优提质等2条相关舆情聚集」。
-    - 代表性标题取最早一条非空标题（确定性，且与描述锚点一致）；
-    - 组合后超过 TITLE_SOFT_MAX 时，将该具体标题用省略号截断：
-      「河北多举措推进基础…等2条相关舆情聚集」；
-    - 全部标题为空时降级为不含风险等级的「共N条相关舆情聚集」
-      （风险等级仍保留在描述中，不再以「（risk风险）」形式出现在标题）。
-    """
-    n = len(members)
-    suffix = f"等{n}条相关舆情聚集"
-    rep = _representative_title(members)
-    if not rep:
-        # 兜底：无可用标题，不使用「（risk风险）」形式；风险等级见描述。
-        return f"共{n}条相关舆情聚集"[:TITLE_MAX]
-    if len(rep) + len(suffix) <= TITLE_SOFT_MAX:
-        return (rep + suffix)[:TITLE_MAX]
-    # 截断具体标题：预留 1 个省略号（…）与 suffix 长度
-    budget = TITLE_SOFT_MAX - len(suffix) - 1
-    if budget < 1:
-        return suffix[:TITLE_MAX]
-    return (rep[:budget] + "…" + suffix)[:TITLE_MAX]
-
-
 def generate_template_rule(context: EventNarrativeContext) -> EventNarrative:
     """多成员事件：模板 + 统计信息 + 代表性 Opinion 标题。基于真实字段拼装，无虚构。"""
     members = context.members
@@ -237,8 +205,9 @@ def generate_template_rule(context: EventNarrativeContext) -> EventNarrative:
             seen.add(m.source)
             sources.append(m.source)
 
-    title = _build_cluster_title(members, context.risk_level)
-    title = title[:TITLE_MAX]
+    # 多成员标题统一为『具体标题 + 等N条相关舆情聚集』（含过长省略号截断）。
+    rep = representative_title(members)
+    title = build_cluster_title(rep, len(members))[:TITLE_MAX]
 
     parts = [
         f"该事件由 {len(members)} 条舆情组成，"

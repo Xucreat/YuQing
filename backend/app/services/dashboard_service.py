@@ -447,6 +447,80 @@ def get_dashboard_alerts(db: Session, limit: int = 8) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# KPI 趋势数据（指挥大屏 KPI 卡片 sparkline 用）
+# ---------------------------------------------------------------------------
+def get_kpi_trends(db: Session, days: int = 14) -> dict:
+    """返回最近 days 天各核心指标的日值序列，供前端绘制 sparkline。
+
+    - opinions：每日新增舆情数（与 stats.trend 同源）
+    - high_risk：每日新增高危舆情（risk_score >= HIGH_RISK_THRESHOLD 的当日增量）
+    - events：每日新增事件数
+    无数据日期补 0，保证序列长度 = days。
+    """
+    key = f"dash:kpi_trends:{days}"
+    cached = cache_get(key)
+    if cached is not None:
+        return cached
+
+    today_date: date = db.scalar(select(func.current_date()))
+    window_start = today_date - timedelta(days=days - 1)
+
+    # ---- 每日新增舆情 ----
+    opinion_rows = db.execute(
+        select(
+            cast(Opinion.created_at, Date).label("day"),
+            func.count(Opinion.id).label("cnt"),
+        )
+        .where(cast(Opinion.created_at, Date) >= window_start)
+        .group_by(cast(Opinion.created_at, Date))
+        .order_by("day")
+    ).all()
+    opinion_counts = {row.day: row.cnt for row in opinion_rows}
+
+    # ---- 每日新增高危舆情 ----
+    hr_rows = db.execute(
+        select(
+            cast(Opinion.created_at, Date).label("day"),
+            func.count(Opinion.id).label("cnt"),
+        )
+        .where(and_(
+            cast(Opinion.created_at, Date) >= window_start,
+            Opinion.risk_score >= HIGH_RISK_THRESHOLD,
+        ))
+        .group_by(cast(Opinion.created_at, Date))
+        .order_by("day")
+    ).all()
+    hr_counts = {row.day: row.cnt for row in hr_rows}
+
+    # ---- 每日新增事件（用 first_time 代替 created_at） ----
+    event_rows = db.execute(
+        select(
+            cast(Event.first_time, Date).label("day"),
+            func.count(Event.id).label("cnt"),
+        )
+        .where(cast(Event.first_time, Date) >= window_start)
+        .group_by(cast(Event.first_time, Date))
+        .order_by("day")
+    ).all()
+    event_counts = {row.day: row.cnt for row in event_rows}
+
+    def _series(counts_map):
+        return [
+            {"date": (window_start + timedelta(days=i)).isoformat(), "value": counts_map.get(window_start + timedelta(days=i), 0)}
+            for i in range(days)
+        ]
+
+    data = {
+        "days": days,
+        "opinions": _series(opinion_counts),
+        "high_risk": _series(hr_counts),
+        "events": _series(event_counts),
+    }
+    cache_set(key, data)
+    return data
+
+
+# ---------------------------------------------------------------------------
 # 热门关键词（指挥大屏专用，真实数据源）
 # ---------------------------------------------------------------------------
 def _like_escape(col):

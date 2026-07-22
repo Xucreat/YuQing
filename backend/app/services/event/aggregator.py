@@ -47,6 +47,7 @@ from app.models.event import Event
 from app.models.event_opinion import EventOpinion
 from app.models.opinion import Opinion
 from app.services.ai.fallback import DEFAULT_KEYWORDS
+from app.services.event.title_format import build_cluster_title, representative_title
 
 
 # ---------------------------------------------------------------------------
@@ -230,13 +231,29 @@ class EventAggregator:
         db: Session,
         rebuild: bool = False,
         dry_run: bool = False,
+        incremental: bool = False,
     ) -> dict:
         """执行一次聚合，返回统计字典 {"created","updated","linked"}。
 
         rebuild: 仅重建「活跃」事件（last_time 在 event_window_days 内）的关联，
-                 保留陈旧历史事件，绝不静默全量删除。需显式开启。
+                 保留陈旧历史事件，绝不静默全量删除。需显式开启。（全量重聚类）
         dry_run: 只计算与统计，回滚写操作（用于只读验证），不改动生产数据。
+        incremental: 仅对「尚未关联任何事件」的 completed 舆情做增量聚类/挂载，
+                 跳过已关联舆情的重聚类，将时间复杂度从 O(n²) 全量降到仅新增量。
+                 手动聚合默认走此路径；首次运行（无事件）会聚类全部未关联舆情，
+                 与全量等价；rebuild=True 时忽略本参数走全量。
+
+        默认（rebuild=False, incremental=False）保持历史「全量重聚类」行为，
+        以兼容既有测试与直接调用方。
         """
+        if rebuild:
+            return self._aggregate_full(db, dry_run=dry_run)
+        if incremental:
+            return self._aggregate_incremental(db, dry_run=dry_run)
+        return self._aggregate_full(db, dry_run=dry_run)
+
+    # ----- 全量重聚类（历史默认行为，rebuild / 兼容测试）----------------
+    def _aggregate_full(self, db: Session, dry_run: bool = False) -> dict:
         now = _now_utc()
         cutoff = now - timedelta(days=settings.event_window_days)
 
@@ -250,10 +267,6 @@ class EventAggregator:
             )
             .all()
         )
-
-        # rebuild 模式：仅清理活跃事件的关联（显式、有界、保留历史），随后重算。
-        if rebuild:
-            self._reset_active_event_links(db, now)
 
         clusters = cluster_opinions(opinions)
 
@@ -324,6 +337,160 @@ class EventAggregator:
             "created": created,
             "updated": len(updated_ids),
             "linked": linked,
+        }
+
+    # ----- 增量聚合（手动聚合默认路径：仅处理未关联舆情）----------------
+    def _aggregate_incremental(self, db: Session, dry_run: bool = False) -> dict:
+        """增量聚合：只处理尚未挂到任何事件的 completed 舆情。
+
+        相比全量重聚类：
+        - 跳过已关联舆情（绝大多数存量），时间复杂度由 O(全部²) 降到 O(新增²)；
+        - 无新增且非 rebuild 时直接秒回，重复点击「手动聚合」几乎零成本；
+        - 增量挂载遵守与全量一致的信号/文本/时间判定与事件延续窗口约束。
+
+        流程：
+        1) 召回「窗口内 + completed + 未关联任何事件」的舆情作为候选；
+        2) 候选依次尝试挂载到「活跃」事件（任一成员满足 _merge_condition 即并入）；
+        3) 仍未挂载的候选在彼此之间做星型聚类，物化为新事件。
+        """
+        now = _now_utc()
+        cutoff = now - timedelta(days=settings.event_window_days)
+
+        linked_subq = db.query(EventOpinion.opinion_id).subquery()
+        candidates = (
+            db.query(Opinion)
+            .filter(
+                Opinion.analysis_status == "completed",
+                Opinion.created_at >= cutoff,
+                ~Opinion.id.in_(linked_subq),
+            )
+            .all()
+        )
+
+        # 无新增舆情：直接返回（不触碰任何事件，传播树无需重建）。
+        if not candidates:
+            if dry_run:
+                db.rollback()
+                return {
+                    "created": 0,
+                    "updated": 0,
+                    "linked": 0,
+                    "incremental": True,
+                    "dry_run": True,
+                }
+            db.commit()
+            return {
+                "created": 0,
+                "updated": 0,
+                "linked": 0,
+                "incremental": True,
+            }
+
+        # 活跃事件（last_time 在延续窗口内）及其成员，用于候选挂载匹配。
+        cont_cutoff = now - timedelta(days=settings.event_continuation_days)
+        active_events = (
+            db.query(Event).filter(Event.last_time >= cont_cutoff).all()
+        )
+        members_cache: dict[int, List[Opinion]] = {}
+
+        def _get_members(ev: Event) -> List[Opinion]:
+            if ev.id not in members_cache:
+                rows = (
+                    db.query(EventOpinion.opinion_id)
+                    .filter(EventOpinion.event_id == ev.id)
+                    .all()
+                )
+                oids = [r.opinion_id for r in rows]
+                ops = (
+                    db.query(Opinion).filter(Opinion.id.in_(oids)).all()
+                    if oids
+                    else []
+                )
+                members_cache[ev.id] = ops
+            return members_cache[ev.id]
+
+        created = 0
+        created_ids: set[int] = set()
+        updated_ids: set[int] = set()
+        linked = 0
+
+        attached: List[tuple] = []   # (candidate, event) 已匹配到既有事件
+        unattached: List[Opinion] = []  # 仍需彼此聚类以建新事件
+
+        for cand in candidates:
+            target: Optional[Event] = None
+            for ev in active_events:
+                members = _get_members(ev)
+                matched = False
+                for m in members:
+                    if _merge_condition(cand, m):
+                        matched = True
+                        break
+                if matched:
+                    target = ev
+                    break
+            if target is not None:
+                attached.append((cand, target))
+            else:
+                unattached.append(cand)
+
+        # 挂载到既有事件（幂等链接 + 重算 + 传播重建）。
+        for cand, ev in attached:
+            n = self._link_all(db, ev.id, [cand])
+            if n > 0:
+                updated_ids.add(ev.id)
+                linked += n
+            self._recompute_event(db, ev, [cand])
+
+        # 未挂载候选彼此聚类，物化为新事件。
+        clusters = cluster_opinions(unattached)
+        for cluster in clusters:
+            rep = _representative(cluster)
+            high_rep, _ = _signals(rep)
+            ai_rep = _keywords_set(rep.ai_keywords)
+            materialize = (
+                len(cluster) >= 2
+                or bool(high_rep)
+                or rep.risk_score >= settings.event_singleton_min_risk
+                or bool(ai_rep)
+            )
+            if materialize:
+                event = self._create_event(db, cluster)
+                db.flush()
+                created += 1
+                created_ids.add(event.id)
+                linked += self._link_all(db, event.id, cluster)
+            # 否则保持未关联（低信号单条），与全量行为一致。
+
+        if dry_run:
+            db.rollback()
+            return {
+                "created": created,
+                "updated": len(updated_ids),
+                "linked": linked,
+                "incremental": True,
+                "dry_run": True,
+            }
+
+        db.commit()
+
+        # 仅对本次被改动（新建/更新）的事件重建传播树。
+        try:
+            from app.services.propagation_service import PropagationService
+
+            for eid in created_ids | updated_ids:
+                try:
+                    PropagationService.rebuild_for_event(db, eid)
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+
+        return {
+            "created": created,
+            "updated": len(updated_ids),
+            "linked": linked,
+            "incremental": True,
         }
 
     # ----- 既有 Event 匹配（共享成员 / 事件延续）-----------------------
@@ -416,10 +583,21 @@ class EventAggregator:
         times = [
             _effective_time(op) for op in cluster if _effective_time(op) is not None
         ]
-        # 临时兼容（非最终 Event Narrative 方案）：title / description 暂沿用代表性 Opinion，
-        # 待 Phase 4-Event-2 引入生成式标题/摘要时再替换。
+        # 标题规则（与叙事回填共用单一事实来源 app.services.event.title_format）：
+        #  - 单成员事件：沿用该 Opinion 的具体标题；
+        #  - 多成员事件：『一条具体标题 + 等N条相关舆情聚集』（过长省略号截断）。
+        # description 暂沿用代表性 Opinion 前 200 字占位，待叙事回填（Event-2）再生成；
+        # 但标题自聚合起即遵循统一格式，满足「手动聚合直接输出新形式事件标题」的要求。
+        if len(cluster) >= 2:
+            ordered = sorted(
+                cluster,
+                key=lambda o: (_effective_time(o) or datetime(1, 1, 1, tzinfo=timezone.utc), o.id),
+            )
+            event_title = build_cluster_title(representative_title(ordered), len(cluster))
+        else:
+            event_title = top.title
         event = Event(
-            title=top.title,
+            title=event_title,
             description=(top.content or "")[:200],
             keyword=",".join(merged_kw),
             risk_level=_map_risk_level(max(op.risk_score for op in cluster)),
@@ -453,7 +631,7 @@ class EventAggregator:
     def _recompute_event(
         self, db: Session, event: Event, _new_cluster: list[Opinion]
     ) -> None:
-        """重算 opinion_count / last_time / risk_level / keyword（并集）。"""
+        """重算 opinion_count / last_time / risk_level / keyword（并集），并同步标题格式。"""
         linked = (
             db.query(EventOpinion)
             .filter(EventOpinion.event_id == event.id)
@@ -471,3 +649,11 @@ class EventAggregator:
         merged = self._merge_keywords(opinions)
         if merged:
             event.keyword = ",".join(sorted(merged))
+        # 标题随成员变化重新套用统一规则：成员≥2 用『具体标题+等N条相关舆情聚集』，
+        # 单成员回落为具体 Opinion 标题。确保聚合/续挂后的事件标题始终符合新格式。
+        if len(opinions) >= 2:
+            ordered = sorted(
+                opinions,
+                key=lambda o: (_effective_time(o) or datetime(1, 1, 1, tzinfo=timezone.utc), o.id),
+            )
+            event.title = build_cluster_title(representative_title(ordered), len(opinions))
