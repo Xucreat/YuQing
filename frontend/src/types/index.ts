@@ -278,3 +278,56 @@ export interface PropagationRebuildResponse {
   success: boolean
   nodes_created: number
 }
+
+// ===== Data source admin types（数据源管理后台）=====
+export interface DataSourceItem {
+  id: number
+  key: string
+  name: string
+  type: string
+  enabled: boolean
+  priority: number
+  scope_region_codes: string | null
+  region_codes: string[]
+  region_names: string[]
+  scope_display: string
+  config_json: string | null
+  last_run_at: string | null
+  last_status: string | null
+  latest_run_status: string | null
+  latest_run_at: string | null
+  updated_at: string | null
+}
+
+export interface RegionOption {
+  code: string
+  name: string
+}
+
+export interface DataSourceListResponse {
+  items: DataSourceItem[]
+  total: number
+  page: number
+  size: number
+  region_options: RegionOption[]
+}
+
+export interface CollectorRunItem {
+  id: number
+  collector_name: string
+  start_time: string | null
+  end_time: string | null
+  fetched_raw: number
+  created: number
+  analyzed: number
+  failed: number
+  status: string
+  error_msg: string | null
+}
+
+export interface CollectorRunListResponse {
+  items: CollectorRunItem[]
+  total: number
+  page: number
+  size: number
+}
