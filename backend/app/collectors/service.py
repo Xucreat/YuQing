@@ -112,7 +112,7 @@ class CollectorService:
         # 也可显式注入 collectors（测试用），此时 collector_type 仍用于返回标识。
         self._collectors_injected: bool = collectors is not None
         self.collectors: List[BaseCollector] = (
-            collectors if collectors is not None else resolve_collectors(self.collector_type)
+            collectors if collectors is not None else resolve_collectors(collector_type=self.collector_type)
         )
         self.region_id: Optional[int] = region_id
 

@@ -97,10 +97,10 @@ class GenericSiteCollector(BaseHttpCollector):
                 links.append(a)
         return links
 
-    def fetch(self, monitoring_keywords: Optional[List[str]] = None) -> List[dict[str, Any]]:
+    def fetch(self, keywords: Optional[List[str]] = None) -> List[dict[str, Any]]:
         """列表 → 详情正文 → 标准化 dict（关键词过滤 + 防御式跳过）。
 
-        monitoring_keywords：来自 keywords 表的全局监测词；仅在未通过
+        keywords：来自 keywords 表的全局监测词；仅在未通过
         config_json 显式配置 keywords 时使用（逐源覆盖优先）。
         """
         results: List[dict[str, Any]] = []
@@ -110,7 +110,7 @@ class GenericSiteCollector(BaseHttpCollector):
         effective_kw = (
             self.keywords
             if self.keywords_explicit
-            else (monitoring_keywords or self.keywords)
+            else (keywords or self.keywords)
         )
         for art in self._collect_links():
             if art["url"] in seen:
@@ -139,3 +139,59 @@ class GenericSiteCollector(BaseHttpCollector):
                 }
             )
         return results
+
+    # ------------------------------------------------------------------
+    # 新增数据源时的轻量真实抓取校验
+    # ------------------------------------------------------------------
+    def test_fetch(self, max_test: int = 1) -> dict:
+        """新增数据源「保存校验」用：真实抓取一次，验证该配置确实能取到数据。
+
+        仅取第 1 个列表页 -> 提取文章链接 -> 尝试前 max_test 个详情页正文。
+        网络与解析均防御式处理，任何失败返回 ok=False + 可读错误，绝不抛异常。
+        返回 {ok, error, list_url, fetched_links, sample_content_len, detail_url}。
+        """
+        result: dict = {
+            "ok": False,
+            "error": None,
+            "list_url": None,
+            "fetched_links": 0,
+            "sample_content_len": 0,
+            "detail_url": None,
+        }
+        if not self.list_urls:
+            result["error"] = "config_json 缺少 list_urls（列表/栏目页 URL）"
+            return result
+        base = self.list_urls[0]
+        result["list_url"] = base
+        html = self._get(base)
+        if not html:
+            result["error"] = f"列表页无法抓取或返回空：{base}"
+            return result
+        soup = BeautifulSoup(html, "html.parser")
+        links = extract_links(
+            soup,
+            base,
+            href_contains=self.link_rule.get("href_contains"),
+            href_regex=self._href_regex,
+            href_exclude=self.link_rule.get("href_exclude"),
+            title_blacklist=self.link_rule.get("title_blacklist"),
+            max_links=self.max_links,
+        )
+        links = [a for a in links if len((a.get("title") or "").strip()) >= self.min_title_len]
+        result["fetched_links"] = len(links)
+        if not links:
+            result["error"] = "列表页未提取到任何文章链接（请检查 link_rule / href_contains）"
+            return result
+        for art in links[:max_test]:
+            detail = self._get(art["url"])
+            if not detail:
+                continue
+            dsoup = BeautifulSoup(detail, "html.parser")
+            content = self.extract_content(dsoup, self.content_selectors)
+            if content:
+                result["ok"] = True
+                result["detail_url"] = art["url"]
+                result["sample_content_len"] = len(content)
+                return result
+        result["error"] = "链接可访问，但详情页正文提取为空（请检查 content_selectors）"
+        return result

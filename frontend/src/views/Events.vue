@@ -101,7 +101,7 @@ async function handleAggregate() {
   if (aggregating.value) return
   aggregating.value = true
   try {
-    const { data } = await api.post<EventCreateResponse>('/events/aggregate')
+    const { data } = await api.post<EventCreateResponse>('/events/aggregate', {}, { timeout: 300000 })
     lastResult.value = data
     ElMessage.success('聚合完成：新建 ' + data.created + '，更新 ' + data.updated + '，关联 ' + data.linked)
     page.value = 1; await loadData()

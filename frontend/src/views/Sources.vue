@@ -13,7 +13,10 @@
         <el-input v-model="filterQ" placeholder="搜索名称 / key" clearable class="f-input" @keyup.enter="reload" @clear="reload" />
         <button class="btn btn-ghost" @click="reload">刷新</button>
       </div>
-      <div class="count-tip">共 {{ total }} 个数据源</div>
+      <div class="toolbar-right">
+        <span class="count-tip">共 {{ total }} 个数据源</span>
+        <button class="btn btn-primary" @click="openCreate">+ 新建采集源</button>
+      </div>
     </div>
 
     <!-- 管理表格 -->
@@ -153,6 +156,74 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 新建采集源弹窗 -->
+    <el-dialog
+      v-model="createVisible"
+      title="新建采集源"
+      width="660px"
+      align-center
+      class="apple-dialog"
+      modal-class="apple-modal"
+    >
+      <div class="create-form" v-loading="creating">
+        <div class="cf-row">
+          <label class="cf-label">名称 <span class="req">*</span></label>
+          <el-input v-model="form.name" placeholder="如 石家庄市政府网" />
+        </div>
+        <div class="cf-row">
+          <label class="cf-label">标识 key <span class="req">*</span></label>
+          <el-input v-model="form.key" placeholder="如 shijiazhuang_gov（字母/数字/下划线，唯一）" />
+        </div>
+        <div class="cf-row">
+          <label class="cf-label">类型</label>
+          <el-select v-model="form.type" class="cf-full">
+            <el-option label="通用网站（列表 → 详情）" value="generic_site" />
+            <el-option label="新闻网站" value="news_site" />
+            <el-option label="政府网站" value="gov_site" />
+            <el-option label="搜索引擎" value="search" />
+            <el-option label="RSS" value="rss" />
+          </el-select>
+        </div>
+        <div class="cf-row">
+          <label class="cf-label">区域（不选 = 全国）</label>
+          <el-select
+            v-model="form.scope_region_codes"
+            multiple
+            collapse-tags
+            clearable
+            placeholder="不选 = 全国"
+            class="cf-full"
+          >
+            <el-option v-for="o in regionOptions.slice(1)" :key="o.code" :label="o.name" :value="o.code" />
+          </el-select>
+        </div>
+        <div class="cf-row cf-row-2">
+          <div class="cf-col">
+            <label class="cf-label">优先级</label>
+            <el-input-number v-model="form.priority" :min="0" :max="999" size="small" controls-position="right" />
+          </div>
+          <div class="cf-col">
+            <label class="cf-label">启用</label>
+            <el-switch v-model="form.enabled" />
+          </div>
+        </div>
+        <div class="cf-row">
+          <label class="cf-label">配置 config_json <span class="req">*</span></label>
+          <el-input v-model="form.config_json" type="textarea" :rows="13" placeholder="JSON 配置" />
+          <div v-if="createConfigError" class="cfg-err">{{ createConfigError }}</div>
+          <div class="cf-hint">保存时会用真实抓取校验：能取到正文才创建成功；否则返回失败提示。</div>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dlg-foot">
+          <span v-if="testMsg" class="test-msg" :class="testOk ? 'ok' : 'bad'">{{ testMsg }}</span>
+          <button class="btn btn-ghost" :disabled="testing" @click="testCreate">测试连接</button>
+          <button class="btn btn-ghost" @click="createVisible = false">取消</button>
+          <button class="btn btn-primary" :disabled="creating || testing" @click="submitCreate">保存</button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -160,11 +231,25 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
-import type { CollectorRunItem, DataSourceItem, RegionOption } from '@/types'
+import type { CollectorRunItem, DataSourceCreateRequest, DataSourceItem, DataSourceTestResult, RegionOption } from '@/types'
 
 interface Row extends DataSourceItem {
   _saving?: boolean
 }
+
+const DEFAULT_CONFIG = JSON.stringify(
+  {
+    source_name: '',
+    list_urls: ['https://example.gov.cn/list/'],
+    link_rule: { href_contains: '.html', max_links: 20 },
+    content_selectors: ['div.content', 'div.article'],
+    keywords: '河北,石家庄',
+    max_articles: 5,
+    timeout: 10,
+  },
+  null,
+  2,
+)
 
 const loading = ref(false)
 const sources = ref<Row[]>([])
@@ -184,6 +269,23 @@ const historyLoading = ref(false)
 const configDraft = ref('')
 const configError = ref('')
 const savingConfig = ref(false)
+
+// —— 新建采集源 ——
+const createVisible = ref(false)
+const creating = ref(false)
+const testing = ref(false)
+const testMsg = ref('')
+const testOk = ref(false)
+const createConfigError = ref('')
+const form = reactive({
+  name: '',
+  key: '',
+  type: 'generic_site',
+  scope_region_codes: [] as string[],
+  priority: 50,
+  enabled: true,
+  config_json: DEFAULT_CONFIG,
+})
 
 function runPill(s: string): string {
   const m: Record<string, string> = {
@@ -309,6 +411,94 @@ async function saveConfig() {
 }
 
 onMounted(reload)
+
+function openCreate() {
+  createConfigError.value = ''
+  testMsg.value = ''
+  testOk.value = false
+  createVisible.value = true
+}
+
+function buildPayload(): DataSourceCreateRequest {
+  // source_name 缺失时回退为名称，保证「查看历史」按 name 关联能命中
+  const cfgObj = JSON.parse(form.config_json || '{}')
+  if (!cfgObj.source_name) cfgObj.source_name = form.name.trim()
+  return {
+    name: form.name.trim(),
+    key: form.key.trim(),
+    type: form.type,
+    scope_region_codes: (form.scope_region_codes || []).join(','),
+    priority: form.priority,
+    enabled: form.enabled,
+    config_json: JSON.stringify(cfgObj),
+  }
+}
+
+async function testCreate() {
+  let ok = false
+  try {
+    JSON.parse(form.config_json || '{}')
+  } catch {
+    createConfigError.value = 'config_json 不是合法 JSON'
+    return
+  }
+  createConfigError.value = ''
+  testing.value = true
+  testMsg.value = ''
+  try {
+    const { data } = await api.post<DataSourceTestResult>('/admin/data-sources/test', buildPayload())
+    ok = !!data.ok
+    testOk.value = ok
+    if (ok) {
+      const t = data.test || {}
+      testMsg.value =
+        `测试通过：列表页获取到 ${t.fetched_links ?? 0} 个链接` +
+        (t.sample_content_len ? `，示例详情页正文 ${t.sample_content_len} 字` : '')
+    } else {
+      testMsg.value = '测试未通过：' + (data.error || '未知原因')
+    }
+  } catch (e: any) {
+    testOk.value = false
+    testMsg.value = '测试失败：' + (e?.response?.data?.detail || e?.message || '请求异常')
+  } finally {
+    testing.value = false
+  }
+}
+
+async function submitCreate() {
+  if (!form.name.trim()) {
+    ElMessage.warning('请填写名称')
+    return
+  }
+  if (!form.key.trim()) {
+    ElMessage.warning('请填写标识 key')
+    return
+  }
+  try {
+    JSON.parse(form.config_json || '{}')
+  } catch {
+    createConfigError.value = 'config_json 不是合法 JSON'
+    return
+  }
+  createConfigError.value = ''
+  creating.value = true
+  try {
+    const { data } = await api.post<DataSourceItem & { test?: any }>('/admin/data-sources', buildPayload())
+    const t = data.test || {}
+    ElMessage.success(`添加成功，测试抓取通过（列表页获取到 ${t.fetched_links ?? 0} 个链接）`)
+    createVisible.value = false
+    Object.assign(form, {
+      name: '', key: '', type: 'generic_site',
+      scope_region_codes: [], priority: 50, enabled: true, config_json: DEFAULT_CONFIG,
+    })
+    reload()
+  } catch (e: any) {
+    // 后端真实抓取校验失败 / 参数错误 / key 重复：返回失败提示，不关闭弹窗
+    ElMessage.error(e?.response?.data?.detail || '添加失败')
+  } finally {
+    creating.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -386,6 +576,21 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .hist-tbl td { padding: 12px 18px; }
 .dlg-foot { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
 .cfg-err { color: #ff3b30; font-size: 12.5px; margin-right: auto; }
+
+/* 工具栏右侧：计数 + 新建按钮 */
+.toolbar-right { display: flex; align-items: center; gap: 14px; }
+/* 新建采集源表单 */
+.create-form { display: flex; flex-direction: column; gap: 16px; }
+.cf-row { display: flex; flex-direction: column; gap: 6px; }
+.cf-row-2 { flex-direction: row; gap: 28px; }
+.cf-col { display: flex; flex-direction: column; gap: 6px; }
+.cf-label { font-size: 13px; font-weight: 500; color: #1d1d1f; }
+.cf-label .req { color: #ff3b30; }
+.cf-full { width: 100%; }
+.cf-hint { font-size: 12px; color: #86868b; }
+.test-msg { font-size: 12.5px; margin-right: auto; }
+.test-msg.ok { color: #1a8e3c; }
+.test-msg.bad { color: #ff3b30; }
 </style>
 
 <style>

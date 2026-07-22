@@ -25,7 +25,7 @@ class RSSCollector(BaseCollector):
         # feeds 为空（None 或 []）-> 不加载 feedparser、不联网。
         self.feeds: list[str] = list(feeds) if feeds else _parse_rss_urls_env()
 
-    def fetch(self) -> list[dict]:
+    def fetch(self, keywords=None) -> list[dict]:
         # 未配置 / 空源：直接返回空，避免任何 import 与网络动作。
         if not self.feeds:
             return []

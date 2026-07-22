@@ -90,6 +90,16 @@ export interface KeywordCount {
 export interface SourceItem { source: string; count: number }
 export interface SentimentItem { label: string; count: number }
 export interface RegionItem { region_id: number; region_name: string; count: number }
+// 地图下钻：点击某省后返回的市/县分布
+export interface RegionChildCity { code: string; name: string; count: number }
+export interface RegionChildRaw { region_name: string; count: number; level: string }
+export interface RegionChildren {
+  province: string
+  province_code: string
+  total: number
+  cities: RegionChildCity[]
+  raw: RegionChildRaw[]
+}
 export interface RecentOpinionItem {
   id: number
   title: string
@@ -120,6 +130,7 @@ export interface DashboardStats {
   sources: SourceItem[]
   sentiments: SentimentItem[]
   regions: RegionItem[]
+  region_detail?: RegionItem[]
   // 鈫?鏃у瓧娈碉細鍚庣鏈繑鍥烇紝淇濈暀 optional 闃叉鍘嗗彶寮曠敤鎶ラ敊锛屽嬁浣跨敤
   today_new?: number
   trend_7d?: { date: string; count: number }[]
@@ -312,10 +323,35 @@ export interface DataSourceListResponse {
   region_options: RegionOption[]
 }
 
+export interface DataSourceCreateRequest {
+  name: string
+  key: string
+  type?: string
+  class_path?: string
+  scope_region_codes?: string
+  config_json: string
+  priority?: number
+  enabled?: boolean
+}
+
+export interface DataSourceTestResult {
+  ok: boolean
+  error?: string | null
+  test?: {
+    ok: boolean
+    error?: string | null
+    list_url?: string | null
+    fetched_links?: number
+    sample_content_len?: number
+    detail_url?: string | null
+    verified?: boolean
+    note?: string
+  }
+}
+
 export interface CollectorRunItem {
   id: number
-  collector_name: string
-  start_time: string | null
+  collector_name: string  start_time: string | null
   end_time: string | null
   fetched_raw: number
   created: number

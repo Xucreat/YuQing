@@ -21,7 +21,7 @@ class WeiboCollector(BaseCollector):
         self.keywords = [k.strip() for k in kw.split(",") if k.strip()]
         self._crawler = WeiboCrawler(headless=headless, cookie_str=settings.weibo_cookie)
 
-    def fetch(self):
+    def fetch(self, keywords=None):
         if not self.keywords:
             return []
         results = []

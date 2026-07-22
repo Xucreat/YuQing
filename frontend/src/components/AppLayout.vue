@@ -23,14 +23,14 @@
         <router-link to="/alerts" class="nav-item" :class="{ active: activeMenu === '/alerts' }">
           <span class="ico">🔔</span><span>预警中心</span>
         </router-link>
-        <router-link to="/keywords" class="nav-item" :class="{ active: activeMenu === '/keywords' }">
-          <span class="ico">☷</span><span>关键词管理</span>
-        </router-link>
-        <router-link to="/sources" class="nav-item" :class="{ active: activeMenu === '/sources' }">
-          <span class="ico">✴</span><span>数据源管理</span>
+        <router-link to="/data" class="nav-item" :class="{ active: activeMenu === '/data' }">
+          <span class="ico">🗂</span><span>数据管理</span>
         </router-link>
         <router-link to="/propagation" class="nav-item" :class="{ active: activeMenu === '/propagation' }">
           <span class="ico">📡</span><span>传播溯源</span>
+        </router-link>
+        <router-link to="/command-screen" class="nav-item nav-item--screen" :class="{ active: activeMenu === '/command-screen' }">
+          <span class="ico">▦</span><span>指挥大屏</span>
         </router-link>
       </nav>
 
@@ -96,10 +96,10 @@ const pageTitle = computed(() => {
     '/opinions': '舆情列表',
     '/events': '事件中心',
     '/alerts': '预警中心',
-    '/keywords': '关键词管理',
-    '/sources': '数据源管理',
+    '/data': '数据管理',
     '/users': '用户管理',
     '/propagation': '传播溯源',
+    '/command-screen': '指挥大屏',
   }
   if (route.path.startsWith('/opinion/')) return '舆情详情'
   if (route.path.startsWith('/event/')) return '事件详情'
@@ -112,10 +112,10 @@ const pageSub = computed(() => {
     '/opinions': '查看和管理所有舆情信息',
     '/events': '跟踪和管理舆情事件',
     '/alerts': '预警规则配置与预警记录',
-    '/keywords': '管理舆情监测关键词与命中规则',
-    '/sources': '配置舆情采集的数据来源',
+    '/data': '管理舆情监测关键词与采集数据源',
     '/users': '管理系统用户与角色权限',
     '/propagation': '溯源分析舆情传播路径',
+    '/command-screen': '全域舆情实时态势驾驶舱',
   }
   if (route.path.startsWith('/opinion/')) return '舆情详细信息与AI分析'
   if (route.path.startsWith('/event/')) return '事件详情与关联舆情'
@@ -126,7 +126,7 @@ async function handleCollect() {
   if (collecting.value) return
   collecting.value = true
   try {
-    const { data } = await api.post('/collector/run');
+    const { data } = await api.post('/collector/run', {}, { timeout: 300000 });
     // 安全读取：后端未返回时回退为 0，避免 undefined 拼接到提示文案。
     const fetchedRaw = data.fetched_raw ?? 0;
     const created = data.created ?? 0;
@@ -174,9 +174,12 @@ function handleLogout() {
   width: 246px;
   flex-shrink: 0;
   padding: 26px 16px;
-  position: sticky;
+  position: fixed;
   top: 0;
-  height: 100vh;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
   display: flex;
   flex-direction: column;
   background: #f5f5f7;
@@ -247,6 +250,21 @@ function handleLogout() {
   text-align: center;
   font-size: 16px;
 }
+/* 指挥大屏：独立「全屏驾驶舱」模式入口，视觉上与常规页面区分 */
+.nav-item--screen {
+  color: #0071e3;
+}
+.nav-item--screen .ico {
+  color: #0071e3;
+}
+.nav-item--screen:hover {
+  background: #e8f1fd;
+  color: #0071e3;
+}
+.nav-item--screen.active {
+  background: #e8f1fd;
+  color: #0071e3;
+}
 .nav-spacer {
   flex: 1;
 }
@@ -296,7 +314,10 @@ function handleLogout() {
   flex: 1;
   min-width: 0;
   max-width: 1440px;
-  margin: 0 auto;
+  margin-left: 246px;
+  margin-right: auto;
+  margin-top: 0;
+  margin-bottom: 0;
   padding: 34px 44px 60px;
 }
 
@@ -352,7 +373,7 @@ function handleLogout() {
 /* ---- Responsive ---- */
 @media (max-width: 820px) {
   .sidebar { display: none; }
-  .main { padding: 24px 18px 48px; }
+  .main { margin-left: 0; padding: 24px 18px 48px; }
 }
 </style>
 

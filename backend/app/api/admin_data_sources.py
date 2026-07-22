@@ -20,6 +20,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.collectors.generic_site import GenericSiteCollector
+from app.collectors.registry import import_class
 from app.core.dependencies import get_current_user
 from app.core.permissions import require_admin
 from app.db.session import get_db
@@ -33,6 +35,16 @@ admin_ds_router = APIRouter(
     tags=["admin-data-sources"],
     dependencies=[Depends(get_current_user)],
 )
+
+# 用户可自助添加的数据源类型 -> 采集器类（均为 config 驱动，无需写代码）。
+# 真实抓取校验由 GenericSiteCollector.test_fetch 完成。
+_TYPE_CLASS_PATH: dict = {
+    "generic_site": "app.collectors.generic_site.GenericSiteCollector",
+    "news_site": "app.collectors.generic_site.GenericSiteCollector",
+    "gov_site": "app.collectors.generic_site.GenericSiteCollector",
+    "search": "app.collectors.generic_site.GenericSiteCollector",
+    "rss": "app.collectors.generic_site.GenericSiteCollector",
+}
 
 
 def _region_map(db: Session) -> dict:
@@ -70,6 +82,73 @@ def _serialize(ds: DataSource, region_map: dict, latest: dict | None = None) -> 
         "latest_run_at": run.start_time.isoformat() if run and run.start_time else None,
         "updated_at": ds.updated_at.isoformat() if ds.updated_at else None,
     }
+
+
+def _parse_config_json(raw) -> tuple:
+    """解析 config_json（字符串或对象）。返回 (dict, error_str)。"""
+    if raw is None:
+        return None, "config_json 不能为空"
+    if isinstance(raw, dict):
+        return raw, None
+    if isinstance(raw, str):
+        if not raw.strip():
+            return None, "config_json 不能为空"
+        try:
+            cfg = json.loads(raw)
+        except json.JSONDecodeError as e:
+            return None, f"config_json 不是合法 JSON：{e}"
+        if not isinstance(cfg, dict):
+            return None, "config_json 必须是 JSON 对象"
+        return cfg, None
+    return None, "config_json 格式不支持"
+
+
+def _build_test(class_path: str, config: dict) -> dict:
+    """构建采集器并做一次轻量真实抓取校验。返回 {ok, error, verified, ...}。"""
+    try:
+        cls = import_class(class_path)
+        collector = cls(**config)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "verified": False,
+            "error": f"采集器构建失败（{class_path}）：{type(exc).__name__}: {exc}",
+        }
+    if isinstance(collector, GenericSiteCollector):
+        res = collector.test_fetch()
+        res["verified"] = True
+        return res
+    # 非通用采集器（bespoke）：尽力而为的单项种子校验，否则仅结构校验通过
+    seed = getattr(collector, "list_urls", None) or getattr(collector, "seed_urls", None)
+    if isinstance(seed, (list, tuple)) and seed:
+        html = collector._get(seed[0])
+        if html:
+            return {"ok": True, "verified": False, "note": "非通用采集器：首个种子 URL 可访问", "list_url": seed[0]}
+        return {"ok": False, "verified": False, "error": f"种子 URL 无法抓取：{seed[0]}"}
+    return {"ok": True, "verified": False, "note": "非通用采集器，跳过实时抓取校验（仅结构校验通过）"}
+
+
+def _validate_create(body) -> str | None:
+    """返回首个校验错误字符串；通过返回 None。"""
+    if not isinstance(body, dict):
+        return "请求体必须是 JSON 对象"
+    name = (body.get("name") or "").strip()
+    if not name:
+        return "名称（name）不能为空"
+    key = (body.get("key") or "").strip()
+    if not key:
+        return "标识（key）不能为空"
+    if " " in key or not key.replace("_", "").isalnum():
+        return "key 只能包含字母、数字、下划线，且不能有空格"
+    if body.get("priority") is not None:
+        try:
+            int(body["priority"])
+        except (TypeError, ValueError):
+            return "priority 必须为整数"
+    if body.get("enabled") is not None and not isinstance(body.get("enabled"), bool):
+        return "enabled 必须为布尔值"
+    _, err = _parse_config_json(body.get("config_json"))
+    return err
 
 
 @admin_ds_router.get("")
@@ -134,6 +213,69 @@ def list_data_sources(
         "size": size,
         "region_options": region_options,
     }
+
+
+@admin_ds_router.post("/test")
+def test_data_source(
+    body: dict,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """仅校验：构建采集器并真实抓取一次，不落库。返回 {ok, error, test}。"""
+    err = _validate_create(body)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+    type_ = body.get("type") or "generic_site"
+    class_path = body.get("class_path") or _TYPE_CLASS_PATH.get(type_, _TYPE_CLASS_PATH["generic_site"])
+    cfg, _ = _parse_config_json(body.get("config_json"))
+    test = _build_test(class_path, cfg)
+    return {"ok": test.get("ok", False), "error": test.get("error"), "test": test}
+
+
+@admin_ds_router.post("")
+def create_data_source(
+    body: dict,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """新增数据源：保存前进行真实抓取校验，校验失败不落库（返回 422 + 可读错误）。"""
+    err = _validate_create(body)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+
+    key = body["key"].strip()
+    if db.scalar(select(DataSource).where(DataSource.key == key)):
+        raise HTTPException(status_code=409, detail=f"key 已存在：{key}")
+
+    name = body["name"].strip()
+    type_ = body.get("type") or "generic_site"
+    class_path = body.get("class_path") or _TYPE_CLASS_PATH.get(type_, _TYPE_CLASS_PATH["generic_site"])
+    cfg, _ = _parse_config_json(body.get("config_json"))
+
+    # —— 保存前的真实抓取校验（核心需求）——
+    test = _build_test(class_path, cfg)
+    if not test.get("ok"):
+        raise HTTPException(
+            status_code=422,
+            detail=test.get("error") or "抓取校验未通过，未创建数据源",
+        )
+
+    raw_cfg = body.get("config_json")
+    config_json_str = raw_cfg if isinstance(raw_cfg, str) else json.dumps(cfg, ensure_ascii=False)
+    ds = DataSource(
+        key=key,
+        name=name,
+        type=type_,
+        class_path=class_path,
+        enabled=bool(body.get("enabled", True)),
+        priority=int(body.get("priority", 50)),
+        scope_region_codes=body.get("scope_region_codes") or None,
+        config_json=config_json_str,
+    )
+    db.add(ds)
+    db.commit()
+    db.refresh(ds)
+    return {**_serialize(ds, _region_map(db)), "test": test}
 
 
 @admin_ds_router.patch("/{ds_id}")

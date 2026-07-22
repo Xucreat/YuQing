@@ -11,7 +11,9 @@ import pytest
 TEST_DB_URL = (
     "postgresql+psycopg://opinion_user:opinion_pass@localhost:5433/opinion_test"
 )
-os.environ["DATABASE_URL"] = TEST_DB_URL
+# 允许通过环境变量覆盖测试库地址（如本机无 5433 实例时指向同实例的 opinion_test），
+# 默认仍指向 5433 的 opinion_test，对原 CI/开发环境零破坏。
+os.environ.setdefault("DATABASE_URL", TEST_DB_URL)
 
 # 测试默认采集方式 = mock（离线稳定，不触网政府站）。
 # 必须在导入 app / settings（lru_cache）之前注入。

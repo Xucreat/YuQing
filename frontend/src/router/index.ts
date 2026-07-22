@@ -1,5 +1,4 @@
-﻿import KeywordsPage from '@/views/Keywords.vue'
-import SourcesPage from '@/views/Sources.vue'
+﻿import DataManagePage from '@/views/DataManage.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
@@ -49,17 +48,14 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
-      path: '/keywords',
-      name: 'keywords',
-      component: KeywordsPage,
+      path: '/data',
+      name: 'data',
+      component: DataManagePage,
       meta: { requiresAuth: true },
     },
-    {
-      path: '/sources',
-      name: 'sources',
-      component: SourcesPage,
-      meta: { requiresAuth: true },
-    },
+    // 旧路由重定向到数据管理聚合页的对应子页，保留已有书签
+    { path: '/keywords', redirect: { name: 'data', query: { tab: 'keywords' } } },
+    { path: '/sources', redirect: { name: 'data', query: { tab: 'sources' } } },
     {
       path: '/users',
       name: 'users',
@@ -71,6 +67,13 @@ const router = createRouter({
       name: 'propagation',
       component: () => import('@/views/Propagation.vue'),
       meta: { requiresAuth: true },
+    },
+    {
+      // 指挥大屏：独立全屏布局（不套 AppLayout 侧边栏），复用现有认证机制
+      path: '/command-screen',
+      name: 'command-screen',
+      component: () => import('@/views/CommandScreen.vue'),
+      meta: { requiresAuth: true, layout: 'fullscreen' },
     },
   ],
 })

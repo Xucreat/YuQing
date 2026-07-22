@@ -1,48 +1,55 @@
 <template>
-  <div class="dashboard" v-loading="loading">
-    <!-- Stat cards -->
-    <div class="stat-grid">
-      <div class="card stat-card">
-        <div class="s-ico">≡</div>
-        <div class="s-label">总舆情数</div>
-        <div class="s-value">{{ stats.total.toLocaleString() }}</div>
-        <div class="s-foot-row"><span class="s-foot">累计监测数据</span></div>
-      </div>
-      <div class="card stat-card is-green">
-        <div class="s-ico">↗</div>
-        <div class="s-label">今日新增</div>
-        <div class="s-value">{{ stats.today.toLocaleString() }}</div>
-        <div class="s-foot-row"><span class="s-foot">当日采集</span></div>
-      </div>
-      <div class="card stat-card is-red">
-        <div class="s-ico">!</div>
-        <div class="s-label">高风险</div>
-        <div class="s-value danger">{{ stats.high_risk.toLocaleString() }}</div>
-        <div class="s-foot-row"><span class="s-foot">需关注处理</span></div>
-      </div>
-      <div class="card stat-card is-amber">
-        <div class="s-ico">◎</div>
-        <div class="s-label">事件数</div>
-        <div class="s-value">{{ (stats.event_count || 0).toLocaleString() }}</div>
-        <div class="s-foot-row"><span class="s-foot">聚合事件</span></div>
-      </div>
-      <div class="card stat-card is-blue">
-        <div class="s-ico">↻</div>
-        <div class="s-label">采集状态</div>
-        <div class="s-value" style="font-size:24px;display:flex;align-items:center;gap:8px;">
-          <span :style="{color: collectorOnline ? '#34c759' : '#86868b'}">{{ collectorOnline ? '●' : '○' }}</span>
-          <span style="font-size:14px;font-weight:400;">{{ collectorText }}</span>
+  <div class="cockpit" v-loading="loading">
+    <!-- ===== KPI 指标条：一眼掌握核心总量 ===== -->
+    <section class="kpi-row" aria-label="核心指标">
+      <article class="kpi-card kpi-blue">
+        <span class="kpi-ico">▦</span>
+        <div class="kpi-body">
+          <div class="kpi-label">总舆情数</div>
+          <div class="kpi-value">{{ stats.total.toLocaleString() }}</div>
+          <div class="kpi-foot">累计监测数据</div>
         </div>
-        <div class="s-foot-row"><span class="s-foot">{{ collectorLastRun }}</span></div>
-      </div>
-    </div>
+      </article>
+      <article class="kpi-card kpi-green">
+        <span class="kpi-ico">↗</span>
+        <div class="kpi-body">
+          <div class="kpi-label">今日新增</div>
+          <div class="kpi-value">{{ stats.today.toLocaleString() }}</div>
+          <div class="kpi-foot">当日采集</div>
+        </div>
+      </article>
+      <article class="kpi-card kpi-red">
+        <span class="kpi-ico">!</span>
+        <div class="kpi-body">
+          <div class="kpi-label">高风险</div>
+          <div class="kpi-value danger">{{ stats.high_risk.toLocaleString() }}</div>
+          <div class="kpi-foot">需关注处理</div>
+        </div>
+      </article>
+      <article class="kpi-card kpi-amber">
+        <span class="kpi-ico">◎</span>
+        <div class="kpi-body">
+          <div class="kpi-label">事件数</div>
+          <div class="kpi-value">{{ (stats.event_count || 0).toLocaleString() }}</div>
+          <div class="kpi-foot">聚合事件</div>
+        </div>
+      </article>
+      <article class="kpi-card kpi-status" :class="collectorOnline ? 'is-on' : 'is-off'">
+        <span class="kpi-ico">↻</span>
+        <div class="kpi-body">
+          <div class="kpi-label">采集状态</div>
+          <div class="kpi-value kpi-status-val">
+            <span class="status-dot"></span>{{ collectorText }}
+          </div>
+          <div class="kpi-foot">{{ collectorLastRun }}</div>
+        </div>
+      </article>
+    </section>
 
-    <!-- 全局态势 -->
-    <div class="card situation" :class="'lvl-' + situationLevel">
+    <!-- ===== 全局态势：总体研判 + 关键比率 + 报告导出 ===== -->
+    <section class="situation" :class="'lvl-' + situationLevel">
       <div class="sit-left">
-        <div class="sit-level">
-          <span class="lvl-dot"></span>{{ levelText }}
-        </div>
+        <div class="sit-level"><span class="lvl-dot"></span>{{ levelText }}</div>
         <div class="sit-text">{{ situationText }}</div>
       </div>
       <div class="sit-kpis">
@@ -50,69 +57,35 @@
         <div class="sit-kpi"><span class="k danger">{{ stats.high_risk.toLocaleString() }}</span><span class="l">高风险</span></div>
         <div class="sit-kpi"><span class="k">{{ riskRate }}%</span><span class="l">风险率</span></div>
         <div class="sit-kpi"><span class="k">{{ negativeRate }}%</span><span class="l">负面率</span></div>
-        <div class="sit-kpi"><span class="k">{{ (stats.event_count||0).toLocaleString() }}</span><span class="l">事件</span></div>
+        <div class="sit-kpi"><span class="k">{{ (stats.event_count || 0).toLocaleString() }}</span><span class="l">事件</span></div>
       </div>
       <div class="sit-action">
         <el-button v-if="can('reports:read')" type="primary" :loading="reporting" @click="downloadReport">
-          <span style="margin-right:4px;">⎙</span>导出舆情报告(PDF)
+          <span style="margin-right:4px;">⎙</span>导出舆情报告
         </el-button>
       </div>
-    </div>
+    </section>
 
-    <!-- Analytics & live-monitoring grid
-         Layout: wide left column = analytical charts, narrow right rail = live monitoring.
-         Live feeds (实时快讯 / 预警滚动) are surfaced higher so operators see them without deep scrolling. -->
-    <div class="content-grid">
-      <div class="card card-pad-lg area-trend">
-        <div class="chart-head">
-          <h3 class="section-title">舆情趋势</h3>
+    <!-- ===== 组件网格：分析 / 监测 / 地理 均衡排布 ===== -->
+    <section class="widget-grid">
+      <!-- 舆情趋势（主图） -->
+      <article class="card widget widget-trend">
+        <header class="w-head">
+          <h3 class="w-title">舆情趋势</h3>
           <SegmentedControl v-model="trendDays" :options="segOptions" />
-        </div>
+        </header>
         <div ref="trendRef" class="chart-box"></div>
-      </div>
+      </article>
 
-      <div class="card card-pad-lg area-donut">
-        <div class="chart-head"><h3 class="section-title">情感分布</h3></div>
-        <SentimentDonut :data="realSentimentData" />
-      </div>
-
-      <div class="card card-pad-lg area-source">
-        <div class="chart-head"><h3 class="section-title">来源分布</h3></div>
-        <div ref="sourceRef" class="chart-box" style="height:240px;"></div>
-      </div>
-
-      <div class="card card-pad-lg area-cloud">
-        <div class="chart-head"><h3 class="section-title">热点词云</h3></div>
-        <div ref="wordcloudRef" class="chart-box" style="height:240px;"></div>
-      </div>
-
-      <div class="card card-pad-lg feed-card area-feed">
-        <div class="chart-head">
-          <h3 class="section-title">实时快讯</h3>
-          <span class="live-dot">● LIVE</span>
-        </div>
-        <div class="scroll-wrap">
-          <div class="scroll-inner" :style="{ animationDuration: feedDuration + 's' }">
-            <div v-for="(n, i) in doubledNews" :key="'n'+i" class="feed-item clickable" title="查看舆情详情" @click="goOpinion(n.id)">
-              <span class="fi-tag" :class="sentClass(n.sentiment)">{{ sentLabel(n.sentiment) }}</span>
-              <div class="fi-body">
-                <div class="fi-title">{{ n.title }}</div>
-                <div class="fi-meta">{{ n.source }} · {{ n.region_name }} · {{ fmtTime(n.created_at) }} · 风险 {{ n.risk_score }}</div>
-              </div>
-            </div>
-          </div>
-          <div v-if="!recentNews.length" class="feed-empty">暂无实时快讯</div>
-        </div>
-      </div>
-
-      <div class="card card-pad-lg feed-card area-alert">
-        <div class="chart-head">
-          <h3 class="section-title">预警滚动</h3>
+      <!-- 预警滚动（移至趋势图右侧，与舆情趋势卡片等高对齐） -->
+      <article class="card widget widget-alert">
+        <header class="w-head">
+          <h3 class="w-title">预警滚动</h3>
           <span class="live-dot warn">● ALERT</span>
-        </div>
+        </header>
         <div class="scroll-wrap">
           <div class="scroll-inner" :style="{ animationDuration: alertDuration + 's' }">
-            <div v-for="(a, i) in doubledAlerts" :key="'a'+i" class="alert-item" :class="{ handled: a.handled, clickable: !!a.opinion_id }" :title="a.opinion_id ? '查看舆情详情' : ''" @click="a.opinion_id && goOpinion(a.opinion_id)">
+            <div v-for="(a, i) in doubledAlerts" :key="'a' + i" class="alert-item" :class="{ handled: a.handled, clickable: !!a.opinion_id }" :title="a.opinion_id ? '查看舆情详情' : ''" @click="a.opinion_id && goOpinion(a.opinion_id)">
               <span class="ai-tag" :class="riskClass(a.risk_level)">{{ riskText(a.risk_level) }}</span>
               <div class="ai-body">
                 <div class="ai-title">{{ a.opinion_title || a.rule_name }}</div>
@@ -122,15 +95,54 @@
           </div>
           <div v-if="!alerts.length" class="feed-empty">暂无预警</div>
         </div>
-      </div>
+      </article>
 
-      <div class="card card-pad-lg area-geo">
-        <div class="chart-head"><h3 class="section-title">地理分布（地区舆情 TOP）</h3></div>
+      <!-- 来源分布 -->
+      <article class="card widget widget-source">
+        <header class="w-head"><h3 class="w-title">来源分布</h3></header>
+        <div ref="sourceRef" class="chart-box"></div>
+      </article>
+
+      <!-- 情感分布（移至来源/实时快讯之间，与同行卡片等高对齐） -->
+      <article class="card widget widget-sentiment">
+        <header class="w-head"><h3 class="w-title">情感分布</h3></header>
+        <SentimentDonut :data="realSentimentData" />
+      </article>
+
+      <!-- 实时快讯 -->
+      <article class="card widget widget-feed">
+        <header class="w-head">
+          <h3 class="w-title">实时快讯</h3>
+          <span class="live-dot">● LIVE</span>
+        </header>
+        <div class="scroll-wrap">
+          <div class="scroll-inner" :style="{ animationDuration: feedDuration + 's' }">
+            <div v-for="(n, i) in doubledNews" :key="'n' + i" class="feed-item clickable" title="查看舆情详情" @click="goOpinion(n.id)">
+              <span class="fi-tag" :class="sentClass(n.sentiment)">{{ sentLabel(n.sentiment) }}</span>
+              <div class="fi-body">
+                <div class="fi-title">{{ n.title }}</div>
+                <div class="fi-meta">{{ n.source }} · {{ n.region_name }} · {{ fmtTime(n.created_at) }} · 风险 {{ n.risk_score }}</div>
+              </div>
+            </div>
+          </div>
+          <div v-if="!recentNews.length" class="feed-empty">暂无实时快讯</div>
+        </div>
+      </article>
+
+      <!-- 热点词云（移至地理分布左侧，等高对齐） -->
+      <article class="card widget widget-word">
+        <header class="w-head"><h3 class="w-title">热点词云</h3></header>
+        <div ref="wordcloudRef" class="chart-box"></div>
+      </article>
+
+      <!-- 地理分布（视觉重心） -->
+      <article class="card widget widget-geo">
+        <header class="w-head"><h3 class="w-title">地理分布（地区舆情细分 TOP）</h3></header>
         <div ref="regionRef" class="chart-box"></div>
-      </div>
+      </article>
+    </section>
 
-      <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
-    </div>
+    <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
   </div>
 </template>
 
@@ -167,7 +179,7 @@ const segOptions = [
 
 const stats = reactive<DashboardStats>({
   total: 0, today: 0, high_risk: 0, event_count: 0,
-  trend: [], keywords: [], sources: [], sentiments: [], regions: [],
+  trend: [], keywords: [], sources: [], sentiments: [], regions: [], region_detail: [],
 })
 
 // 实时快讯 / 预警滚动
@@ -282,8 +294,11 @@ function renderSourceDistribution() {
 }
 
 function renderRegionDistribution() {
-  if (!regionChart || !stats.regions?.length) return
-  const data = [...(stats.regions as RegionItem[])].sort((a, b) => b.count - a.count).slice(0, 10)
+  // 使用 region_detail（市/县细分），避免仅显示省级「河北省」而过于空泛；
+  // 旧 regions（省级上卷）仅供指挥大屏中国地图使用。
+  const src = stats.region_detail?.length ? stats.region_detail : stats.regions
+  if (!regionChart || !src?.length) return
+  const data = [...(src as RegionItem[])].sort((a, b) => b.count - a.count).slice(0, 10)
   regionChart.setOption({
     tooltip: { trigger: "axis", backgroundColor: "rgba(29,29,31,0.94)", borderColor: "transparent", textStyle: { color: "#fff", fontSize: 12 } },
     grid: { left: 110, right: 30, top: 10, bottom: 20 },
@@ -398,118 +413,205 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.dashboard { min-height: 100%; }
-.stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
-.stat-card { padding: 16px 18px; position: relative; }
-.stat-card .s-ico { float: right; width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; background: #e8f1fd; color: #0071e3; line-height: 1; }
-.stat-card.is-red .s-ico { background: rgba(255,59,48,0.1); color: #ff3b30; }
-.stat-card.is-green .s-ico { background: rgba(52,199,89,0.12); color: #1a8e3c; }
-.stat-card.is-amber .s-ico { background: rgba(255,159,10,0.12); color: #c77700; }
-.stat-card.is-blue .s-ico { background: rgba(0,122,255,0.1); color: #007aff; }
-.stat-card .s-label { font-size: 13px; color: #6e6e73; margin-bottom: 6px; }
-.stat-card .s-value { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; color: #1d1d1f; }
-.stat-card .s-value.danger { color: #ff3b30; }
-.s-foot-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; }
-.s-foot { font-size: 12px; color: #86868b; }
-.card { background: #ffffff; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 10px 26px rgba(0,0,0,0.05); padding: 20px; }
-.card-pad-lg { padding: 20px 22px; }
+.cockpit { min-height: 100%; }
 
-/* 全局态势 */
-.situation { display: flex; align-items: center; gap: 18px; margin-bottom: 12px; padding: 14px 20px; border-left: 5px solid #34c759; transition: border-color .3s; }
+/* ============ KPI 指标条 ============ */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.kpi-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e8e8ed;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 18px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.kpi-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--accent, #0071e3);
+}
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05), 0 14px 30px rgba(0, 0, 0, 0.07);
+}
+.kpi-blue { --accent: #0071e3; }
+.kpi-green { --accent: #34c759; }
+.kpi-red { --accent: #ff3b30; }
+.kpi-amber { --accent: #ff9f0a; }
+.kpi-status { --accent: #007aff; }
+.kpi-status.is-off { --accent: #86868b; }
+
+.kpi-ico {
+  flex-shrink: 0;
+  width: 38px; height: 38px;
+  border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; line-height: 1;
+}
+.kpi-blue .kpi-ico { background: rgba(0, 113, 227, 0.10); color: #0071e3; }
+.kpi-green .kpi-ico { background: rgba(52, 199, 89, 0.12); color: #1a8e3c; }
+.kpi-red .kpi-ico { background: rgba(255, 59, 48, 0.10); color: #ff3b30; }
+.kpi-amber .kpi-ico { background: rgba(255, 159, 10, 0.12); color: #c77700; }
+.kpi-status .kpi-ico { background: rgba(0, 122, 255, 0.10); color: #007aff; }
+.kpi-status.is-off .kpi-ico { background: rgba(134, 134, 139, 0.12); color: #86868b; }
+
+.kpi-body { min-width: 0; }
+.kpi-label { font-size: 12.5px; color: #6e6e73; margin-bottom: 3px; }
+.kpi-value {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: #1d1d1f;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-value.danger { color: #ff3b30; }
+.kpi-status-val { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 600; }
+.status-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #007aff;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.18);
+  flex-shrink: 0;
+}
+.kpi-status.is-off .status-dot { background: #86868b; box-shadow: 0 0 0 4px rgba(134, 134, 139, 0.18); }
+.kpi-foot {
+  font-size: 12px; color: #86868b; margin-top: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ============ 全局态势 ============ */
+.situation {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 12px;
+  padding: 14px 18px;
+  background: #fff;
+  border: 1px solid #e8e8ed;
+  border-left: 4px solid #34c759;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 18px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.3s;
+}
 .situation.lvl-yellow { border-left-color: #ff9f0a; }
 .situation.lvl-red { border-left-color: #ff3b30; }
 .sit-left { flex: 1; min-width: 0; }
-.sit-level { font-size: 18px; font-weight: 700; color: #1d1d1f; display: flex; align-items: center; gap: 8px; }
-.lvl-dot { width: 12px; height: 12px; border-radius: 50%; background: #34c759; box-shadow: 0 0 0 4px rgba(52,199,89,0.18); }
-.lvl-yellow .lvl-dot { background: #ff9f0a; box-shadow: 0 0 0 4px rgba(255,159,10,0.18); }
-.lvl-red .lvl-dot { background: #ff3b30; box-shadow: 0 0 0 4px rgba(255,59,48,0.18); animation: pulse 1.4s infinite; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-.sit-text { font-size: 13.5px; color: #6e6e73; margin-top: 6px; }
-.sit-kpis { display: flex; gap: 16px; }
-.sit-kpi { display: flex; flex-direction: column; align-items: center; min-width: 52px; }
-.sit-kpi .k { font-size: 18px; font-weight: 700; color: #1d1d1f; line-height: 1.1; }
+.sit-level { font-size: 15px; font-weight: 700; color: #1d1d1f; display: flex; align-items: center; gap: 8px; }
+.lvl-dot { width: 10px; height: 10px; border-radius: 50%; background: #34c759; box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.18); }
+.lvl-yellow .lvl-dot { background: #ff9f0a; box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.18); }
+.lvl-red .lvl-dot { background: #ff3b30; box-shadow: 0 0 0 4px rgba(255, 59, 48, 0.18); animation: pulse 1.4s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.sit-text { font-size: 13px; color: #6e6e73; margin-top: 4px; }
+.sit-kpis { display: flex; gap: 18px; }
+.sit-kpi { display: flex; flex-direction: column; align-items: center; min-width: 54px; }
+.sit-kpi .k { font-size: 16px; font-weight: 700; color: #1d1d1f; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .sit-kpi .k.danger { color: #ff3b30; }
-.sit-kpi .l { font-size: 12px; color: #86868b; margin-top: 4px; }
+.sit-kpi .l { font-size: 12px; color: #86868b; margin-top: 3px; }
 .sit-action { flex-shrink: 0; }
 
-/* 总览驾驶舱：三栏式「中心聚焦」结构
-   中栏(焦点)= 地理分布纵向贯通(2 行) + 热点词云(底部贯通) → 不再独占显空；
-   左栏=分析(趋势/来源)，右栏=实时监测(情感/实时快讯/预警) */
-.content-grid {
+/* ============ 组件网格（12 列） ============ */
+.widget-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr) minmax(0, 1fr);
-  grid-template-areas:
-    "trend  geo    donut"
-    "source geo    feed"
-    "cloud  cloud  alert";
-  gap: 14px;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 12px;
   align-items: stretch;
 }
-.area-trend  { grid-area: trend; }
-.area-donut  { grid-area: donut; }
-.area-source { grid-area: source; }
-.area-cloud  { grid-area: cloud; }
-.area-feed   { grid-area: feed; }
-.area-alert  { grid-area: alert; }
-.area-geo    { grid-area: geo; display: flex; flex-direction: column; }
-.area-geo .chart-box { flex: 1; min-height: 360px; height: auto; }
-.chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-.chart-box { width: 100%; height: 250px; }
-.section-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: #1d1d1f; }
+.widget { display: flex; flex-direction: column; min-width: 0; }
+.widget-trend { grid-column: span 8; }
+.widget-sentiment { grid-column: span 4; }
+.widget-source { grid-column: span 4; }
+.widget-word { grid-column: span 4; }
+.widget-feed { grid-column: span 4; }
+.widget-alert { grid-column: span 4; }
+.widget-geo { grid-column: span 8; }
+
+/* 卡片基底 */
+.card {
+  background: #fff;
+  border: 1px solid #e8e8ed;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 18px rgba(0, 0, 0, 0.04);
+  padding: 16px 18px;
+  transition: box-shadow 0.18s ease;
+}
+.card:hover { box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05), 0 14px 30px rgba(0, 0, 0, 0.06); }
+
+.w-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.w-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: #1d1d1f; }
+.chart-box { width: 100%; flex: 1 1 auto; min-height: 0; }
+
+/* 图表高度（紧凑、确定尺寸，避免 echarts 塌陷） */
+.widget-trend .chart-box { height: 220px; }
+.widget-source .chart-box { height: 200px; }
+.widget-word .chart-box { height: 200px; }
+.widget-geo .chart-box { height: 220px; }
+/* 预警滚动：与舆情趋势卡片等高，使第一行底部对齐 */
+.widget-alert .scroll-wrap { height: 220px; }
+
+/* 情感分布（donut 居中填充 220px，与地理分布卡片等高对齐） */
+.widget-sentiment :deep(.donut-wrap) { height: 220px; align-items: center; justify-content: center; }
 
 /* 实时快讯 / 预警滚动 */
-.feed-card { display: flex; flex-direction: column; }
-.scroll-wrap { position: relative; height: 248px; overflow: hidden; }
-.scroll-wrap::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: linear-gradient(transparent, #fff); pointer-events: none; }
+.scroll-wrap { position: relative; flex: 1 1 auto; min-height: 0; height: 200px; overflow: hidden; }
+.scroll-wrap::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: 0; height: 40px;
+  background: linear-gradient(transparent, #fff);
+  pointer-events: none;
+}
 .scroll-inner { animation: scroll-up linear infinite; }
 .scroll-wrap:hover .scroll-inner { animation-play-state: paused; }
 @keyframes scroll-up { from { transform: translateY(0); } to { transform: translateY(-50%); } }
-.feed-item, .alert-item { display: flex; gap: 10px; padding: 9px 4px; border-bottom: 1px dashed #f0f0f2; align-items: flex-start; }
+.feed-item, .alert-item {
+  display: flex; gap: 10px; padding: 8px 4px;
+  border-bottom: 1px dashed #f0f0f2; align-items: flex-start;
+}
 .feed-item.clickable, .alert-item.clickable { cursor: pointer; transition: background 0.15s; }
 .feed-item.clickable:hover, .alert-item.clickable:hover { background: #f5f8fd; border-radius: 8px; }
 .feed-item.clickable:hover .fi-title, .alert-item.clickable:hover .ai-title { color: #0071e3; }
-.alert-item.handled { opacity: .55; }
+.alert-item.handled { opacity: 0.55; }
 .fi-tag, .ai-tag { flex-shrink: 0; font-size: 11px; padding: 2px 7px; border-radius: 6px; font-weight: 600; }
-.fi-tag.neg, .ai-tag.crit { background: rgba(255,59,48,0.12); color: #ff3b30; }
-.fi-tag.neu, .ai-tag.low { background: rgba(134,134,139,0.12); color: #6e6e73; }
-.fi-tag.pos, .ai-tag.med { background: rgba(255,159,10,0.12); color: #c77700; }
-.ai-tag.med { background: rgba(255,159,10,0.12); color: #c77700; }
+.fi-tag.neg, .ai-tag.crit { background: rgba(255, 59, 48, 0.12); color: #ff3b30; }
+.fi-tag.neu, .ai-tag.low { background: rgba(134, 134, 139, 0.12); color: #6e6e73; }
+.fi-tag.pos, .ai-tag.med { background: rgba(255, 159, 10, 0.12); color: #c77700; }
+.ai-tag.med { background: rgba(255, 159, 10, 0.12); color: #c77700; }
 .fi-body, .ai-body { min-width: 0; flex: 1; }
-.fi-title, .ai-title { font-size: 13.5px; color: #1d1d1f; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fi-title, .ai-title {
+  font-size: 13.5px; color: #1d1d1f; line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .fi-meta, .ai-meta { font-size: 11.5px; color: #86868b; margin-top: 3px; }
 .live-dot { font-size: 11px; color: #ff3b30; font-weight: 600; animation: pulse 1.4s infinite; }
 .live-dot.warn { color: #ff9f0a; }
 .feed-empty { text-align: center; color: #a0a0a5; font-size: 13px; padding: 40px 0; }
 
-/* 平板：两栏驾驶舱，地理分布通栏 */
-@media (max-width: 1200px) {
-  .content-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas:
-      "trend  donut"
-      "source feed"
-      "cloud  alert"
-      "geo    geo";
-    gap: 14px;
-  }
-  .stat-grid { grid-template-columns: repeat(3, 1fr); }
+/* ============ 响应式 ============ */
+/* 平板：单栏竖向堆叠，feed 加高，KPI 转 3 列 */
+@media (max-width: 1100px) {
+  .widget-grid { grid-template-columns: 1fr; }
+  .widget { grid-column: auto !important; }
+  .widget-trend .chart-box,
+  .widget-geo .chart-box { height: 240px; }
+  .scroll-wrap { height: 240px; }
+  .kpi-row { grid-template-columns: repeat(3, 1fr); }
 }
-/* 手机：单栏，监测优先的阅读顺序（趋势→地理→情感→实时→预警→来源→词云） */
 @media (max-width: 760px) {
-  .content-grid {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "trend"
-      "geo"
-      "donut"
-      "feed"
-      "alert"
-      "source"
-      "cloud";
-    gap: 14px;
-  }
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
   .situation { flex-wrap: wrap; }
 }
-@media (max-width: 480px) { .stat-grid { grid-template-columns: 1fr; } }
+@media (max-width: 480px) {
+  .kpi-row { grid-template-columns: 1fr; }
+}
 </style>

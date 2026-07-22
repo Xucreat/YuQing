@@ -1,22 +1,29 @@
-﻿"""Dashboard stats API (Phase 2B + P2 指挥大屏)."""
+﻿"""Dashboard stats API (指挥大屏 Phase 1 数据契约修正)。
+
+路由前缀 /api/dashboard（由 main 以 prefix="/api" 挂载）。
+
+端点：
+  GET /api/dashboard/stats        总览（支持 ?days=N，默认 7，范围 1-90）
+  GET /api/dashboard/recent       实时快讯
+  GET /api/dashboard/alerts       预警滚动
+  GET /api/dashboard/hot-keywords 指挥大屏热门关键词（新增；?days=N&limit=M）
+"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
-from app.models.alert import AlertRecord
-from app.models.opinion import Opinion
-from app.models.region import Region
 from app.models.user import User
 from app.schemas.dashboard import (
     DashboardAlertItem,
     DashboardStatsResponse,
+    HotKeywordsResponse,
     RecentOpinionItem,
+    RegionChildrenResponse,
 )
-from app.services.dashboard_service import get_dashboard_stats
+from app.services import dashboard_service
 
 dashboard_router = APIRouter(
     prefix="/dashboard",
@@ -28,12 +35,21 @@ dashboard_router = APIRouter(
 @dashboard_router.get("/stats", response_model=DashboardStatsResponse)
 def dashboard_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    days: int = Query(default=7, ge=7, le=30, description="Trend window in days"),
+    _u: User = Depends(get_current_user),
+    days: int = Query(
+        default=7,
+        ge=1,
+        le=90,
+        description="时间窗口天数（影响 trend/sentiments/sources/regions/hot_keywords；"
+        "total/event_count/high_risk/today 不受其影响）",
+    ),
 ) -> DashboardStatsResponse:
-    """Dashboard summary statistics."""
-    data = get_dashboard_stats(db, days=days)
-    return DashboardStatsResponse(**data)
+    """Dashboard 总览统计。
+
+    累计/当日/窗口三类指标口径见 app/schemas/dashboard.DashboardStatsResponse 与
+    app/services/dashboard_service 模块 docstring。
+    """
+    return DashboardStatsResponse(**dashboard_service.get_dashboard_stats(db, days=days))
 
 
 @dashboard_router.get("/recent", response_model=list[RecentOpinionItem])
@@ -43,36 +59,7 @@ def dashboard_recent(
     limit: int = Query(default=8, ge=1, le=50, description="返回最新舆情条数"),
 ) -> list[RecentOpinionItem]:
     """实时快讯：最近产生的舆情（按创建时间倒序）。"""
-    rows = (
-        db.execute(
-            select(
-                Opinion.id,
-                Opinion.title,
-                Opinion.source,
-                Opinion.sentiment,
-                Opinion.risk_score,
-                Region.name.label("region_name"),
-                Opinion.created_at,
-            )
-            .join(Region, Region.id == Opinion.region_id)
-            .order_by(Opinion.created_at.desc())
-            .limit(limit)
-        )
-        .mappings()
-        .all()
-    )
-    return [
-        RecentOpinionItem(
-            id=r["id"],
-            title=r["title"] or "(无标题)",
-            source=r["source"] or "未知",
-            sentiment=r["sentiment"] or "neutral",
-            risk_score=r["risk_score"] or 0,
-            region_name=r["region_name"] or "未知",
-            created_at=r["created_at"].isoformat() if r["created_at"] else "",
-        )
-        for r in rows
-    ]
+    return [RecentOpinionItem(**d) for d in dashboard_service.get_recent_opinions(db, limit=limit)]
 
 
 @dashboard_router.get("/alerts", response_model=list[DashboardAlertItem])
@@ -82,22 +69,36 @@ def dashboard_alerts(
     limit: int = Query(default=8, ge=1, le=50, description="返回最新预警条数"),
 ) -> list[DashboardAlertItem]:
     """预警滚动：最近触发的预警记录（按时间倒序）。"""
-    rows = (
-        db.query(AlertRecord)
-        .order_by(AlertRecord.id.desc())
-        .limit(limit)
-        .all()
-    )
-    return [
-        DashboardAlertItem(
-            id=r.id,
-            opinion_id=r.opinion_id,
-            rule_name=r.rule_name or "预警规则",
-            risk_level=r.risk_level or "low",
-            opinion_title=r.opinion_title or "",
-            trigger_reason=r.trigger_reason or "",
-            handled=bool(r.handled),
-            created_at=r.created_at.isoformat() if r.created_at else "",
-        )
-        for r in rows
-    ]
+    return [DashboardAlertItem(**d) for d in dashboard_service.get_dashboard_alerts(db, limit=limit)]
+
+
+@dashboard_router.get("/hot-keywords", response_model=HotKeywordsResponse)
+def dashboard_hot_keywords(
+    db: Session = Depends(get_db),
+    _u: User = Depends(get_current_user),
+    days: int = Query(default=7, ge=1, le=90, description="统计窗口天数"),
+    limit: int = Query(default=10, ge=1, le=50, description="返回热词条数"),
+) -> HotKeywordsResponse:
+    """指挥大屏热门关键词：基于监测关键词表对窗口内 title+content 的真实提及频次。
+
+    不读取 Opinion.keywords（敏感词命中集合）。空数据返回稳定空结构，不 500。
+    """
+    return HotKeywordsResponse(**dashboard_service.get_hot_keywords(db, days=days, limit=limit))
+
+
+@dashboard_router.get("/region-children", response_model=RegionChildrenResponse)
+def dashboard_region_children(
+    db: Session = Depends(get_db),
+    _u: User = Depends(get_current_user),
+    province: str = Query(..., min_length=1, description="省级名称，如「河北省」"),
+    days: int = Query(default=7, ge=1, le=90, description="统计窗口天数"),
+) -> RegionChildrenResponse:
+    """地区下钻：返回指定省份下属市/县舆情分布（指挥大屏地图点击下钻用）。
+
+    按 Region.parent_code 链取该省下属市/县，市级按名称上卷以匹配市级 GeoJSON 着色；
+    无匹配省份返回 404。
+    """
+    result = dashboard_service.get_region_children(db, province_name=province, days=days)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"未找到省份：{province}")
+    return RegionChildrenResponse(**result)

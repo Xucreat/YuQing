@@ -1,4 +1,4 @@
-import axios, { type AxiosInstance } from 'axios'
+import axios, { type AxiosError, type AxiosInstance } from 'axios'
 
 // 统一 API 客户端（Phase 3 细化：拦截器、错误处理）
 const api: AxiosInstance = axios.create({
@@ -13,5 +13,27 @@ api.interceptors.request.use((config) => {
   }
   return config
 })
+
+// —— 401 自动跳登录 ——
+// 路由守卫只判断 token「是否存在」，不校验有效期；过期 token 仍非空字符串，
+// 会导致所有 API 返回 401 而前端静默空屏。这里统一兜底：遇到 401 清掉过期
+// token 并跳转登录页，避免用户看到一片空白的大屏。
+// - 并发轮询可能同时触发多个 401：用 redirectingToLogin 标志位保证只跳一次；
+// - 已在 /login 时不重复跳转，避免循环。
+let redirectingToLogin = false
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token')
+      const alreadyOnLogin = window.location.pathname === '/login'
+      if (!alreadyOnLogin && !redirectingToLogin) {
+        redirectingToLogin = true
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  },
+)
 
 export default api

@@ -31,3 +31,20 @@ pgsql/
 .workbuddy/
 # Decompressed node_modules
 frontend/node_modules_decompressed/
+
+# 临时/诊断/清理目录（非项目代码）
+.build_trash/
+.diag/
+.phase4_trash/
+frontend/.dist_trash/
+frontend/vite.config.js.timestamp-*.mjs
+
+# 后端一次性诊断/快照产物（非项目代码，可能含数据）
+backend/_readonly_extra.json
+backend/_readonly_output/
+backend/_event2_preview/
+backend/_event2_preview_llm_probe/
+backend/_migration_snapshots/
+backend/_acceptance.py
+backend/_audit_event2.py
+backend/_fresh_preflight.py

@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"
     deepseek_model: str = "deepseek-chat"
+    # Event-2 Narrative backfill 调用约束（仅影响 DeepSeek 客户端，不改聚合/聚类规则）。
+    # 单次请求超时（秒）；超时即视为失败，由上层降级到规则叙事。
+    deepseek_timeout: float = 30.0
+    # SDK 级重试次数（针对连接/限流/5xx 的指数退避）。
+    deepseek_max_retries: int = 2
 
     # ===== JWT（简单模式：无 OAuth / refresh token / RBAC）=====
     secret_key: str = "change-me-in-production"
@@ -84,8 +89,26 @@ class Settings(BaseSettings):
         return v
 
     # ===== Event 聚合配置（Phase 3C-0）=====
-    # 聚合窗口：仅归并最近 N 天内、analysis_status=completed 且 keywords 非空的 Opinion。
+    # 聚合窗口：仅归并最近 N 天内、analysis_status=completed 的 Opinion。
+    # Phase 4-Event-1 起：不再要求 keywords 非空（文本相似度也可召回），
+    # 但仍以 region + 时间窗口作为候选门槛。
     event_window_days: int = 7
+
+    # ===== Event 聚合配置（Phase 4-Event-1 重构）=====
+    # 文本相似度算法：字符 2-gram 余弦（纯 Python，无新依赖，可配置/可测试/可解释）。
+    # 高相似度阈值：仅凭文本相似度即可直接判定为同一事件。
+    event_text_similarity_threshold: float = 0.45
+    # 通用词（内置 16 敏感词）合并阈值：仅共享通用词、且文本相似度达到此值才允许合并，
+    # 用于杜绝「火灾」「事故」「投诉」等通用词单独触发伪聚合。
+    event_low_merge_text_threshold: float = 0.30
+    # 事件延续窗口（天）：已有 Event 允许最近的新 Opinion 延续挂载的时限，
+    # 需同时满足时间接近 + 至少一个可靠信号 + 文本相似度阈值；超时不再吸附（杜绝永久吸附）。
+    event_continuation_days: int = 14
+    # 事件延续所需文本相似度阈值（通常略高于 low_merge，延续要求更可靠）。
+    event_continuation_text_threshold: float = 0.35
+    # 单条舆情独立成事件的最低风险分：低于此且无非通用高区分度关键词/无 ai_keywords 的
+    # 单条 Opinion 不单独建事件（避免空关键词噪声撑爆事件中心），但仍可经延续挂载到既有事件。
+    event_singleton_min_risk: int = 40
 
 
 @lru_cache

@@ -27,6 +27,8 @@ from app.db.session import SessionLocal
 from app.models.event import Event
 from app.models.event_opinion import EventOpinion
 from app.models.opinion import Opinion
+from app.models.propagation import PropagationNode
+from app.models.alert import AlertRecord
 from app.services.event.aggregator import EventAggregator
 
 EVT_SOURCE = "evt_test"
@@ -37,6 +39,11 @@ def clean_events():
     """清空 events / event_opinions / 本测试产生的 opinions，保证隔离。"""
     db = SessionLocal()
     try:
+        # 先清理可能引用 events 的外键行（aggregate 会触发传播重建产生 propagation_nodes / alert_records）
+        db.query(PropagationNode).delete()
+        db.query(AlertRecord).filter(AlertRecord.event_id.isnot(None)).update(
+            {"event_id": None, "event_title": ""}, synchronize_session=False
+        )
         db.query(EventOpinion).delete()
         db.query(Event).delete()
         db.query(Opinion).filter(Opinion.source == EVT_SOURCE).delete()
@@ -46,6 +53,11 @@ def clean_events():
     yield
     db = SessionLocal()
     try:
+        # 先清理可能引用 events 的外键行（aggregate 会触发传播重建产生 propagation_nodes / alert_records）
+        db.query(PropagationNode).delete()
+        db.query(AlertRecord).filter(AlertRecord.event_id.isnot(None)).update(
+            {"event_id": None, "event_title": ""}, synchronize_session=False
+        )
         db.query(EventOpinion).delete()
         db.query(Event).delete()
         db.query(Opinion).filter(Opinion.source == EVT_SOURCE).delete()
@@ -54,11 +66,16 @@ def clean_events():
         db.close()
 
 
-def _make_opinion(db, region_id, title, keywords, risk_score, content="content"):
-    """插入一条已完成、带关键词的 Opinion（位于聚合窗口内）。"""
+def _make_opinion(db, region_id, title, keywords, risk_score, content=None):
+    """插入一条已完成、带关键词的 Opinion（位于聚合窗口内）。
+
+    注意：content 默认按 title 派生为互异文本，避免「不同事件但正文完全相同」
+    在引入文本相似度信号后被误合并（语义已变为「正文相同≈同一事件」）。
+    需要验证「共享关键词即合并」的用例仍依赖关键词，不受正文影响。
+    """
     op = Opinion(
         title=title,
-        content=content,
+        content=content if content is not None else f"内容-{uuid.uuid4().hex}：{title}",
         source=EVT_SOURCE,
         url=f"https://example.com/{uuid.uuid4().hex}",
         region_id=region_id,

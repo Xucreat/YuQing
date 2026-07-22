@@ -1,0 +1,203 @@
+/* =========================================================================
+   指挥大屏（Command Screen）独立暗色主题作用域
+   -------------------------------------------------------------------------
+   设计约束：
+   - 所有变量与样式收敛在 .command-screen 作用域下，不污染旧亮色页面；
+   - 不修改 src/styles/theme.css，不覆盖 :root 变量；
+   - 不引入任何 Google Fonts / 外部网络字体，使用系统字体栈作为稳定 fallback；
+   - 保留原型（prototype/command-screen）的深空蓝黑背景、青色主色、
+     rose / amber 语义色、边框、辉光与层级体系。
+   ========================================================================= */
+
+.command-screen {
+  /* ---- 背景层级（深空蓝黑）---- */
+  --screen-bg: #060b16;          /* 最底：近黑深空 */
+  --screen-bg-2: #0a1120;        /* 次底：略亮 */
+  --screen-panel: #0e1a2e;       /* 面板底 */
+  --screen-panel-2: #12233c;     /* 面板内层 / hover */
+  --screen-panel-glow: rgba(23, 209, 224, 0.06); /* 面板内辉光 */
+
+  /* ---- 主色（青 cyan）与辉光 ---- */
+  --screen-primary: #22d3ee;     /* 青主色 */
+  --screen-primary-2: #38e0f0;   /* 高亮青 */
+  --screen-primary-dim: rgba(34, 211, 238, 0.55);
+  --screen-glow: 0 0 12px rgba(34, 211, 238, 0.45);
+  --screen-glow-strong: 0 0 20px rgba(34, 211, 238, 0.65);
+
+  /* ---- 语义色 ---- */
+  --screen-rose: #fb7185;        /* 危险 / 负面 / 高危 */
+  --screen-rose-dim: rgba(251, 113, 133, 0.16);
+  --screen-amber: #fbbf24;       /* 警示 / 中性偏高 */
+  --screen-amber-dim: rgba(251, 191, 36, 0.16);
+  --screen-teal: #2dd4bf;        /* 正面 / 正常 */
+  --screen-teal-dim: rgba(45, 212, 191, 0.16);
+  --screen-violet: #a78bfa;      /* 辅助点缀 */
+
+  /* ---- 文本层级（暗底浅字，满足可读性）---- */
+  --screen-ink: #eaf6ff;         /* 主文本 */
+  --screen-ink-2: #a9c2da;       /* 次文本 */
+  --screen-ink-3: #7f9bb5;       /* 辅助文本（已按 AA 提亮）*/
+  --screen-ink-4: #5b7a95;       /* 占位（尽量少用）*/
+
+  /* ---- 边框与分隔 ---- */
+  --screen-border: rgba(90, 138, 178, 0.22);
+  --screen-border-strong: rgba(34, 211, 238, 0.35);
+  --screen-grid: rgba(90, 138, 178, 0.12);
+
+  /* ---- 圆角 / 间距 / 层级 ---- */
+  --screen-radius: 10px;
+  --screen-radius-lg: 14px;
+  --screen-gap: 14px;
+  --screen-pad: 16px;
+
+  /* ---- 字体栈（本地 / 系统，无外网依赖）---- */
+  --screen-font: "PingFang SC", "Microsoft YaHei", "Noto Sans SC",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  /* 数字 / 等宽（科技感），全部为系统内置可用字体 */
+  --screen-font-mono: "SF Mono", "JetBrains Mono", "Cascadia Mono",
+    "Consolas", ui-monospace, Menlo, Monaco, "Courier New", monospace;
+
+  /* ---- 作用域基础样式 ---- */
+  color: var(--screen-ink);
+  font-family: var(--screen-font);
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(34, 211, 238, 0.08), transparent 60%),
+    radial-gradient(1000px 500px at 100% 0%, rgba(167, 139, 250, 0.06), transparent 55%),
+    var(--screen-bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---- 面板 ---- */
+.command-screen .cs-panel {
+  position: relative;
+  background:
+    linear-gradient(180deg, var(--screen-panel-glow), transparent 40%),
+    var(--screen-panel);
+  border: 1px solid var(--screen-border);
+  border-radius: var(--screen-radius-lg);
+  padding: var(--screen-pad);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.command-screen .cs-panel::before {
+  /* 左上角科技感切角高光 */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-top: 1px solid var(--screen-border-strong);
+  border-radius: var(--screen-radius-lg) var(--screen-radius-lg) 0 0;
+  pointer-events: none;
+  opacity: 0.5;
+}
+.command-screen .cs-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--screen-ink);
+  margin: 0 0 10px;
+  flex-shrink: 0;
+}
+.command-screen .cs-panel-title::before {
+  content: "";
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--screen-primary);
+  box-shadow: var(--screen-glow);
+}
+.command-screen .cs-panel-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* ---- 通用文本 ---- */
+.command-screen .cs-mono { font-family: var(--screen-font-mono); }
+.command-screen .cs-dim { color: var(--screen-ink-2); }
+.command-screen .cs-muted { color: var(--screen-ink-3); }
+
+/* ---- 语义标签 ---- */
+.command-screen .cs-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.command-screen .cs-badge.is-rose { color: #ffe4e6; background: var(--screen-rose-dim); border: 1px solid var(--screen-rose); }
+.command-screen .cs-badge.is-amber { color: #fff7e0; background: var(--screen-amber-dim); border: 1px solid var(--screen-amber); }
+.command-screen .cs-badge.is-teal { color: #e0fff8; background: var(--screen-teal-dim); border: 1px solid var(--screen-teal); }
+.command-screen .cs-badge.is-cyan { color: #dffbff; background: rgba(34, 211, 238, 0.14); border: 1px solid var(--screen-primary-dim); }
+
+/* ---- 滚动条（暗色）---- */
+.command-screen ::-webkit-scrollbar { width: 6px; height: 6px; }
+.command-screen ::-webkit-scrollbar-track { background: transparent; }
+.command-screen ::-webkit-scrollbar-thumb {
+  background: rgba(90, 138, 178, 0.35);
+  border-radius: 999px;
+}
+.command-screen ::-webkit-scrollbar-thumb:hover { background: var(--screen-primary-dim); }
+
+/* ---- 地理面板两段式：左省级地图 + 右市/县 TOP 侧栏 ---- */
+.command-screen .cs-geo-split {
+  display: flex;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+}
+.command-screen .cs-geo-map {
+  flex: 1.35;
+  min-width: 0;
+}
+.command-screen .cs-geo-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--screen-border);
+  padding-left: 14px;
+}
+/* 窄屏（如拼接屏 / 窗口收窄）时上下堆叠，保证地图与榜单都可读 */
+@media (max-width: 1180px) {
+  .command-screen .cs-geo-split {
+    flex-direction: column;
+  }
+  .command-screen .cs-geo-detail {
+    border-left: none;
+    border-top: 1px solid var(--screen-border);
+    padding-left: 0;
+    padding-top: 12px;
+  }
+  .command-screen .cs-geo-map {
+    min-height: 220px;
+  }
+}
+
+/* ---- 连接状态点 ---- */
+.command-screen .cs-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
+}
+.command-screen .cs-dot.is-live { background: var(--screen-teal); box-shadow: 0 0 8px var(--screen-teal); }
+.command-screen .cs-dot.is-stale { background: var(--screen-amber); box-shadow: 0 0 8px var(--screen-amber); }
+.command-screen .cs-dot.is-down { background: var(--screen-rose); box-shadow: 0 0 8px var(--screen-rose); }
+
+/* ---- 降级：尊重用户的减少动态偏好 ---- */
+@media (prefers-reduced-motion: reduce) {
+  .command-screen * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

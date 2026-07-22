@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>驾驶舱 · 卡片布局重设计预览</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js"></script>
+<style>
+  :root{
+    --blue:#0071e3; --green:#34c759; --red:#ff3b30; --amber:#ff9f0a; --blue2:#007aff;
+    --ink:#1d1d1f; --sub:#6e6e73; --ph:#86868b; --line:#e8e8ed; --page:#f5f5f7;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--page); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Inter","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased; padding:28px 36px 56px;
+  }
+  .preview-tag{
+    display:inline-block; font-size:12px; color:var(--ph); background:#fff; border:1px solid var(--line);
+    padding:5px 12px; border-radius:980px; margin-bottom:16px;
+  }
+  .cockpit{min-height:100%; max-width:1352px; margin:0 auto;}
+
+  /* KPI */
+  .kpi-row{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:12px;}
+  .kpi-card{position:relative; display:flex; align-items:center; gap:12px; padding:14px 16px; background:#fff;
+    border:1px solid var(--line); border-radius:16px; box-shadow:0 1px 2px rgba(0,0,0,.04),0 6px 18px rgba(0,0,0,.04);
+    overflow:hidden; transition:transform .18s ease, box-shadow .18s ease;}
+  .kpi-card::before{content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--accent);}
+  .kpi-card:hover{transform:translateY(-2px); box-shadow:0 4px 10px rgba(0,0,0,.05),0 14px 30px rgba(0,0,0,.07);}
+  .kpi-blue{--accent:var(--blue);} .kpi-green{--accent:var(--green);} .kpi-red{--accent:var(--red);}
+  .kpi-amber{--accent:var(--amber);} .kpi-status{--accent:var(--blue2);} .kpi-status.is-off{--accent:var(--ph);}
+  .kpi-ico{flex-shrink:0; width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:17px; line-height:1;}
+  .kpi-blue .kpi-ico{background:rgba(0,113,227,.10); color:var(--blue);}
+  .kpi-green .kpi-ico{background:rgba(52,199,89,.12); color:#1a8e3c;}
+  .kpi-red .kpi-ico{background:rgba(255,59,48,.10); color:var(--red);}
+  .kpi-amber .kpi-ico{background:rgba(255,159,10,.12); color:#c77700;}
+  .kpi-status .kpi-ico{background:rgba(0,122,255,.10); color:var(--blue2);}
+  .kpi-status.is-off .kpi-ico{background:rgba(134,134,139,.12); color:var(--ph);}
+  .kpi-body{min-width:0;}
+  .kpi-label{font-size:12.5px; color:var(--sub); margin-bottom:3px;}
+  .kpi-value{font-size:26px; font-weight:700; letter-spacing:-.02em; line-height:1.05; color:var(--ink); font-variant-numeric:tabular-nums;}
+  .kpi-value.danger{color:var(--red);}
+  .kpi-status-val{display:flex; align-items:center; gap:7px; font-size:15px; font-weight:600;}
+  .status-dot{width:9px; height:9px; border-radius:50%; background:var(--blue2); box-shadow:0 0 0 4px rgba(0,122,255,.18); flex-shrink:0;}
+  .kpi-status.is-off .status-dot{background:var(--ph); box-shadow:0 0 0 4px rgba(134,134,139,.18);}
+  .kpi-foot{font-size:12px; color:var(--ph); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+
+  /* Situation */
+  .situation{display:flex; align-items:center; gap:18px; margin-bottom:12px; padding:14px 18px; background:#fff;
+    border:1px solid var(--line); border-left:4px solid var(--green); border-radius:14px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04),0 6px 18px rgba(0,0,0,.04); transition:border-color .3s;}
+  .situation.lvl-yellow{border-left-color:var(--amber);} .situation.lvl-red{border-left-color:var(--red);}
+  .sit-left{flex:1; min-width:0;}
+  .sit-level{font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;}
+  .lvl-dot{width:10px; height:10px; border-radius:50%; background:var(--green); box-shadow:0 0 0 4px rgba(52,199,89,.18);}
+  .lvl-yellow .lvl-dot{background:var(--amber); box-shadow:0 0 0 4px rgba(255,159,10,.18);}
+  .lvl-red .lvl-dot{background:var(--red); box-shadow:0 0 0 4px rgba(255,59,48,.18); animation:pulse 1.4s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+  .sit-text{font-size:13px; color:var(--sub); margin-top:4px;}
+  .sit-kpis{display:flex; gap:18px;}
+  .sit-kpi{display:flex; flex-direction:column; align-items:center; min-width:54px;}
+  .sit-kpi .k{font-size:16px; font-weight:700; line-height:1.1; font-variant-numeric:tabular-nums;}
+  .sit-kpi .k.danger{color:var(--red);}
+  .sit-kpi .l{font-size:12px; color:var(--ph); margin-top:3px;}
+  .sit-action{flex-shrink:0;}
+  .btn-primary{background:var(--blue); color:#fff; border:none; border-radius:980px; padding:9px 18px; font-size:14px; font-weight:500; cursor:pointer;}
+
+  /* Widget grid */
+  .widget-grid{display:grid; grid-template-columns:repeat(12,1fr); gap:12px; align-items:stretch;}
+  .widget{display:flex; flex-direction:column; min-width:0;}
+  .widget-trend{grid-column:span 8;} .widget-sentiment{grid-column:span 4;}
+  .widget-source{grid-column:span 4;} .widget-word{grid-column:span 4;}
+  .widget-feed{grid-column:span 4;} .widget-alert{grid-column:span 4;}
+  .widget-geo{grid-column:span 8;}
+  .card{background:#fff; border:1px solid var(--line); border-radius:16px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04),0 6px 18px rgba(0,0,0,.04); padding:16px 18px; transition:box-shadow .18s ease;}
+  .card:hover{box-shadow:0 4px 10px rgba(0,0,0,.05),0 14px 30px rgba(0,0,0,.06);}
+  .w-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
+  .w-title{font-size:15px; font-weight:600; letter-spacing:-.01em; margin:0;}
+  .chart-box{width:100%; flex:1 1 auto; min-height:0;}
+  .widget-trend .chart-box{height:220px;} .widget-source .chart-box{height:200px;}
+  .widget-word .chart-box{height:200px;} .widget-geo .chart-box{height:220px;}
+  .widget-sentiment .donut-wrap{height:220px; align-items:center; justify-content:center;}
+  .widget-alert .scroll-wrap{height:220px;}
+  .seg-group{display:inline-flex; background:#e8e8ed; border-radius:980px; padding:3px; gap:2px;}
+  .seg-btn{border:none; background:transparent; color:var(--sub); font-size:13px; font-weight:500; padding:6px 14px; border-radius:980px; cursor:pointer;}
+  .seg-btn.active{background:#fff; color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.05);}
+
+  /* Sentiment donut */
+  .donut-wrap{display:flex; align-items:center; gap:22px; flex-wrap:wrap;}
+  .donut-svg{width:140px; height:140px; flex-shrink:0;}
+  .donut-legends{display:flex; flex-direction:column; gap:10px; flex:1; min-width:140px;}
+  .donut-legend{display:flex; align-items:center; gap:8px; font-size:14px;}
+  .dl-dot{width:10px; height:10px; border-radius:3px; flex-shrink:0;}
+  .donut-legend b{margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums;}
+  .donut-legend i{width:42px; text-align:right; font-style:normal; color:var(--ph); font-size:12.5px; font-variant-numeric:tabular-nums;}
+
+  /* Feeds */
+  .scroll-wrap{position:relative; flex:1 1 auto; min-height:0; height:200px; overflow:hidden;}
+  .scroll-wrap::after{content:""; position:absolute; left:0; right:0; bottom:0; height:40px; background:linear-gradient(transparent,#fff); pointer-events:none;}
+  .scroll-inner{animation:scroll-up linear infinite;}
+  .scroll-wrap:hover .scroll-inner{animation-play-state:paused;}
+  @keyframes scroll-up{from{transform:translateY(0);} to{transform:translateY(-50%);}}
+  .feed-item,.alert-item{display:flex; gap:10px; padding:8px 4px; border-bottom:1px dashed #f0f0f2; align-items:flex-start;}
+  .fi-tag,.ai-tag{flex-shrink:0; font-size:11px; padding:2px 7px; border-radius:6px; font-weight:600;}
+  .fi-tag.neg,.ai-tag.crit{background:rgba(255,59,48,.12); color:var(--red);}
+  .fi-tag.neu,.ai-tag.low{background:rgba(134,134,139,.12); color:var(--sub);}
+  .fi-tag.pos,.ai-tag.med{background:rgba(255,159,10,.12); color:#c77700;}
+  .fi-body,.ai-body{min-width:0; flex:1;}
+  .fi-title,.ai-title{font-size:13.5px; color:var(--ink); line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .fi-meta,.ai-meta{font-size:11.5px; color:var(--ph); margin-top:3px;}
+  .live-dot{font-size:11px; color:var(--red); font-weight:600; animation:pulse 1.4s infinite;}
+  .live-dot.warn{color:var(--amber);}
+  .feed-empty{text-align:center; color:#a0a0a5; font-size:13px; padding:40px 0;}
+
+  @media (max-width:1100px){
+    .widget-grid{grid-template-columns:1fr;} .widget{grid-column:auto !important;}
+    .widget-trend .chart-box,.widget-geo .chart-box{height:240px;} .scroll-wrap{height:240px;}
+    .kpi-row{grid-template-columns:repeat(3,1fr);}
+  }
+  @media (max-width:760px){.kpi-row{grid-template-columns:repeat(2,1fr);} .situation{flex-wrap:wrap;}}
+  @media (max-width:480px){.kpi-row{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+  <span class="preview-tag">预览 · 示例数据（非真实接口）</span>
+  <div class="cockpit">
+    <!-- KPI -->
+    <section class="kpi-row">
+      <article class="kpi-card kpi-blue"><span class="kpi-ico">▦</span><div class="kpi-body"><div class="kpi-label">总舆情数</div><div class="kpi-value">429</div><div class="kpi-foot">累计监测数据</div></div></article>
+      <article class="kpi-card kpi-green"><span class="kpi-ico">↗</span><div class="kpi-body"><div class="kpi-label">今日新增</div><div class="kpi-value">72</div><div class="kpi-foot">当日采集</div></div></article>
+      <article class="kpi-card kpi-red"><span class="kpi-ico">!</span><div class="kpi-body"><div class="kpi-label">高风险</div><div class="kpi-value danger">45</div><div class="kpi-foot">需关注处理</div></div></article>
+      <article class="kpi-card kpi-amber"><span class="kpi-ico">◎</span><div class="kpi-body"><div class="kpi-label">事件数</div><div class="kpi-value">90</div><div class="kpi-foot">聚合事件</div></div></article>
+      <article class="kpi-card kpi-status is-on"><span class="kpi-ico">↻</span><div class="kpi-body"><div class="kpi-label">采集状态</div><div class="kpi-value kpi-status-val"><span class="status-dot"></span>运行中</div><div class="kpi-foot">2026/7/22 13:58</div></div></article>
+    </section>
+
+    <!-- Situation -->
+    <section class="situation lvl-yellow">
+      <div class="sit-left"><div class="sit-level"><span class="lvl-dot"></span>态势需警惕</div><div class="sit-text">态势总体可控，存在少量高风险舆情，建议持续关注。</div></div>
+      <div class="sit-kpis">
+        <div class="sit-kpi"><span class="k">429</span><span class="l">总舆情</span></div>
+        <div class="sit-kpi"><span class="k danger">45</span><span class="l">高风险</span></div>
+        <div class="sit-kpi"><span class="k">10%</span><span class="l">风险率</span></div>
+        <div class="sit-kpi"><span class="k">3%</span><span class="l">负面率</span></div>
+        <div class="sit-kpi"><span class="k">90</span><span class="l">事件</span></div>
+      </div>
+      <div class="sit-action"><button class="btn-primary">⎙ 导出舆情报告</button></div>
+    </section>
+
+    <!-- Widgets -->
+    <section class="widget-grid">
+      <article class="card widget widget-trend">
+        <header class="w-head"><h3 class="w-title">舆情趋势</h3>
+          <div class="seg-group"><button class="seg-btn active">7天</button><button class="seg-btn">14天</button><button class="seg-btn">30天</button></div>
+        </header>
+        <div id="trend" class="chart-box"></div>
+      </article>
+
+      <article class="card widget widget-alert">
+        <header class="w-head"><h3 class="w-title">预警滚动</h3><span class="live-dot warn">● ALERT</span></header>
+        <div class="scroll-wrap">
+          <div class="scroll-inner" id="alerts"></div>
+        </div>
+      </article>
+
+      <article class="card widget widget-source">
+        <header class="w-head"><h3 class="w-title">来源分布</h3></header>
+        <div id="source" class="chart-box"></div>
+      </article>
+
+      <article class="card widget widget-sentiment">
+        <header class="w-head"><h3 class="w-title">情感分布</h3></header>
+        <div class="donut-wrap">
+          <svg class="donut-svg" viewBox="0 0 140 140">
+            <circle cx="70" cy="70" r="58" fill="none" stroke="#e8e8ed" stroke-width="16"/>
+            <circle cx="70" cy="70" r="58" fill="none" stroke="#ff3b30" stroke-width="16" stroke-dasharray="19 345.4" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 70 70)"/>
+            <circle cx="70" cy="70" r="58" fill="none" stroke="#86868b" stroke-width="16" stroke-dasharray="326 364.4" stroke-dashoffset="-19" stroke-linecap="round" transform="rotate(-90 70 70)"/>
+            <circle cx="70" cy="70" r="58" fill="none" stroke="#34c759" stroke-width="16" stroke-dasharray="164 364.4" stroke-dashoffset="-345" stroke-linecap="round" transform="rotate(-90 70 70)"/>
+            <text x="70" y="66" text-anchor="middle" font-size="28" font-weight="600" fill="#1d1d1f">429</text>
+            <text x="70" y="85" text-anchor="middle" font-size="10" fill="#86868b">总计</text>
+          </svg>
+          <div class="donut-legends">
+            <div class="donut-legend"><span class="dl-dot" style="background:#ff3b30"></span>负面<i>4%</i><b>15</b></div>
+            <div class="donut-legend"><span class="dl-dot" style="background:#86868b"></span>中性<i>64%</i><b>273</b></div>
+            <div class="donut-legend"><span class="dl-dot" style="background:#34c759"></span>正面<i>33%</i><b>141</b></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card widget widget-feed">
+        <header class="w-head"><h3 class="w-title">实时快讯</h3><span class="live-dot">● LIVE</span></header>
+        <div class="scroll-wrap">
+          <div class="scroll-inner" id="news"></div>
+        </div>
+      </article>
+
+      <article class="card widget widget-word">
+        <header class="w-head"><h3 class="w-title">热点词云</h3></header>
+        <div id="word" class="chart-box"></div>
+      </article>
+
+      <article class="card widget widget-geo">
+        <header class="w-head"><h3 class="w-title">地理分布（地区舆情 TOP）</h3></header>
+        <div id="region" class="chart-box"></div>
+      </article>
+    </section>
+  </div>
+
+<script>
+  const labels = ['周一','周二','周三','周四','周五','周六','周日'];
+  const trendData = [38,52,47,61,55,49,72];
+  const sourceData = [['微博',120],['微信',95],['新闻客户端',82],['论坛',61],['短视频',54],['头条',43],['知乎',31],['其他',18]].sort((a,b)=>b[1]-a[1]);
+  const regionData = [['石家庄',86],['廊坊',72],['保定',61],['唐山',54],['邯郸',47],['邢台',39],['沧州',33],['衡水',28],['张家口',21],['承德',15]].sort((a,b)=>b[1]-a[1]);
+  const words = [{name:'河北',value:157},{name:'民生',value:70},{name:'教育',value:66},{name:'交通',value:53},{name:'大厂',value:46},{name:'石家庄',value:41},{name:'医疗',value:29},{name:'廊坊',value:29},{name:'环保',value:24},{name:'治安',value:21},{name:'就业',value:18},{name:'房价',value:16},{name:'营商',value:14},{name:'舆情',value:12}];
+
+  function bar(id, data, colors){
+    const c = echarts.init(document.getElementById(id));
+    c.setOption({
+      tooltip:{trigger:'axis',backgroundColor:'rgba(29,29,31,.94)',borderColor:'transparent',textStyle:{color:'#fff',fontSize:12}},
+      grid:{left:100,right:30,top:10,bottom:20},
+      xAxis:{type:'value',splitLine:{lineStyle:{color:'#f0f0f2'}},axisLabel:{color:'#86868b',fontSize:11}},
+      yAxis:{type:'category',data:data.map(d=>d[0]).reverse(),axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#1d1d1f',fontSize:12},inverse:true},
+      series:[{type:'bar',data:data.map(d=>d[1]).reverse(),barWidth:16,itemStyle:{borderRadius:[0,6,6,0],color:new echarts.graphic.LinearGradient(0,0,1,0,colors)}}]
+    });
+    window.addEventListener('resize',()=>c.resize());
+  }
+  const trend = echarts.init(document.getElementById('trend'));
+  trend.setOption({
+    tooltip:{trigger:'axis',backgroundColor:'rgba(29,29,31,.94)',borderColor:'transparent',textStyle:{color:'#fff',fontSize:12}},
+    grid:{left:40,right:20,top:10,bottom:30},
+    xAxis:{type:'category',data:labels,axisLine:{lineStyle:{color:'#e8e8ed'}},axisTick:{show:false},axisLabel:{color:'#86868b',fontSize:11}},
+    yAxis:{type:'value',minInterval:1,splitLine:{lineStyle:{color:'#f0f0f2'}},axisLabel:{color:'#86868b',fontSize:11}},
+    series:[{type:'line',smooth:true,symbol:'circle',symbolSize:5,data:trendData,areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(0,113,227,.12)'},{offset:1,color:'rgba(0,113,227,0)'}])},lineStyle:{width:2.5,color:'#0071e3'},itemStyle:{color:'#0071e3'}}]
+  });
+  window.addEventListener('resize',()=>trend.resize());
+  bar('source', sourceData, [[0,'#0071e3'],[1,'#5ac8fa']]);
+  bar('region', regionData, [[0,'#ff9f0a'],[1,'#ffd60a']]);
+  const wc = echarts.init(document.getElementById('word'));
+  wc.setOption({
+    tooltip:{show:true,backgroundColor:'rgba(29,29,31,.94)',borderColor:'transparent',textStyle:{color:'#fff',fontSize:12}},
+    series:[{type:'wordCloud',shape:'circle',left:'center',top:'center',width:'90%',height:'90%',sizeRange:[14,42],rotationRange:[-30,30],gridSize:8,layoutAnimation:true,textStyle:{fontFamily:'sans-serif',fontWeight:'bold'},emphasis:{textStyle:{color:'#0071e3'}},data:words.map(w=>({name:w.name,value:w.value,textStyle:{color:`hsl(${(w.value/157)*210+200},70%,${60-(w.value/157)*30}%)`}}))}]
+  });
+  window.addEventListener('resize',()=>wc.resize());
+
+  const news = [
+    ['neg','某小区物业纠纷引发居民集中投诉','微博','石家庄','2026-07-22 13:40',82],
+    ['neu','本地公交线路调整公示','新闻客户端','廊坊','2026-07-22 13:12',54],
+    ['pos','我县营商环境优化获企业点赞','头条','保定','2026-07-22 12:55',33],
+    ['neg','某学校周边交通拥堵待治理','短视频','唐山','2026-07-22 12:30',71],
+    ['neu','医保政策宣讲进社区','微信','邯郸','2026-07-22 11:48',41],
+    ['pos','志愿服务活动获市民好评','知乎','邢台','2026-07-22 11:20',28],
+    ['neg','个别楼盘交付延期引关注','论坛','沧州','2026-07-22 10:50',63],
+    ['neu','夏季防汛演练有序开展','新闻客户端','衡水','2026-07-22 10:15',37],
+  ];
+  const alerts = [
+    ['crit','房价异常波动预警','高风险房价舆情','2026-07-22 13:05'],
+    ['med','民生投诉集中预警','某小区物业纠纷','2026-07-22 12:40'],
+    ['high','教育舆情升温预警','学区划分讨论','2026-07-22 12:10'],
+    ['low','交通拥堵常规预警','学校周边拥堵','2026-07-22 11:35'],
+    ['crit','治安事件预警','突发治安警情','2026-07-22 11:02'],
+    ['med','环保投诉预警','企业排污反映','2026-07-22 10:28'],
+    ['high','医疗舆情预警','医患沟通问题','2026-07-22 09:55'],
+    ['low','就业咨询预警','招聘信息误解','2026-07-22 09:20'],
+  ];
+  const cls = {neg:'neg',neu:'neu',pos:'pos',crit:'crit',high:'crit',med:'med',low:'low'};
+  const lbl = {neg:'负面',neu:'中性',pos:'正面',crit:'严重',high:'高',med:'中',low:'低'};
+  const nHtml = news.concat(news).map(n=>`<div class="feed-item"><span class="fi-tag ${cls[n[0]]}">${lbl[n[0]]}</span><div class="fi-body"><div class="fi-title">${n[1]}</div><div class="fi-meta">${n[2]} · ${n[3]} · ${n[4]} · 风险 ${n[5]}</div></div></div>`).join('');
+  const aHtml = alerts.concat(alerts).map(a=>`<div class="alert-item"><span class="ai-tag ${cls[a[0]]}">${lbl[a[0]]}</span><div class="ai-body"><div class="ai-title">${a[1]}</div><div class="ai-meta">${a[2]} · ${a[3]}</div></div></div>`).join('');
+  document.getElementById('news').innerHTML = nHtml;
+  document.getElementById('alerts').innerHTML = aHtml;
+</script>
+</body>
+</html>
