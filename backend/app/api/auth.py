@@ -1,61 +1,99 @@
-﻿"""认证路由（Phase 2A）：JWT 登录。
+"""认证路由（Phase RBAC-1）：JWT 登录 + 登出 + 登录日志。
 
-POST /login  ->  { access_token, token_type, role, permissions }
-使用已有 app/core/security.py 的 bcrypt 校验 + JWT 签发。仅单 admin 概念已被
-P2 RBAC 取代：登录时根据角色计算权限列表返回给前端，供前端按角色控制 UI。
+POST /login   -> { access_token, token_type, role, permissions }
+POST /logout  -> { ok: true }  （记录登出日志）
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from datetime import datetime, timezone
+from app.core.dependencies import client_meta, get_current_user
+from app.core.permissions import get_user_permissions
 from app.core.security import create_access_token, verify_password
 from app.db.session import get_db
 from app.models.user import User
 from app.models.role import Role
 from app.schemas.user import LoginRequest, Token
+from app.services.audit_service import log_login
 
 auth_router = APIRouter(tags=["auth"])
 
 
-def _role_permissions(db: Session, user: User) -> list[str]:
-    """返回该用户拥有的权限列表（admin 固定为 ['*']）。"""
-    if user.role == "admin":
-        return ["*"]
-    role = db.scalar(select(Role).where(Role.name == user.role))
-    if not role:
-        return []
-    perms = role.permissions
-    return perms if isinstance(perms, list) else []
+def _user_permissions(db: Session, user: User) -> list[str]:
+    """返回该用户拥有的权限列表（超级管理员为 ['*']）。"""
+    return get_user_permissions(user, db)
 
 
 @auth_router.post("/login", response_model=Token)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> Token:
-    """校验用户名/密码，成功签发 JWT（含 role 声明）并返回角色与权限。"""
+def login(
+    payload: LoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Token:
+    """校验用户名/密码，成功签发 JWT 并记登录日志；失败记审计日志。"""
+    ip, ua = client_meta(request)
     user = db.scalar(select(User).where(User.username == payload.username))
-    if user is None or not verify_password(payload.password, user.password_hash):
+
+    if user is None:
+        log_login(db, username=payload.username, status="failed",
+                  ip_address=ip, user_agent=ua, failure_reason="user_not_found")
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+        )
+    if not verify_password(payload.password, user.password_hash):
+        log_login(db, username=payload.username, user_id=user.id,
+                  status="failed", ip_address=ip, user_agent=ua,
+                  failure_reason="invalid_password")
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
     if not user.is_active:
+        log_login(db, username=payload.username, user_id=user.id,
+                  status="failed", ip_address=ip, user_agent=ua,
+                  failure_reason="disabled")
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User is disabled",
         )
-    user.last_login = datetime.now(timezone.utc)
-    db.commit()
 
-    permissions = _role_permissions(db, user)
+    user.last_login = datetime.now(timezone.utc)
+    user.last_login_ip = ip
+    db.add(user)
+
+    permissions = _user_permissions(db, user)
     token = create_access_token(
         subject=user.id,
         extra_claims={"role": user.role, "role_name": user.role},
     )
+    log_login(db, username=user.username, user_id=user.id,
+              status="success", ip_address=ip, user_agent=ua)
+    db.commit()
     return Token(
         access_token=token,
         token_type="bearer",
         role=user.role,
         permissions=permissions,
     )
+
+
+@auth_router.post("/logout")
+def logout(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """登出（无状态 JWT 仅前端丢弃；此处记录登出日志用于审计）。"""
+    ip, ua = client_meta(request)
+    log_login(db, username=current_user.username, user_id=current_user.id,
+              status="logout", ip_address=ip, user_agent=ua)
+    db.commit()
+    return {"ok": True}

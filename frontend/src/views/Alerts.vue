@@ -41,10 +41,10 @@
       <el-tab-pane label="预警记录" name="records">
         <el-card shadow="never" class="filter-card">
           <el-select v-model="recFilterRisk" placeholder="预警等级" clearable style="width: 160px" @change="loadRecords">
-            <el-option label="严重 critical" value="critical" />
-            <el-option label="高 high" value="high" />
-            <el-option label="中 medium" value="medium" />
-            <el-option label="低 low" value="low" />
+            <el-option label="严重" value="critical" />
+            <el-option label="高" value="high" />
+            <el-option label="中" value="medium" />
+            <el-option label="低" value="low" />
           </el-select>
           <el-select v-model="recFilterHandled" placeholder="处理状态" clearable style="width: 160px; margin-left: 12px" @change="loadRecords">
             <el-option label="未处理" :value="false" />
@@ -103,10 +103,10 @@
         <el-form-item label="来源过滤"><el-input v-model="ruleForm.sources" placeholder="多个来源用逗号分隔，留空表示不限" /></el-form-item>
         <el-form-item label="预警等级">
           <el-select v-model="ruleForm.risk_level">
-            <el-option label="严重 critical" value="critical" />
-            <el-option label="高 high" value="high" />
-            <el-option label="中 medium" value="medium" />
-            <el-option label="低 low" value="low" />
+            <el-option label="严重" value="critical" />
+            <el-option label="高" value="high" />
+            <el-option label="中" value="medium" />
+            <el-option label="低" value="low" />
           </el-select>
         </el-form-item>
         <el-form-item label="启用"><el-switch v-model="ruleForm.enabled" /></el-form-item>
@@ -123,10 +123,13 @@
 
 <script setup lang="ts">
 import { onMounted, ref, reactive, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
+import { riskText, riskTag } from '@/utils/alert'
 import type { AlertRule, AlertRuleListResponse, AlertRecord, AlertRecordListResponse, AlertEvaluateResponse } from '@/types'
 import OpinionDetailModal from '@/components/OpinionDetailModal.vue'
+import { useAlertNotifier } from '@/composables/useAlertNotifier'
 
 // 关联舆情跳转：打开舆情详情弹窗（与「舆情列表」一致）
 const detailVisible = ref(false)
@@ -140,6 +143,8 @@ const activeTab = ref('rules')
 const loading = ref(false)
 const saving = ref(false)
 const evaluating = ref(false)
+const route = useRoute()
+const notifier = useAlertNotifier()
 
 // Rules
 const rules = ref<AlertRule[]>([])
@@ -162,10 +167,6 @@ const editingId = ref<number | null>(null)
 const ruleForm = reactive({ name: '', description: '', risk_threshold: 70, keywords: '', sources: '', risk_level: 'high', enabled: true })
 const evalResult = ref<AlertEvaluateResponse | null>(null)
 
-function riskTag(level: string): 'danger' | 'warning' | 'success' | 'info' {
-  return ({ critical: 'danger', high: 'danger', medium: 'warning', low: 'info' } as const)[level] || 'info'
-}
-function riskText(level: string): string { return ({ critical: '严重', high: '高', medium: '中', low: '低' } as const)[level] || level }
 function formatTime(t: string): string { if (!t) return '-'; return t.replace('T', ' ').slice(0, 19) }
 
 async function loadRules() {
@@ -256,10 +257,28 @@ async function handleRecord(rec: AlertRecord) {
 function handleRulesPage(p: number) { rulesPage.value = p; loadRules() }
 function handleRecordsPage(p: number) { recordsPage.value = p; loadRecords() }
 
-onMounted(() => { loadRules() })
+onMounted(() => {
+  loadRules()
+  // 支持从通知红点/弹窗带 ?tab=records 直接进入预警记录列表，并清除未读红点。
+  if (route.query.tab === 'records') {
+    activeTab.value = 'records'
+    notifier.markVisited()
+  }
+})
 
 watch(activeTab, (tab) => {
-  if (tab === 'records') loadRecords()
+  if (tab === 'records') {
+    loadRecords()
+    notifier.markVisited()
+  }
+})
+
+// 外部（红色通知铃铛/弹窗）可能通过路由带 ?tab=records 切入本页，同步切换。
+watch(() => route.query.tab, (tab) => {
+  if (tab === 'records') {
+    activeTab.value = 'records'
+    notifier.markVisited()
+  }
 })
 </script>
 

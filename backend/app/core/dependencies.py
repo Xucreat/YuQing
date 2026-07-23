@@ -1,17 +1,18 @@
-"""认证依赖（Phase 2A）。
+"""认证依赖（Phase RBAC-1）。
 
 提供 get_current_user()：
   - 从 Authorization: Bearer <token> 读取 JWT
   - 校验 token（HS256 / secret_key）
   - 查询 User 并返回对象
-  - 缺失/非法 token 返回 HTTP 401
+  - 校验 is_active（停用用户立即 401，旧 JWT 即时失效）
+  - 缺失/非法/过期 token 返回 HTTP 401
 
 所有需要保护的 API 使用 Depends(get_current_user)。
-无 OAuth / refresh token / RBAC（单 admin）。
+无 OAuth / refresh token / 复杂黑名单（最小兼容方案）。
 """
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError
 from sqlalchemy.orm import Session
@@ -56,4 +57,27 @@ def get_current_user(
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # 关键安全边界：停用用户即使持有有效 JWT 也立即拒绝。
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User disabled",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
+
+
+def client_meta(request: Request) -> tuple[str, str]:
+    """从请求中提取客户端 IP 与 User-Agent（供审计日志使用）。
+
+    IP 优先取 X-Forwarded-For 首个值（反向代理场景），回退到直连地址。
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+    elif request.client is not None:
+        ip = request.client.host
+    else:
+        ip = ""
+    ua = request.headers.get("user-agent", "") or ""
+    return ip, ua

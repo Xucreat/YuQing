@@ -1,4 +1,5 @@
 """Alert center API routes."""
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user
@@ -14,6 +15,22 @@ from app.services.alert_service import AlertService
 
 alerts_router = APIRouter(tags=["alerts"], dependencies=[Depends(get_current_user)])
 MAX_SIZE = 100
+
+
+def _parse_since(since: str | None) -> datetime | None:
+    """解析 ISO8601 时间戳（兼容结尾 Z），返回 UTC aware datetime；无效则 None。"""
+    if not since:
+        return None
+    s = since.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 @alerts_router.get("/rules", response_model=AlertRuleListResponse)
@@ -64,6 +81,22 @@ def evaluate_alerts(db: Session = Depends(get_db), _u: User = Depends(require_pe
     result = AlertService.evaluate(db)
     AlertService.sync_alert_events(db)
     return AlertEvaluateResponse(success=True, **result)
+
+
+@alerts_router.get("/unread", response_model=AlertRecordListResponse)
+def unread_alerts(
+    since: str | None = Query(None, description="ISO8601 时间戳，仅返回该时间之后创建的预警记录"),
+    db: Session = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """前端轮询用：返回 since 之后产生的新预警（最多 10 条，含 total 总数）。"""
+    q = db.query(AlertRecord)
+    since_dt = _parse_since(since)
+    if since_dt is not None:
+        q = q.where(AlertRecord.created_at > since_dt)
+    total = q.count()
+    rows = q.order_by(AlertRecord.id.desc()).limit(10).all()
+    return AlertRecordListResponse(items=rows, total=total, page=1, size=10)
 
 
 @alerts_router.get("/records", response_model=AlertRecordListResponse)

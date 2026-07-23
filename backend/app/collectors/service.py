@@ -41,7 +41,7 @@ from app.models.opinion import Opinion
 from app.models.region import Region
 from app.models.collector_run import CollectorRun
 from app.services.ai.fallback import RuleFallbackProvider
-from app.services.keyword_service import get_monitoring_keywords
+from app.services.keyword_service import get_monitoring_keywords, get_sensitive_keywords
 
 # ---------------------------------------------------------------------------
 # Phase 3A temporary implementation.
@@ -267,7 +267,9 @@ class CollectorService:
         region_id = self._resolve_region_id(db, collector)
 
         # 每条 Opinion 的 AI 分析独立（无共享可变状态），逐采集器新建 Provider。
-        ai = RuleFallbackProvider()
+        # 敏感/风险词由 keywords 表（type='sensitive'）注入；无启用敏感词时
+        # get_sensitive_keywords 自动回退内置 DEFAULT_KEYWORDS，风险评分零回归。
+        ai = RuleFallbackProvider(keywords=get_sensitive_keywords(db))
 
         c_created = c_analyzed = c_failed = 0
         for item in items:

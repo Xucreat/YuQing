@@ -36,6 +36,7 @@
 """
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, List, Optional, Tuple
@@ -48,6 +49,8 @@ from app.models.event_opinion import EventOpinion
 from app.models.opinion import Opinion
 from app.services.ai.fallback import DEFAULT_KEYWORDS
 from app.services.event.title_format import build_cluster_title, representative_title
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -83,13 +86,31 @@ def _map_risk_level(max_score: int) -> str:
 # 时间 / 文本工具
 # ---------------------------------------------------------------------------
 def _effective_time(op: Opinion) -> datetime:
-    """用于时间相近性判定的时间：优先 publish_time，否则 created_at。"""
-    return op.publish_time or op.created_at or _now_utc()
+    """用于时间相近性判定的时间：优先 publish_time，否则 created_at。
+
+    统一归整为无时区的 UTC 值，避免 naive/aware 混算（排序 / 时间差）。
+    """
+    return _as_naive_utc(op.publish_time or op.created_at or _now_utc())
+
+
+def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """归整为「无时区的 UTC 值」，避免 naive/aware 混算崩溃。
+
+    Postgres 的 TIMESTAMP 列读回为 naive；而部分代码路径（如刚构造、
+    尚未 round-trip 的舆情对象）可能带 tzinfo。统一按 UTC 折算为 naive
+    后再做差值，确保增量聚合在任意时区组合下都稳健。
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 def _time_delta_days(a: Optional[datetime], b: Optional[datetime]) -> float:
     if a is None or b is None:
         return float("inf")
+    a, b = _as_naive_utc(a), _as_naive_utc(b)
     return abs((a - b).total_seconds()) / 86400.0
 
 
@@ -177,14 +198,10 @@ def _merge_condition(a: Opinion, b: Opinion, cfg=settings) -> bool:
 
 def _representative(members: List[Opinion]) -> Opinion:
     """取聚类 representative：最高 risk_score，平局取最早有效时间，再平局取最小 id。"""
-    return max(
+    return sorted(
         members,
-        key=lambda o: (
-            o.risk_score,
-            -int(_effective_time(o).timestamp()),
-            -o.id,
-        ),
-    )
+        key=lambda o: (-o.risk_score, _effective_time(o) or datetime.min, o.id),
+    )[0]
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +218,7 @@ def cluster_opinions(opinions: List[Opinion], cfg=settings) -> List[List[Opinion
         opinions,
         key=lambda o: (
             -o.risk_score,
-            int(_effective_time(o).timestamp()),
+            _effective_time(o) or datetime.min,
             o.id,
         ),
     )
@@ -591,7 +608,7 @@ class EventAggregator:
         if len(cluster) >= 2:
             ordered = sorted(
                 cluster,
-                key=lambda o: (_effective_time(o) or datetime(1, 1, 1, tzinfo=timezone.utc), o.id),
+                key=lambda o: (_effective_time(o) or datetime(1, 1, 1), o.id),
             )
             event_title = build_cluster_title(representative_title(ordered), len(cluster))
         else:
@@ -654,6 +671,32 @@ class EventAggregator:
         if len(opinions) >= 2:
             ordered = sorted(
                 opinions,
-                key=lambda o: (_effective_time(o) or datetime(1, 1, 1, tzinfo=timezone.utc), o.id),
+                key=lambda o: (_effective_time(o) or datetime(1, 1, 1), o.id),
             )
             event.title = build_cluster_title(representative_title(ordered), len(opinions))
+
+
+# ---------------------------------------------------------------------------
+# 采集后自动聚合（供「手动采集 / 定时采集」编排层复用，异常安全）
+# ---------------------------------------------------------------------------
+def auto_aggregate_after_collect(session_factory) -> dict:
+    """采集完成后自动增量聚合（异常安全，绝不因聚合失败废掉采集结果）。
+
+    用 session_factory 新建独立会话，避免复用采集会话导致事务状态耦合
+    （采集多为短事务逐条提交，聚合跑在干净会话上更稳）。
+
+    走与「手动聚合」完全一致的增量路径（仅处理未关联舆情），幂等：
+    - 有新增舆情 → 挂载到活跃事件或物化为新事件；
+    - 无新增 → 秒回全 0，重复采集/重复聚合零副作用。
+
+    返回聚合统计 dict（created/updated/linked）；任何异常都会记录日志并返回
+    ``{"error": str}`` 而不向外抛出，确保采集主流程不受聚合影响。
+    """
+    db = session_factory()
+    try:
+        return EventAggregator().aggregate(db, incremental=True)
+    except Exception as exc:
+        logger.exception("采集后自动聚合失败：%s", exc)
+        return {"error": str(exc)}
+    finally:
+        db.close()

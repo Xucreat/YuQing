@@ -67,11 +67,11 @@ class AlertService:
 
                 trigger_parts = []
                 if rule.risk_threshold > 0 and opinion.risk_score >= rule.risk_threshold:
-                    trigger_parts.append(f"risk_score({opinion.risk_score})>=threshold({rule.risk_threshold})")
+                    trigger_parts.append(f"风险评分 {opinion.risk_score} 达到预警阈值 {rule.risk_threshold}")
                 if kw_list:
-                    trigger_parts.append(f"keywords matched: {','.join(kw_list)}")
+                    trigger_parts.append(f"命中关键词：{'、'.join(kw_list)}")
                 if rule.sources:
-                    trigger_parts.append(f"source matched: {opinion.source}")
+                    trigger_parts.append(f"命中来源：{opinion.source or '未知'}")
 
                 record = AlertRecord(
                     rule_id=rule.id,
@@ -81,7 +81,7 @@ class AlertService:
                     opinion_title=opinion.title,
                     event_id=None,
                     event_title="",
-                    trigger_reason="; ".join(trigger_parts),
+                    trigger_reason="；".join(trigger_parts),
                     handled=False,
                     created_at=now,
                 )

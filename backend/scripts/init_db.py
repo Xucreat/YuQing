@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # 确保 backend/ 在 sys.path，便于直接运行脚本
@@ -324,6 +325,42 @@ def _seed_keywords(db) -> None:
         print("[init_db] keywords 表已存在监测词，仅补齐缺失项")
 
 
+def _seed_sensitive_keywords(db) -> None:
+    """幂等播种系统内置敏感/风险词（type='sensitive', source='system'）。
+
+    与监测词共享 keywords 表但 type 不同；首次运行写入，重复执行跳过已存在项。
+    这些词用于风险评分（RuleFallbackProvider），受保护：可查看/筛选/启停，不可删除。
+    """
+    added = 0
+    now = datetime.now(timezone.utc)
+    for word, weight, category in DEFAULT_KEYWORDS:
+        exists = (
+            db.query(Keyword)
+            .filter(Keyword.word == word, Keyword.type == "sensitive")
+            .first()
+        )
+        if exists:
+            continue
+        db.add(
+            Keyword(
+                word=word,
+                weight=weight,
+                category=category,
+                type="sensitive",
+                source="system",
+                is_enabled=True,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        added += 1
+    if added:
+        db.commit()
+        print(f"[init_db] 已播种系统敏感词 {added} 条")
+    else:
+        print("[init_db] 系统敏感词已存在，跳过")
+
+
 def _seed_regions(db) -> None:
     for code, name, level, parent in REGION_SEED:
         if db.query(Region).filter(Region.code == code).first() is None:
@@ -392,6 +429,7 @@ def init() -> None:
         _seed_regions(db)
         _seed_data_sources(db)
         _seed_keywords(db)
+        _seed_sensitive_keywords(db)
 
         db.commit()
         print("[init_db] 初始化完成。")

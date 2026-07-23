@@ -38,10 +38,14 @@
 
       <div class="nav-user">
         <div class="avatar">{{ (authStore.username || 'A')[0].toUpperCase() }}</div>
-        <div>
+        <div class="u-meta">
           <div class="u-name">{{ authStore.username || 'admin' }}</div>
           <div class="u-role">{{ roleLabel }}</div>
         </div>
+        <button class="nav-bell" :class="{ active: redDot }" title="预警通知" @click="openNotifications">
+          <span class="bell-ico">🔔</span>
+          <span v-if="redDot" class="bell-dot">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+        </button>
         <button class="u-out" title="退出登录" @click="handleLogout">↩</button>
       </div>
     </aside>
@@ -62,21 +66,26 @@
 
       <router-view />
     </main>
+
+    <AlertToastHost />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores'
 import { usePermission } from '@/composables/usePermission'
+import { useAlertNotifier } from '@/composables/useAlertNotifier'
+import AlertToastHost from '@/components/AlertToastHost.vue'
 import api, { pollTask } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const { role } = usePermission()
+const { redDot, unreadCount, openNotifications, start } = useAlertNotifier()
 const isAdmin = computed(() => role.value === 'admin')
 const roleLabel = computed(() => {
   const map: Record<string, string> = { admin: '管理员', analyst: '分析员', viewer: '观察员' }
@@ -167,6 +176,9 @@ function handleLogout() {
     confirmButtonText: '退出', cancelButtonText: '取消', type: 'warning',
   }).then(() => { authStore.logout(); router.push('/login') }).catch(() => {})
 }
+
+// 启动预警通知轮询（单例，仅首次挂载生效）。
+onMounted(() => start())
 </script>
 
 <style scoped>
@@ -315,6 +327,45 @@ function handleLogout() {
 .u-out:hover {
   background: #e8e8ed;
   color: #1d1d1f;
+}
+
+/* ---- 预警通知铃铛 + 红点 ---- */
+.nav-bell {
+  position: relative;
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: #86868b;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 6px 7px;
+  border-radius: 10px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.nav-bell:hover { background: #e8e8ed; color: #1d1d1f; }
+.nav-bell.active { color: #1d1d1f; }
+.bell-ico { display: block; }
+.bell-dot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #fff;
+  animation: bell-pop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes bell-pop {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 /* ---- Main ---- */

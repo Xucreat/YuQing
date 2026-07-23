@@ -1,0 +1,15 @@
+
+.alerts[data-v-1c582d96] { height: 100%;
+}
+.filter-card[data-v-1c582d96] { margin-bottom: 16px;
+}
+.table-card[data-v-1c582d96] { margin-top: 0;
+}
+.pagination[data-v-1c582d96] { margin-top: 16px; display: flex; justify-content: flex-end;
+}
+.eval-result[data-v-1c582d96] { margin-left: 16px; color: #67c23a; font-size: 14px;
+}
+.nav-link[data-v-1c582d96] { color: #409eff; text-decoration: none;
+}
+.nav-link[data-v-1c582d96]:hover { text-decoration: underline;
+}

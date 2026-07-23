@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # P0: scheduled collection
     collector_schedule_enabled: bool = True
     collector_schedule_cron: str = "*/30 * * * *"
+    # P0: 预警自动评估（每 N 分钟执行一次，生成新预警记录供前端推送）
+    alert_eval_enabled: bool = True
+    alert_eval_interval_minutes: int = 30
     # 监测关键词（兜底用）：keywords 表已成为采集过滤 + 预警匹配的唯一权威源
     # （见 app/services/keyword_service.py，表空时回退到此配置）。
     # 历史上为大厂县视角；扩省时仅加「河北」。现由 keywords 表驱动，此值仅作应急兜底。
