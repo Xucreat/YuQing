@@ -72,6 +72,7 @@ async function handleLogin() {
     authStore.setUsername(form.username)
     authStore.setRole(data.role || 'analyst')
     authStore.setPermissions(data.permissions || [])
+    authStore.setIsSuperuser(!!data.is_superuser)
     ElMessage.success('登录成功')
     router.push('/dashboard')
   } catch (err: any) {

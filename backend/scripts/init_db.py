@@ -30,6 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import text
 
 from app.core.config import settings
+from app.core.db_identity import assert_identity_for_migration  # RBAC-2A 安全门禁
 from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
@@ -441,4 +442,7 @@ def init() -> None:
 
 
 if __name__ == "__main__":
+    # 写库前强制校验数据库身份（system_identifier / 业务指纹），
+    # 误连错误数据目录（如早期克隆库）将立即中止，避免污染真实数据。
+    assert_identity_for_migration()
     init()

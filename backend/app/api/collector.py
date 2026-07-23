@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
@@ -54,9 +55,14 @@ def _run_collect_task(task, session_factory):
         task.progress = int(done / total * 100) if total else 100
         task.step = f"已采集 {done}/{total} 个数据源" + (f"（{name}）" if name else "")
 
+    # 关联 task_id ↔ batch_id：采集开始前即生成 batch_id 并写入 Task，
+    # 使前端首轮轮询即可拿到 batch_id，从而实时定位本次采集批次。
+    batch_id = uuid.uuid4().hex
+    task.batch_id = batch_id
+
     service = CollectorService()
     result = service.collect_and_analyze_concurrent(
-        session_factory, on_progress=_on_progress
+        session_factory, on_progress=_on_progress, batch_id=batch_id
     )
     collect_result = {
         "collector_type": result.collector_type,

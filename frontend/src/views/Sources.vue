@@ -36,7 +36,12 @@
         <tbody>
           <tr v-for="s in sources" :key="s.id">
             <td>
-              <div class="ds-name">{{ s.name }}</div>
+              <div class="ds-name">
+                {{ s.name }}
+                <span class="ck" :class="s.collector_kind === 'dedicated' ? 'ck-ded' : 'ck-gen'">
+                  {{ s.collector_kind === 'dedicated' ? '专用型' : '通用型' }}
+                </span>
+              </div>
               <div class="ds-key">{{ s.key }} · {{ s.type }}</div>
             </td>
             <td>
@@ -142,7 +147,11 @@
       modal-class="apple-modal"
     >
       <p class="dlg-sub">高级配置（config_json）</p>
+      <div v-if="currentSource && currentSource.collector_kind === 'dedicated'" class="cfg-note">
+        当前采集器为<strong>专用型</strong>，使用系统内置采集逻辑，<strong>无需填写自定义配置</strong>。配置保持为空（<code>{}</code>）即可。
+      </div>
       <el-input
+        v-else
         v-model="configDraft"
         type="textarea"
         :rows="10"
@@ -152,7 +161,10 @@
         <span class="dlg-foot">
           <span v-if="configError" class="cfg-err">{{ configError }}</span>
           <button class="btn btn-ghost" @click="configVisible = false">关闭</button>
-          <button class="btn btn-primary" :disabled="savingConfig" @click="saveConfig">保存配置</button>
+          <button
+            v-if="!(currentSource && currentSource.collector_kind === 'dedicated')"
+            class="btn btn-primary" :disabled="savingConfig" @click="saveConfig"
+          >保存配置</button>
         </span>
       </template>
     </el-dialog>
@@ -212,7 +224,7 @@
           <label class="cf-label">配置 config_json <span class="req">*</span></label>
           <el-input v-model="form.config_json" type="textarea" :rows="13" placeholder="JSON 配置" />
           <div v-if="createConfigError" class="cfg-err">{{ createConfigError }}</div>
-          <div class="cf-hint">保存时会用真实抓取校验：能取到正文才创建成功；否则返回失败提示。</div>
+          <div class="cf-hint">新建的数据源将使用<strong>通用型采集器（配置驱动）</strong>，需填写 config_json（至少含 list_urls）；保存时会用真实抓取校验：能取到正文才创建成功。</div>
         </div>
       </div>
       <template #footer>
@@ -235,6 +247,7 @@ import type { CollectorRunItem, DataSourceCreateRequest, DataSourceItem, DataSou
 
 interface Row extends DataSourceItem {
   _saving?: boolean
+  collector_kind?: 'generic' | 'dedicated'
 }
 
 const DEFAULT_CONFIG = JSON.stringify(
@@ -591,6 +604,25 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .test-msg { font-size: 12.5px; margin-right: auto; }
 .test-msg.ok { color: #1a8e3c; }
 .test-msg.bad { color: #ff3b30; }
+
+/* 专用型/通用型 类型徽标（列表名称旁） */
+.ck {
+  display: inline-flex; align-items: center; margin-left: 8px;
+  padding: 2px 9px; border-radius: 980px; font-size: 11.5px; font-weight: 500;
+  vertical-align: middle;
+}
+.ck-gen { background: rgba(0,122,255,0.1); color: #007aff; }
+.ck-ded { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+
+/* 专用型配置弹窗：只读提示 */
+.cfg-note {
+  font-size: 13px; line-height: 1.6; color: #1d1d1f;
+  background: #f5f5f7; border: 1px solid #e8e8ed; border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 6px;
+}
+.cfg-note code {
+  background: #e8e8ed; padding: 1px 6px; border-radius: 6px; font-size: 12.5px;
+}
 </style>
 
 <style>

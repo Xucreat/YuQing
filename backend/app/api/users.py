@@ -99,7 +99,7 @@ def _resolve_perms(db: Session, codes: list[str]) -> list[Permission]:
 @users_router.get("/users", response_model=dict)
 def list_users(
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
+    size: int = Query(20, ge=1, le=200),
     search: str | None = None,
     is_active: bool | None = None,
     role: str | None = None,

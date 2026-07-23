@@ -1,5 +1,7 @@
 ﻿import DataManagePage from '@/views/DataManage.vue'
 import { createRouter, createWebHistory } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { usePermission } from '@/composables/usePermission'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -60,7 +62,25 @@ const router = createRouter({
       path: '/users',
       name: 'users',
       component: () => import('@/views/Users.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, permission: 'users:read' },
+    },
+    {
+      path: '/roles',
+      name: 'roles',
+      component: () => import('@/views/Roles.vue'),
+      meta: { requiresAuth: true, permission: 'roles:read' },
+    },
+    {
+      path: '/login-logs',
+      name: 'login-logs',
+      component: () => import('@/views/LoginLogs.vue'),
+      meta: { requiresAuth: true, permission: 'login_logs:read' },
+    },
+    {
+      path: '/operation-logs',
+      name: 'operation-logs',
+      component: () => import('@/views/OperationLogs.vue'),
+      meta: { requiresAuth: true, permission: 'audit_logs:read' },
     },
     {
       path: '/propagation',
@@ -85,6 +105,17 @@ router.beforeEach((to) => {
 
   if (requiresAuth && !isLoggedIn) return { path: '/login' }
   if (to.path === '/login' && isLoggedIn) return { path: '/dashboard' }
+
+  // 路由级权限（前端体验层，非安全边界）：已登录但无权限 → 回退首页并提示。
+  // 业务只读页（dashboard/opinions/events/alerts/data/propagation）不带 permission meta，
+  // 保持「已登录即可访问」的现有行为（后端这些读接口亦仅校验登录，详见 RBAC-2C 审计）。
+  if (isLoggedIn && to.meta.permission) {
+    const { canAccessRoute } = usePermission()
+    if (!canAccessRoute(to.meta as Record<string, any>)) {
+      ElMessage.warning('无权限访问该页面')
+      return { path: '/dashboard' }
+    }
+  }
   return true
 })
 

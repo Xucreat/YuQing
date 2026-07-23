@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 # ---------------- 认证 ----------------
@@ -16,6 +16,9 @@ class Token(BaseModel):
     token_type: str = "bearer"
     role: str = ""
     permissions: List[str] = []
+    # 超级管理员标记：与后端 is_superuser_user（is_superuser OR role=='admin'）保持一致，
+    # 供前端 isSuperuser() 判定全权限。仅暴露既有 User.is_superuser，不改变权限模型/库结构。
+    is_superuser: bool = False
 
 
 # ---------------- 权限目录 ----------------
@@ -43,7 +46,7 @@ class RoleOut(BaseModel):
     name: str
     code: str
     display_name: str
-    description: str = ""
+    description: Optional[str] = None
     is_system: bool = False
     is_enabled: bool = True
     permissions: List[str] = []  # 权限 code 列表
@@ -51,6 +54,16 @@ class RoleOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("permissions", mode="before")
+    @classmethod
+    def _coerce_permissions(cls, v):
+        # Role 的 ORM 关系 permissions 是 Permission 对象列表；
+        # model_validate(role) 会直接把对象塞进 List[str] 字段导致校验失败。
+        # 这里兼容：若传入的是对象，则提取 code。
+        if v and not isinstance(v[0], str) and hasattr(v[0], "code"):
+            return [p.code for p in v]
+        return v
 
 
 class RoleCreate(BaseModel):

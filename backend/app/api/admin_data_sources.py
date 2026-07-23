@@ -15,9 +15,10 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, case, String
 from sqlalchemy.orm import Session
 
 from app.collectors.generic_site import GenericSiteCollector
@@ -45,6 +46,71 @@ _TYPE_CLASS_PATH: dict = {
     "search": "app.collectors.generic_site.GenericSiteCollector",
     "rss": "app.collectors.generic_site.GenericSiteCollector",
 }
+
+# —— 专用型 / 通用型 采集器区分与 config_json 校验（Phase 3 优化）——
+# 专用型采集器（GovernmentCollector / XinhuaCollector 等）的 urls / keywords
+# 等逻辑写在类内部，config_json 必须为空（{}）；通用型（GenericSiteCollector）
+# 依赖 config_json 驱动，需校验其支持的字段。
+GENERIC_CLASS_PATH = "app.collectors.generic_site.GenericSiteCollector"
+
+# GenericSiteCollector 实际支持的 config_json 顶层字段（含继承 BaseHttpCollector）。
+GENERIC_ALLOWED_KEYS = {
+    "source_name", "list_urls", "link_rule", "content_selectors",
+    "keywords", "max_articles", "request_interval", "timeout",
+    "max_retries", "retry_backoff",
+}
+# link_rule 子字段白名单。
+GENERIC_LINK_RULE_KEYS = {
+    "href_contains", "href_regex", "href_exclude", "title_blacklist", "max_links",
+}
+
+DEDICATED_EMPTY_HINT = "当前采集器为专用型采集器，无需填写自定义配置。请保持配置为空（{}）。"
+
+
+def _is_config_empty(raw) -> bool:
+    """判定 config_json 是否为「空配置」（专用型采集器允许的唯一状态）。
+
+    与现有存储约定一致：None / 空字符串 / '{}' / {} 均视为空；
+    非法 JSON 不视为「空」，交由后续校验报错。
+    """
+    if raw is None:
+        return True
+    if isinstance(raw, str):
+        s = raw.strip()
+        if s == "":
+            return True
+        try:
+            parsed = json.loads(s)
+        except json.JSONDecodeError:
+            return False
+        return isinstance(parsed, dict) and len(parsed) == 0
+    if isinstance(raw, dict):
+        return len(raw) == 0
+    return False
+
+
+def _is_generic(class_path: str) -> bool:
+    return (class_path or "") == GENERIC_CLASS_PATH
+
+
+def _validate_generic_config(cfg: dict) -> str | None:
+    """校验通用型 config_json 字段。返回首个错误；无错误返回 None。
+
+    发现未知字段明确报错，不静默忽略（避免「用户以为配置生效，实则无效」）。
+    """
+    if not isinstance(cfg, dict) or not cfg:
+        return "通用型采集器必须提供 config_json（至少包含 list_urls）"
+    unknown = [k for k in cfg if k not in GENERIC_ALLOWED_KEYS]
+    if unknown:
+        return (
+            f"config_json 包含不支持的字段：{', '.join(unknown)}"
+            f"（通用型采集器仅支持：{', '.join(sorted(GENERIC_ALLOWED_KEYS))}）"
+        )
+    if isinstance(cfg.get("link_rule"), dict):
+        bad = [k for k in cfg["link_rule"] if k not in GENERIC_LINK_RULE_KEYS]
+        if bad:
+            return f"link_rule 包含不支持的子字段：{', '.join(bad)}"
+    return None
 
 
 def _region_map(db: Session) -> dict:
@@ -74,6 +140,7 @@ def _serialize(ds: DataSource, region_map: dict, latest: dict | None = None) -> 
         "region_names": names,
         "scope_display": "全国" if not codes else "、".join(names),
         "config_json": ds.config_json,
+        "collector_kind": "generic" if _is_generic(ds.class_path) else "dedicated",
         # 缓存列（当前未被采集流程写回，可能为空）
         "last_run_at": ds.last_run_at.isoformat() if ds.last_run_at else None,
         "last_status": ds.last_status,
@@ -147,8 +214,23 @@ def _validate_create(body) -> str | None:
             return "priority 必须为整数"
     if body.get("enabled") is not None and not isinstance(body.get("enabled"), bool):
         return "enabled 必须为布尔值"
-    _, err = _parse_config_json(body.get("config_json"))
-    return err
+    # —— 配置校验：专用型禁止非空；通用型校验字段 ——
+    raw_cfg = body.get("config_json")
+    class_path = body.get("class_path") or _TYPE_CLASS_PATH.get(
+        (body.get("type") or "generic_site"), GENERIC_CLASS_PATH
+    )
+    if _is_generic(class_path):
+        if _is_config_empty(raw_cfg):
+            return "通用型采集器必须提供 config_json（至少包含 list_urls）"
+        cfg, err = _parse_config_json(raw_cfg)
+        if err:
+            return err
+        return _validate_generic_config(cfg)
+    else:
+        # 专用型：仅允许空配置
+        if not _is_config_empty(raw_cfg):
+            return DEDICATED_EMPTY_HINT
+        return None
 
 
 @admin_ds_router.get("")
@@ -296,25 +378,84 @@ def update_data_source(
             ds.priority = int(body["priority"])
         except (TypeError, ValueError):
             raise HTTPException(status_code=422, detail="priority 必须为整数")
-    if "config_json" in body and body["config_json"] is not None:
-        cfg = body["config_json"]
-        if isinstance(cfg, str):
-            try:
-                json.loads(cfg)
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=422, detail="config_json 不是合法 JSON")
-            ds.config_json = cfg
+    if "config_json" in body:
+        raw = body["config_json"]
+        if _is_generic(ds.class_path):
+            # 通用型（GenericSiteCollector）：允许设置合法 config；禁止清空
+            if raw is None:
+                raise HTTPException(status_code=422, detail="通用型采集器不能清空 config_json")
+            if isinstance(raw, str):
+                s = raw.strip()
+                if s == "":
+                    raise HTTPException(status_code=422, detail="通用型采集器不能清空 config_json")
+                try:
+                    cfg = json.loads(s)
+                except json.JSONDecodeError:
+                    raise HTTPException(status_code=422, detail="config_json 不是合法 JSON")
+                if not isinstance(cfg, dict):
+                    raise HTTPException(status_code=422, detail="config_json 必须是 JSON 对象")
+                gerr = _validate_generic_config(cfg)
+                if gerr:
+                    raise HTTPException(status_code=422, detail=gerr)
+                ds.config_json = s
+            elif isinstance(raw, dict):
+                if not raw:
+                    raise HTTPException(status_code=422, detail="通用型采集器不能清空 config_json")
+                gerr = _validate_generic_config(raw)
+                if gerr:
+                    raise HTTPException(status_code=422, detail=gerr)
+                try:
+                    ds.config_json = json.dumps(raw, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=422, detail="config_json 序列化失败")
+            else:
+                raise HTTPException(status_code=422, detail="config_json 格式不支持")
         else:
-            # 允许前端传对象，序列化回字符串存储
-            try:
-                ds.config_json = json.dumps(cfg, ensure_ascii=False)
-            except (TypeError, ValueError):
-                raise HTTPException(status_code=422, detail="config_json 序列化失败")
+            # 专用型采集器：config_json 必须为空（null / "" / "{}" / {}）；非空一律拒绝
+            if raw is None:
+                ds.config_json = "{}"
+            elif isinstance(raw, str):
+                s = raw.strip()
+                if s in ("", "{}"):
+                    ds.config_json = "{}"
+                else:
+                    try:
+                        cfg = json.loads(s)
+                    except json.JSONDecodeError:
+                        raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
+                    if not isinstance(cfg, dict) or cfg:
+                        raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
+                    ds.config_json = "{}"
+            elif isinstance(raw, dict):
+                if not raw:
+                    ds.config_json = "{}"
+                else:
+                    raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
+            else:
+                raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
 
     db.commit()
     db.refresh(ds)
     region_map = _region_map(db)
     return _serialize(ds, region_map)
+
+
+def _run_to_dict(r: CollectorRun) -> dict:
+    """逐源采集记录（CollectorRun）序列化为前端历史 / 批次明细共用的字段。"""
+    return {
+        "id": r.id,
+        "collector_name": r.collector_name,
+        "batch_id": r.batch_id,
+        "trigger_type": r.trigger_type,
+        "start_time": r.start_time.isoformat() if r.start_time else None,
+        "end_time": r.end_time.isoformat() if r.end_time else None,
+        "fetched_raw": r.fetched_raw,
+        "created": r.created,
+        "analyzed": r.analyzed,
+        "failed": r.failed,
+        "status": r.status,
+        "error_msg": r.error_msg,
+    }
 
 
 @admin_ds_router.get("/{ds_id}/runs")
@@ -337,20 +478,124 @@ def data_source_runs(
         .offset((page - 1) * size)
         .limit(size)
     ).all()
-    items = []
-    for r in rows:
-        items.append(
-            {
-                "id": r.id,
-                "collector_name": r.collector_name,
-                "start_time": r.start_time.isoformat() if r.start_time else None,
-                "end_time": r.end_time.isoformat() if r.end_time else None,
-                "fetched_raw": r.fetched_raw,
-                "created": r.created,
-                "analyzed": r.analyzed,
-                "failed": r.failed,
-                "status": r.status,
-                "error_msg": r.error_msg,
-            }
-        )
-    return {"items": items, "total": total, "page": page, "size": size}
+    return {"items": [_run_to_dict(r) for r in rows], "total": total, "page": page, "size": size}
+
+
+@admin_ds_router.get("/collection-logs")
+def collection_logs(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    trigger_type: str | None = Query(None, description="manual / scheduled"),
+    status: str | None = Query(None, description="success / partial / failed / running"),
+    from_: str | None = Query(None, alias="from", description="ISO 起始时间（含）"),
+    to: str | None = Query(None, description="ISO 结束时间（含）"),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """采集日志：按批次（batch_id；历史按 start_time 兼容）聚合每次采集触发的整体记录。
+
+    批次键 = COALESCE(batch_id, start_time::text)。当前数据量小（百级批次），
+    全量聚合后在 Python 侧做筛选与分页，逻辑更清晰。
+    """
+    batch_key = func.coalesce(CollectorRun.batch_id, func.cast(CollectorRun.start_time, String)).label("batch_key")
+    rows = db.execute(
+        select(
+            batch_key,
+            func.min(CollectorRun.start_time).label("started_at"),
+            func.max(CollectorRun.end_time).label("finished_at"),
+            func.count().label("source_count"),
+            func.sum(CollectorRun.fetched_raw).label("fetched_raw"),
+            func.sum(CollectorRun.created).label("created"),
+            func.sum(CollectorRun.analyzed).label("analyzed"),
+            func.sum(case((CollectorRun.status == "success", 1), else_=0)).label("success_count"),
+            func.sum(case((CollectorRun.status == "partial", 1), else_=0)).label("partial_count"),
+            func.sum(case((CollectorRun.status.in_(["failed", "error"]), 1), else_=0)).label("failed_count"),
+            func.sum(case((CollectorRun.status == "running", 1), else_=0)).label("running_count"),
+            func.max(CollectorRun.trigger_type).label("trigger_type"),
+            func.max(CollectorRun.batch_id).label("batch_id"),
+        ).group_by(batch_key)
+    ).all()
+
+    def _parse_dt(s: str | None):
+        if not s:
+            return None
+        s = s.strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(s)
+        except ValueError:
+            return None
+
+    def _batch_status(r) -> str:
+        if r.running_count and r.running_count > 0:
+            return "running"
+        if r.failed_count and r.failed_count > 0:
+            return "failed"
+        if r.partial_count and r.partial_count > 0:
+            return "partial"
+        return "success"
+
+    def _to_item(r):
+        started = r.started_at
+        finished = r.finished_at
+        duration = None
+        if started and finished:
+            duration = (finished - started).total_seconds()
+        return {
+            "batch_key": r.batch_key,
+            "batch_id": r.batch_id,
+            "trigger_type": r.trigger_type,
+            "started_at": started.isoformat() if started else None,
+            "finished_at": finished.isoformat() if finished else None,
+            "duration_seconds": duration,
+            "source_count": r.source_count or 0,
+            "success_count": r.success_count or 0,
+            "partial_count": r.partial_count or 0,
+            "failed_count": r.failed_count or 0,
+            "running_count": r.running_count or 0,
+            "fetched_raw": int(r.fetched_raw or 0),
+            "created": int(r.created or 0),
+            "analyzed": int(r.analyzed or 0),
+            "status": _batch_status(r),
+        }
+
+    items = [_to_item(r) for r in rows]
+    if trigger_type:
+        items = [i for i in items if (i["trigger_type"] or "") == trigger_type]
+    if status:
+        items = [i for i in items if i["status"] == status]
+    f_from = _parse_dt(from_)
+    f_to = _parse_dt(to)
+    if f_from is not None:
+        items = [i for i in items if i["started_at"] and _parse_dt(i["started_at"]) and _parse_dt(i["started_at"]) >= f_from]
+    if f_to is not None:
+        items = [i for i in items if i["started_at"] and _parse_dt(i["started_at"]) and _parse_dt(i["started_at"]) <= f_to]
+    items.sort(key=lambda i: (i["started_at"] is None, i["started_at"] or ""), reverse=True)
+    total = len(items)
+    start = (page - 1) * size
+    return {"items": items[start:start + size], "total": total, "page": page, "size": size}
+
+
+@admin_ds_router.get("/collection-logs/{batch_key}/runs")
+def collection_log_runs(
+    batch_key: str,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """某次采集批次下各数据源的逐源明细（复用 _run_to_dict 序列化）。
+
+    batch_key 为 COALESCE(batch_id, start_time::text)：新数据用 batch_id，
+    历史数据用 start_time 文本。前端传参需 encodeURIComponent（start_time 含空格）。
+    """
+    key_expr = func.coalesce(CollectorRun.batch_id, func.cast(CollectorRun.start_time, String))
+    stmt = select(CollectorRun).where(key_expr == batch_key)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(
+        stmt.order_by(CollectorRun.start_time.desc(), CollectorRun.id)
+        .offset((page - 1) * size)
+        .limit(size)
+    ).all()
+    return {"items": [_run_to_dict(r) for r in rows], "total": total, "page": page, "size": size}

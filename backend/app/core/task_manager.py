@@ -42,6 +42,7 @@ class Task:
     def __init__(self, task_id: str, task_type: str) -> None:
         self.task_id = task_id
         self.task_type = task_type
+        self.batch_id: Optional[str] = None
         self.status = STATUS_PENDING
         self.progress: int = 0          # 0-100
         self.step: str = ""             # 人类可读当前步骤
@@ -56,6 +57,7 @@ class Task:
         return {
             "task_id": self.task_id,
             "task_type": self.task_type,
+            "batch_id": self.batch_id,
             "status": self.status,
             "progress": self.progress,
             "step": self.step,

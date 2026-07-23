@@ -1,0 +1,35 @@
+
+.users-page[data-v-42ef1c14] { min-height: 100%;
+}
+.filter-card[data-v-42ef1c14] { margin-bottom: 16px;
+}
+.table-card[data-v-42ef1c14] { margin-top: 0;
+}
+.pagination[data-v-42ef1c14] { margin-top: 16px; display: flex; justify-content: flex-end;
+}
+.drawer-body[data-v-42ef1c14] { padding-right: 4px;
+}
+.sec[data-v-42ef1c14] { margin-bottom: 22px;
+}
+.sec-title[data-v-42ef1c14] { font-size: 14px; font-weight: 600; color: #1d1d1f; margin: 0 0 12px; padding-left: 10px; border-left: 3px solid #0071e3;
+}
+.sec-hint[data-v-42ef1c14] { font-size: 12.5px; color: #86868b; margin: 0 0 10px;
+}
+.role-chips[data-v-42ef1c14] { display: flex; flex-wrap: wrap; gap: 8px;
+}
+.role-chip[data-v-42ef1c14] { font-weight: 500;
+}
+.role-meta[data-v-42ef1c14] { font-size: 11px; opacity: 0.7;
+}
+.perm-role[data-v-42ef1c14] { margin-bottom: 12px;
+}
+.perm-role-head[data-v-42ef1c14] { font-size: 13px; font-weight: 500; color: #1d1d1f; margin-bottom: 6px;
+}
+.perm-chips[data-v-42ef1c14] { display: flex; flex-wrap: wrap; gap: 6px;
+}
+.perm-chip[data-v-42ef1c14] { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.perm-final[data-v-42ef1c14] { margin-top: 8px; padding-top: 12px; border-top: 1px dashed #e8e8ed;
+}
+.muted[data-v-42ef1c14] { color: #b0b0b5;
+}

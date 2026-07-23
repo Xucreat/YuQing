@@ -48,3 +48,11 @@ backend/_migration_snapshots/
 backend/_acceptance.py
 backend/_audit_event2.py
 backend/_fresh_preflight.py
+backend/_repro*.py
+
+# 旧构建快照 / 调试产物（非项目代码，体积大且含时间戳）
+pgdata.archive-early-clone/
+frontend/dist.old*/
+frontend/dist.old_*/
+backend/app/static/assets.old*/
+backend/app/static/assets.old_*/

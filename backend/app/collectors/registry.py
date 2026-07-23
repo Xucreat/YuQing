@@ -1,22 +1,31 @@
 """采集器注册表 / 表驱动装配（Phase 3）。
 
 职责：
-  1. 动态导入采集器类（import_class），避免中心代码 import 全部子类。
-  2. resolve_collectors(db, collector_type)：优先读 data_sources 表（enabled，
+1. 动态导入采集器类（import_class），避免中心代码 import 全部子类。
+2. resolve_collectors(db, collector_type)：优先读 data_sources 表（enabled，
      按 priority 排序）；**表为空或异常时回退到内置 DEFAULT_SOURCES**（灰度切换，
      生产零停机）。新增数据源 = 插入一行 + （可选）写一个薄采集器类，无需改本文件。
-  3. 为每个采集器实例注入 scope_region_codes（供 CollectorService 绑定 region_id）
+3. 为每个采集器实例注入 scope_region_codes（供 CollectorService 绑定 region_id）
      与 data_source_key（审计用）。
 
 设计约束（延续既有约定）：
   - 不修改数据库结构逻辑；data_sources 由 alembic 迁移创建。
   - 仅在 resolve_collectors 中读取 data_sources；其余流程零耦合。
+
+可靠性约束（Phase 3 优化）：
+  - config_json 解析失败（非法 JSON / 非对象）**不再静默兜底为 {}**，
+    而是抛出 ConfigParseError，交由调用方记为装配失败并暴露。
+  - 装配失败的源不再被静默丢弃，而是进入 ResolvedCollectors.failures，
+    由采集主流程写入 CollectorRun(status=failed) 使错误在采集日志中可见。
+  - resolve_collectors 保持"仅返回采集器列表"的旧契约（测试 / 脚本依赖）；
+    需要失败明细时改用 resolve_collectors_verbose。
 """
 from __future__ import annotations
 
 import importlib
 import json
 import logging
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -113,15 +122,34 @@ def parse_codes(csv: Optional[str]) -> Optional[List[str]]:
     return [c.strip() for c in s.split(",") if c.strip()]
 
 
+class ConfigParseError(Exception):
+    """config_json 解析/校验失败的明确错误（区别于其他装配异常）。"""
+
+
 def _parse_config(config_json: Optional[str]) -> dict:
-    if not config_json:
+    """解析 config_json 为 dict。
+
+    - None / '' / '{}' / 非字符串空值 -> 视为空配置，返回 {}。
+    - 合法 JSON 对象 -> 返回 dict。
+    - 非法 JSON / 非对象 -> **抛出 ConfigParseError**（不再静默兜底为 {}），
+      交由上层记为装配失败，避免"看起来正常但实为错误配置"的静默失败。
+    """
+    if config_json is None:
         return {}
-    try:
-        cfg = json.loads(config_json)
-        return cfg if isinstance(cfg, dict) else {}
-    except (json.JSONDecodeError, TypeError):
-        logger.warning("config_json 解析失败，视为空配置: %r", config_json)
-        return {}
+    if isinstance(config_json, str):
+        s = config_json.strip()
+        if s == "":
+            return {}
+        try:
+            cfg = json.loads(s)
+        except json.JSONDecodeError as e:
+            raise ConfigParseError(f"config_json 不是合法 JSON：{e}")
+    else:
+        # 非字符串（理论不应出现）：直接当作对象处理
+        cfg = config_json
+    if not isinstance(cfg, dict):
+        raise ConfigParseError("config_json 必须是 JSON 对象")
+    return cfg
 
 
 def _attach_meta(collector: BaseCollector, meta: dict) -> BaseCollector:
@@ -132,19 +160,28 @@ def _attach_meta(collector: BaseCollector, meta: dict) -> BaseCollector:
     return collector
 
 
-def resolve_collectors(
-    db: Optional[Session] = None, collector_type: Optional[str] = None
-) -> List[BaseCollector]:
-    """表驱动装配采集器。
+@dataclass
+class ResolvedCollectors:
+    """表驱动装配结果：成功实例 + 装配失败明细（用于暴露，不静默丢弃）。"""
+    collectors: List[BaseCollector] = field(default_factory=list)
+    failures: List[dict] = field(default_factory=list)  # {key, name, class_path, error}
 
-    - collector_type == 'mock' -> [MockCollector]（离线演示，不查表）。
-    - 否则优先读 data_sources 表（enabled=True，按 priority/ 排序）。
-    - 表为空 / 查询异常 / 无 db -> 回退 DEFAULT_SOURCES（灰度，等价于迁移前行为）。
+
+def _resolve_core(
+    db: Optional[Session], collector_type: Optional[str]
+) -> ResolvedCollectors:
+    """核心装配逻辑（供 resolve_collectors / resolve_collectors_verbose 复用）。
+
+    装配失败的源不再被静默吞掉，而是记入 failures，交由调用方暴露
+    （如写入 CollectorRun.status=failed，使其在采集日志中可见）。
     """
+    result = ResolvedCollectors()
+
+    # mock 离线演示：直接返回单个 MockCollector（无失败风险）
     if collector_type and collector_type.lower() == "mock":
         from app.collectors.mock_collector import MockCollector
-
-        return [MockCollector()]
+        result.collectors.append(MockCollector())
+        return result
 
     rows = None
     if db is not None:
@@ -166,7 +203,6 @@ def resolve_collectors(
         logger.info("data_sources 为空/不可用，使用内置默认源定义（%d 个）", len(DEFAULT_SOURCES))
         rows = DEFAULT_SOURCES
 
-    collectors: List[BaseCollector] = []
     for row in rows:
         # row 可能是 ORM 对象（来自表）或 dict（来自 DEFAULT_SOURCES 回退）
         if isinstance(row, dict):
@@ -181,13 +217,54 @@ def resolve_collectors(
             }
         try:
             cls = import_class(meta["class_path"])
-            cfg = _parse_config(meta.get("config_json"))
-            # GenericSiteCollector 与 bespoke 采集器均兼容 cls(**cfg)
-            collector = cls(**cfg)
-            collectors.append(_attach_meta(collector, meta))
+            cfg = _parse_config(meta.get("config_json"))  # 非法 JSON -> ConfigParseError
+            collector = cls(**cfg)  # 未知/错误参数 -> TypeError 等
+            result.collectors.append(_attach_meta(collector, meta))
+        except ConfigParseError as exc:
+            logger.error(
+                "数据源配置解析失败 key=%s class=%s err=%s",
+                meta.get("key"), meta.get("class_path"), exc,
+            )
+            result.failures.append({
+                "key": meta.get("key"),
+                "name": meta.get("name"),
+                "class_path": meta.get("class_path"),
+                "error": f"配置解析失败：{exc}",
+            })
         except Exception as exc:
             logger.error(
                 "装配数据源失败 key=%s class=%s err=%s",
-                meta.get("key"), meta.get("class_path"), exc,
+                meta.get("key"), meta.get("class_path"),
+                f"{type(exc).__name__}: {exc}",
             )
-    return collectors
+            result.failures.append({
+                "key": meta.get("key"),
+                "name": meta.get("name"),
+                "class_path": meta.get("class_path"),
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+    return result
+
+
+def resolve_collectors(
+    db: Optional[Session] = None, collector_type: Optional[str] = None
+) -> List[BaseCollector]:
+    """表驱动装配采集器（向后兼容旧契约）。
+
+    仅返回成功装配的采集器列表；装配失败的源被记入 failures 但此处
+    不暴露（保持与历史测试 / 脚本一致的行为）。需要失败明细时
+    请改用 resolve_collectors_verbose。
+    """
+    return _resolve_core(db, collector_type).collectors
+
+
+def resolve_collectors_verbose(
+    db: Optional[Session] = None, collector_type: Optional[str] = None
+) -> ResolvedCollectors:
+    """返回 (成功装配的采集器, 装配失败明细)。
+
+    供采集主流程（CollecterService）暴露装配失败——失败明细会被写入
+    CollectorRun(status=failed)，使"该源完全没采集"的异常在采集日志中可见，
+    而不是静默消失。
+    """
+    return _resolve_core(db, collector_type)

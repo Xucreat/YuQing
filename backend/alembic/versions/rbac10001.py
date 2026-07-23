@@ -43,7 +43,6 @@ def upgrade() -> None:
     op.add_column("roles", sa.Column("is_system", sa.Boolean(), nullable=False, server_default="false"))
     op.add_column("roles", sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default="true"))
     op.add_column("roles", sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")))
-    op.create_unique_constraint("uq_roles_code", "roles", ["code"])
 
     # ---------- permissions 目录表 ----------
     op.create_table(
@@ -129,6 +128,15 @@ def upgrade() -> None:
     _migrate_role_permissions(bind)
     _flag_system_roles(bind)
     _flag_superusers(bind)
+
+    # ---------- 确保 code 唯一（防御：残留空 code 用 role_<id> 兜底） ----------
+    # roles.code 刚加列时默认 ''，3 个系统角色此时 code 均为 ''，直接加唯一约束会冲突；
+    # 因此先由 _flag_system_roles 写入 admin/analyst/viewer，再对一切残留空 code 兜底，
+    # 最后才创建唯一约束。
+    bind.execute(
+        sa.text("UPDATE roles SET code = 'role_' || id WHERE code IS NULL OR code = ''")
+    )
+    op.create_unique_constraint("uq_roles_code", "roles", ["code"])
 
     # ---------- 最后移除旧 JSONB 权限列 ----------
     op.drop_column("roles", "permissions")

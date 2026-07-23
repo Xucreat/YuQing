@@ -13,6 +13,10 @@ TEST_DB_URL = (
 )
 # 允许通过环境变量覆盖测试库地址（如本机无 5433 实例时指向同实例的 opinion_test），
 # 默认仍指向 5433 的 opinion_test，对原 CI/开发环境零破坏。
+
+# RBAC-2A：测试库（opinion_test）是独立于生产库的 cluster，system_identifier 不同，
+# 数据库身份门禁会因此中止。测试为已知安全场景，显式关闭门禁以避免误伤。
+os.environ.setdefault("DB_IDENTITY_CHECK", "off")
 os.environ.setdefault("DATABASE_URL", TEST_DB_URL)
 
 # 测试默认采集方式 = mock（离线稳定，不触网政府站）。

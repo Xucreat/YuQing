@@ -82,6 +82,7 @@ def login(
         token_type="bearer",
         role=user.role,
         permissions=permissions,
+        is_superuser=bool(user.is_superuser),
     )
 
 

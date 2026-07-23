@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 from app.collectors.base import BaseCollector
 from app.collectors.government_collector import GovernmentCollector
-from app.collectors.registry import resolve_collectors
+from app.collectors.registry import resolve_collectors, resolve_collectors_verbose
 from app.core.config import settings
 from app.models.opinion import Opinion
 from app.models.region import Region
@@ -184,7 +185,7 @@ class CollectorService:
     # ------------------------------------------------------------------
     # 主流程
     # ------------------------------------------------------------------
-    def collect_and_analyze(self, db: Session) -> CollectorRunResult:
+    def collect_and_analyze(self, db: Session, trigger_type: str = "scheduled") -> CollectorRunResult:
         """执行一次采集 + 自动 AI 分析，返回运行结果（Phase 3 表驱动 + 按区域绑定）。
 
         - 未显式注入 collectors 时，按 db 中的 data_sources 表装配（灰度回退默认源）。
@@ -194,8 +195,15 @@ class CollectorService:
         global _GOV_LAST_RUN_AT
 
         # 表驱动装配（优先 data_sources 表，表空回退默认源）；注入模式不覆盖。
+        # 装配失败的源（非法 config_json / 采集器构建异常）进入 failures，
+        # 由 _record_assembly_failure 写入 CollectorRun(status=failed)，在采集日志中可见。
+        run_start = datetime.now(timezone.utc)
+        batch_id = uuid.uuid4().hex
         if not self._collectors_injected:
-            self.collectors = resolve_collectors(db, self.collector_type)
+            resolved = resolve_collectors_verbose(db, self.collector_type)
+            self.collectors = resolved.collectors
+            for f in resolved.failures:
+                self._record_assembly_failure(db, f, run_start, batch_id, trigger_type)
 
         # 监测关键词（采集过滤唯一权威源 = keywords 表；表空回退配置）。
         # 一次采集运行内只解析一次，注入到每个采集器的 fetch(keywords=...)。
@@ -211,9 +219,8 @@ class CollectorService:
         # 采集阶段默认使用规则降级路径生成「系统研判报告」，
         # 不调用 DeepSeek（节省额度；DeepSeek 仅由用户手动「触发 AI 分析」时调用）。
 
-        run_start = datetime.now(timezone.utc)
         for collector in self.collectors:
-            sub = self._process_collector(db, collector, monitoring_kw, run_start)
+            sub = self._process_collector(db, collector, monitoring_kw, run_start, batch_id, trigger_type)
             result.fetched_raw += sub.fetched_raw
             result.created += sub.created
             result.analyzed += sub.analyzed
@@ -236,12 +243,36 @@ class CollectorService:
     # ------------------------------------------------------------------
     # 单采集器处理（供顺序 / 并发两种主流程复用）
     # ------------------------------------------------------------------
+    def _record_assembly_failure(
+        self, db: Session, failure: dict, run_start: datetime, batch_id: str, trigger_type: str
+    ) -> None:
+        """将装配失败的源写入一条 CollectorRun（status=failed）。
+
+        让"该源因配置/构建错误完全没有采集"的异常在采集日志与逐源历史中
+        可见，而不是被装配环节静默丢弃。复用既有 collector_runs 表与
+        collection-logs 聚合逻辑（按 batch_id 归并）。
+        """
+        name = failure.get("name") or failure.get("key") or "unknown"
+        run = CollectorRun(
+            collector_name=name,
+            batch_id=batch_id,
+            trigger_type=trigger_type,
+            start_time=run_start,
+            end_time=datetime.now(timezone.utc),
+            status="failed",
+            error_msg=failure.get("error") or "采集器装配失败",
+        )
+        db.add(run)
+        db.commit()
+
     def _process_collector(
         self,
         db: Session,
         collector: BaseCollector,
         monitoring_kw: List[str],
         run_start: datetime,
+        batch_id: str,
+        trigger_type: str,
     ) -> "CollectorRunResult":
         """对单个采集器执行 fetch → 去重 → 建 Opinion → AI 分析 → 状态流转。
 
@@ -252,6 +283,8 @@ class CollectorService:
         # 每个采集器独立记录一次采集运行（CollectorRun），用于审计与历史。
         run = CollectorRun(
             collector_name=collector.source_name,
+            batch_id=batch_id,
+            trigger_type=trigger_type,
             start_time=run_start,
             status="running",
         )
@@ -342,6 +375,8 @@ class CollectorService:
         session_factory,
         max_workers: int = 6,
         on_progress: Optional[Callable[[int, int, str], None]] = None,
+        trigger_type: str = "manual",
+        batch_id: Optional[str] = None,
     ) -> "CollectorRunResult":
         """并发版采集：各采集器在独立线程内 fetch（网络 I/O 并行），整体耗时≈最慢单源。
 
@@ -352,10 +387,17 @@ class CollectorService:
         global _GOV_LAST_RUN_AT
 
         # 表驱动装配（优先 data_sources 表，表空回退默认源）；注入模式不覆盖。
+        # 装配失败的源写入 CollectorRun(failed)，在采集日志中可见。
+        run_start = datetime.now(timezone.utc)
+        batch_id = batch_id or uuid.uuid4().hex
         if not self._collectors_injected:
             resolve_db = session_factory()
             try:
-                self.collectors = resolve_collectors(resolve_db, self.collector_type)
+                resolved = resolve_collectors_verbose(resolve_db, self.collector_type)
+                self.collectors = resolved.collectors
+                for f in resolved.failures:
+                    self._record_assembly_failure(resolve_db, f, run_start, batch_id, trigger_type)
+                resolve_db.commit()
             finally:
                 resolve_db.close()
 
@@ -377,13 +419,12 @@ class CollectorService:
             result.finalize()
             return result
 
-        run_start = datetime.now(timezone.utc)
         total = len(self.collectors)
 
         def _work(collector: BaseCollector) -> "CollectorRunResult":
             cdb = session_factory()
             try:
-                return self._process_collector(cdb, collector, monitoring_kw, run_start)
+                return self._process_collector(cdb, collector, monitoring_kw, run_start, batch_id, trigger_type)
             finally:
                 cdb.close()
 

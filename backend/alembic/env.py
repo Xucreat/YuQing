@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 
 from app.core.config import settings
+from app.core.db_identity import assert_identity_for_migration  # RBAC-2A 安全门禁
 from app.db.base import Base
 
 import app.models  # noqa: F401  确保全部模型注册到 Base.metadata
@@ -34,6 +35,11 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     from sqlalchemy import engine_from_config, pool
+
+    # === 数据库身份安全门禁（RBAC-2A）===
+    # 任何实际迁移执行前，强制校验当前实例身份（system_identifier / data_directory）。
+    # 不匹配立即以非零码退出，阻止误连错误数据目录。
+    assert_identity_for_migration()
 
     section = config.get_section(config.config_ini_section, {})
     connectable = engine_from_config(
