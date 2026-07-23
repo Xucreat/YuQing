@@ -27,9 +27,10 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable, List, Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,34 @@ class CollectorRunResult:
 def get_collector_status() -> dict:
     """返回采集状态（模块级内存，重启丢失；见上方 Phase 3A 注释）。"""
     return dict(_COLLECTOR_STATUS)
+
+
+def reclaim_zombie_runs(db: Session, *, timeout_minutes: Optional[int] = None) -> int:
+    """启动时对账：将超时仍 running 的历史 CollectorRun 回收为 failed。
+
+    - 仅回收「开始时间早于 now - timeout」的记录，避免误判刚启动/仍在途的任务
+      （应用启动时该进程内无任何采集在途，但阈值仍是安全保护）。
+    - timeout 复用配置 ``collector_run_zombie_timeout_minutes``（集中定义，禁止散落 magic number）。
+    - 不引入 Redis / Celery / 数据库锁服务等新组件（Phase 6 纪律）。
+    - 回收原因明确写入 error_msg，便于采集日志定位。
+
+    返回被回收的记录数。
+    """
+    if timeout_minutes is None:
+        timeout_minutes = settings.collector_run_zombie_timeout_minutes
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+    rows = (
+        db.query(CollectorRun)
+        .filter(CollectorRun.status == "running", CollectorRun.start_time < cutoff)
+        .all()
+    )
+    for r in rows:
+        r.status = "failed"
+        r.error_msg = "采集进程重启或异常中断，原运行状态已超时回收"
+        r.end_time = datetime.now(timezone.utc)
+    if rows:
+        db.commit()
+    return len(rows)
 
 
 class CollectorService:
@@ -291,81 +320,102 @@ class CollectorService:
         db.add(run)
         db.commit()
 
-        items = collector.fetch(keywords=monitoring_kw) or []
-        # 统计采集器实际抓取的原始条数（去重前），供前端提示真实抓取量。
-        fetched_raw = len(items)
-        run.fetched_raw = fetched_raw
+        try:
+            items = collector.fetch(keywords=monitoring_kw) or []
+            # 统计采集器实际抓取的原始条数（去重前），供前端提示真实抓取量。
+            fetched_raw = len(items)
+            run.fetched_raw = fetched_raw
 
-        # 按采集器声明的覆盖范围绑定区域（省/市/县）
-        region_id = self._resolve_region_id(db, collector)
+            # 按采集器声明的覆盖范围绑定区域（省/市/县）
+            region_id = self._resolve_region_id(db, collector)
 
-        # 每条 Opinion 的 AI 分析独立（无共享可变状态），逐采集器新建 Provider。
-        # 敏感/风险词由 keywords 表（type='sensitive'）注入；无启用敏感词时
-        # get_sensitive_keywords 自动回退内置 DEFAULT_KEYWORDS，风险评分零回归。
-        ai = RuleFallbackProvider(keywords=get_sensitive_keywords(db))
+            # 每条 Opinion 的 AI 分析独立（无共享可变状态），逐采集器新建 Provider。
+            # 敏感/风险词由 keywords 表（type='sensitive'）注入；无启用敏感词时
+            # get_sensitive_keywords 自动回退内置 DEFAULT_KEYWORDS，风险评分零回归。
+            ai = RuleFallbackProvider(keywords=get_sensitive_keywords(db))
 
-        c_created = c_analyzed = c_failed = 0
-        for item in items:
-            # 1) 去重：已存在则跳过，不重复创建（临界区串行化）
-            with self._write_lock:
-                if self._already_exists(db, item):
-                    continue
+            c_created = c_analyzed = c_failed = 0
+            for item in items:
+                # 1) 去重：已存在则跳过，不重复创建（临界区串行化）
+                with self._write_lock:
+                    if self._already_exists(db, item):
+                        continue
 
-                # 2) 新建 Opinion（默认 pending，先落库保证失败也保留记录）
-                opinion = Opinion(
-                    title=(item.get("title") or "").strip(),
-                    content=item.get("content") or "",
-                    source=(item.get("source") or "").strip() or collector.source_name,
-                    url=(item.get("url") or "").strip(),
-                    publish_time=item.get("publish_time"),
-                    region_id=region_id,
-                    risk_score=0,
-                    sentiment="neutral",
-                    analysis_status="pending",
-                )
-                db.add(opinion)
-                db.commit()  # 先提交，确保失败记录不丢失
-            c_created += 1
+                    # 2) 新建 Opinion（默认 pending，先落库保证失败也保留记录）
+                    opinion = Opinion(
+                        title=(item.get("title") or "").strip(),
+                        content=item.get("content") or "",
+                        source=(item.get("source") or "").strip() or collector.source_name,
+                        url=(item.get("url") or "").strip(),
+                        publish_time=item.get("publish_time"),
+                        region_id=region_id,
+                        risk_score=0,
+                        sentiment="neutral",
+                        analysis_status="pending",
+                    )
+                    try:
+                        db.add(opinion)
+                        db.commit()  # 先提交，确保失败记录不丢失
+                    except IntegrityError:
+                        # P1-2：数据库级唯一约束兜底（并发插入相同 url）。
+                        # 视为已存在，跳过，绝不把正常重复冲突当作系统级异常导致整批失败。
+                        db.rollback()
+                        if self._already_exists(db, item):
+                            continue
+                        raise  # 非 url 唯一冲突的真实错误，按原样抛出
+                c_created += 1
 
-            # 3) AI 分析 + 写回（单条失败隔离；分析写回也在锁内，避免并发更新冲突）
+                # 3) AI 分析 + 写回（单条失败隔离；分析写回也在锁内，避免并发更新冲突）
+                try:
+                    analysis = ai.analyze(
+                        f"标题：{opinion.title}\n正文：{opinion.content}"
+                    )
+                    opinion.summary = analysis.summary
+                    opinion.sentiment = analysis.sentiment
+                    opinion.risk_score = analysis.risk_score
+                    opinion.keywords = ",".join(analysis.keywords)
+                    opinion.analysis_suggestion = analysis.suggestion
+                    opinion.analysis_status = "completed"
+                    opinion.analysis_time = datetime.now(timezone.utc)
+                    with self._write_lock:
+                        db.commit()
+                    c_analyzed += 1
+                except Exception:
+                    # 失败：保留该 Opinion 记录，仅状态置 failed（单条失败隔离，不影响其余）
+                    db.rollback()
+                    opinion.analysis_status = "failed"
+                    db.add(opinion)
+                    with self._write_lock:
+                        db.commit()
+                    c_failed += 1
+
+            # 写回本次采集器运行结果
+            run.created = c_created
+            run.analyzed = c_analyzed
+            run.failed = c_failed
+            run.status = "success" if c_failed == 0 else "partial"
+            run.end_time = datetime.now(timezone.utc)
+            db.commit()
+
+            return CollectorRunResult(
+                collector_type=self.collector_type,
+                fetched_raw=fetched_raw,
+                created=c_created,
+                analyzed=c_analyzed,
+                failed=c_failed,
+            )
+        except Exception as exc:
+            # P1-1：采集器级异常（fetch / 区域解析 / 循环内未捕获异常）必须最终落为 failed，
+            # 不得让对应 CollectorRun 永久停留 running；error_msg 保留足够定位信息；
+            # 不吞掉异常伪装成功——标记失败后重新抛出，原有调用方行为（异常上抛）不变。
+            run.status = "failed"
+            run.error_msg = f"{type(exc).__name__}: {exc}"[:2000]
+            run.end_time = datetime.now(timezone.utc)
             try:
-                analysis = ai.analyze(
-                    f"标题：{opinion.title}\n正文：{opinion.content}"
-                )
-                opinion.summary = analysis.summary
-                opinion.sentiment = analysis.sentiment
-                opinion.risk_score = analysis.risk_score
-                opinion.keywords = ",".join(analysis.keywords)
-                opinion.analysis_suggestion = analysis.suggestion
-                opinion.analysis_status = "completed"
-                opinion.analysis_time = datetime.now(timezone.utc)
-                with self._write_lock:
-                    db.commit()
-                c_analyzed += 1
+                db.commit()
             except Exception:
-                # 失败：保留该 Opinion 记录，仅状态置 failed
                 db.rollback()
-                opinion.analysis_status = "failed"
-                db.add(opinion)
-                with self._write_lock:
-                    db.commit()
-                c_failed += 1
-
-        # 写回本次采集器运行结果
-        run.created = c_created
-        run.analyzed = c_analyzed
-        run.failed = c_failed
-        run.status = "success" if c_failed == 0 else "partial"
-        run.end_time = datetime.now(timezone.utc)
-        db.commit()
-
-        return CollectorRunResult(
-            collector_type=self.collector_type,
-            fetched_raw=fetched_raw,
-            created=c_created,
-            analyzed=c_analyzed,
-            failed=c_failed,
-        )
+            raise
 
     # ------------------------------------------------------------------
     # 并发主流程（后台任务使用）：每个采集器独立线程 + 独立 DB 会话并行抓取

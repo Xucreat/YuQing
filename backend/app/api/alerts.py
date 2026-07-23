@@ -1,6 +1,6 @@
 """Alert center API routes."""
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user
 from app.core.permissions import require_permission
@@ -12,6 +12,7 @@ from app.schemas.alert import (
     AlertRecordOut, AlertRecordListResponse, AlertEvaluateResponse,
 )
 from app.services.alert_service import AlertService
+from app.services.audit_service import audit_write
 
 alerts_router = APIRouter(tags=["alerts"], dependencies=[Depends(get_current_user)])
 MAX_SIZE = 100
@@ -46,33 +47,37 @@ def list_rules(
 
 
 @alerts_router.post("/rules", response_model=AlertRuleOut, status_code=status.HTTP_201_CREATED)
-def create_rule(payload: AlertRuleCreate, db: Session = Depends(get_db), _u: User = Depends(require_permission("alerts:write"))):
-    rule = AlertRule(**payload.model_dump())
-    db.add(rule)
-    db.commit()
+def create_rule(payload: AlertRuleCreate, request: Request, current_user: User = Depends(require_permission("alerts:write")), db: Session = Depends(get_db)):
+    with audit_write(db, action="CREATE", operator=current_user, request=request, resource_type="alert_rule", details=payload.model_dump(mode="json")) as ctx:
+        rule = AlertRule(**payload.model_dump())
+        db.add(rule)
+        db.commit()
+        ctx["resource_id"] = str(rule.id)
     db.refresh(rule)
     return rule
 
 
 @alerts_router.put("/rules/{rule_id}", response_model=AlertRuleOut)
-def update_rule(rule_id: int, payload: AlertRuleUpdate, db: Session = Depends(get_db), _u: User = Depends(require_permission("alerts:write"))):
+def update_rule(rule_id: int, payload: AlertRuleUpdate, request: Request, current_user: User = Depends(require_permission("alerts:write")), db: Session = Depends(get_db)):
     rule = db.get(AlertRule, rule_id)
     if not rule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
-        setattr(rule, k, v)
-    db.commit()
+    with audit_write(db, action="UPDATE", operator=current_user, request=request, resource_type="alert_rule", resource_id=str(rule_id), details=payload.model_dump(exclude_unset=True, mode="json")):
+        for k, v in payload.model_dump(exclude_unset=True).items():
+            setattr(rule, k, v)
+        db.commit()
     db.refresh(rule)
     return rule
 
 
 @alerts_router.delete("/rules/{rule_id}")
-def delete_rule(rule_id: int, db: Session = Depends(get_db), _u: User = Depends(require_permission("alerts:write"))):
+def delete_rule(rule_id: int, request: Request, current_user: User = Depends(require_permission("alerts:write")), db: Session = Depends(get_db)):
     rule = db.get(AlertRule, rule_id)
     if not rule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
-    db.delete(rule)
-    db.commit()
+    with audit_write(db, action="DELETE", operator=current_user, request=request, resource_type="alert_rule", resource_id=str(rule_id), details={"name": rule.name if hasattr(rule, "name") else None}):
+        db.delete(rule)
+        db.commit()
     return {"detail": "Rule deleted", "id": rule_id}
 
 

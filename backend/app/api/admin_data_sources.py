@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, or_, select, case, String
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,7 @@ from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
 from app.models.region import Region
 from app.models.user import User
+from app.services.audit_service import audit_write
 
 admin_ds_router = APIRouter(
     prefix="/admin/data-sources",
@@ -317,8 +318,9 @@ def test_data_source(
 @admin_ds_router.post("")
 def create_data_source(
     body: dict,
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
     """新增数据源：保存前进行真实抓取校验，校验失败不落库（返回 422 + 可读错误）。"""
     err = _validate_create(body)
@@ -344,18 +346,24 @@ def create_data_source(
 
     raw_cfg = body.get("config_json")
     config_json_str = raw_cfg if isinstance(raw_cfg, str) else json.dumps(cfg, ensure_ascii=False)
-    ds = DataSource(
-        key=key,
-        name=name,
-        type=type_,
-        class_path=class_path,
-        enabled=bool(body.get("enabled", True)),
-        priority=int(body.get("priority", 50)),
-        scope_region_codes=body.get("scope_region_codes") or None,
-        config_json=config_json_str,
-    )
-    db.add(ds)
-    db.commit()
+    with audit_write(
+        db, action="CREATE", operator=current_user, request=request,
+        resource_type="data_source",
+        details={"key": key, "name": name, "type": type_, "class_path": class_path},
+    ) as ctx:
+        ds = DataSource(
+            key=key,
+            name=name,
+            type=type_,
+            class_path=class_path,
+            enabled=bool(body.get("enabled", True)),
+            priority=int(body.get("priority", 50)),
+            scope_region_codes=body.get("scope_region_codes") or None,
+            config_json=config_json_str,
+        )
+        db.add(ds)
+        db.commit()
+        ctx["resource_id"] = str(ds.id)
     db.refresh(ds)
     return {**_serialize(ds, _region_map(db)), "test": test}
 
@@ -364,77 +372,83 @@ def create_data_source(
 def update_data_source(
     ds_id: int,
     body: dict,
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
     ds = db.get(DataSource, ds_id)
     if not ds:
         raise HTTPException(status_code=404, detail="Data source not found")
 
-    if "enabled" in body and body["enabled"] is not None:
-        ds.enabled = bool(body["enabled"])
-    if "priority" in body and body["priority"] is not None:
-        try:
-            ds.priority = int(body["priority"])
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=422, detail="priority 必须为整数")
-    if "config_json" in body:
-        raw = body["config_json"]
-        if _is_generic(ds.class_path):
-            # 通用型（GenericSiteCollector）：允许设置合法 config；禁止清空
-            if raw is None:
-                raise HTTPException(status_code=422, detail="通用型采集器不能清空 config_json")
-            if isinstance(raw, str):
-                s = raw.strip()
-                if s == "":
+    with audit_write(
+        db, action="UPDATE", operator=current_user, request=request,
+        resource_type="data_source", resource_id=str(ds_id),
+        details={"changes": list(body.keys())},
+    ):
+        if "enabled" in body and body["enabled"] is not None:
+            ds.enabled = bool(body["enabled"])
+        if "priority" in body and body["priority"] is not None:
+            try:
+                ds.priority = int(body["priority"])
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=422, detail="priority 必须为整数")
+        if "config_json" in body:
+            raw = body["config_json"]
+            if _is_generic(ds.class_path):
+                # 通用型（GenericSiteCollector）：允许设置合法 config；禁止清空
+                if raw is None:
                     raise HTTPException(status_code=422, detail="通用型采集器不能清空 config_json")
-                try:
-                    cfg = json.loads(s)
-                except json.JSONDecodeError:
-                    raise HTTPException(status_code=422, detail="config_json 不是合法 JSON")
-                if not isinstance(cfg, dict):
-                    raise HTTPException(status_code=422, detail="config_json 必须是 JSON 对象")
-                gerr = _validate_generic_config(cfg)
-                if gerr:
-                    raise HTTPException(status_code=422, detail=gerr)
-                ds.config_json = s
-            elif isinstance(raw, dict):
-                if not raw:
-                    raise HTTPException(status_code=422, detail="通用型采集器不能清空 config_json")
-                gerr = _validate_generic_config(raw)
-                if gerr:
-                    raise HTTPException(status_code=422, detail=gerr)
-                try:
-                    ds.config_json = json.dumps(raw, ensure_ascii=False)
-                except (TypeError, ValueError):
-                    raise HTTPException(status_code=422, detail="config_json 序列化失败")
-            else:
-                raise HTTPException(status_code=422, detail="config_json 格式不支持")
-        else:
-            # 专用型采集器：config_json 必须为空（null / "" / "{}" / {}）；非空一律拒绝
-            if raw is None:
-                ds.config_json = "{}"
-            elif isinstance(raw, str):
-                s = raw.strip()
-                if s in ("", "{}"):
-                    ds.config_json = "{}"
-                else:
+                if isinstance(raw, str):
+                    s = raw.strip()
+                    if s == "":
+                        raise HTTPException(status_code=422, detail="通用型采集器不能清空 config_json")
                     try:
                         cfg = json.loads(s)
                     except json.JSONDecodeError:
-                        raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
-                    if not isinstance(cfg, dict) or cfg:
-                        raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
+                        raise HTTPException(status_code=422, detail="config_json 不是合法 JSON")
+                    if not isinstance(cfg, dict):
+                        raise HTTPException(status_code=422, detail="config_json 必须是 JSON 对象")
+                    gerr = _validate_generic_config(cfg)
+                    if gerr:
+                        raise HTTPException(status_code=422, detail=gerr)
+                    ds.config_json = s
+                elif isinstance(raw, dict):
+                    if not raw:
+                        raise HTTPException(status_code=422, detail="通用型采集器不能清空 config_json")
+                    gerr = _validate_generic_config(raw)
+                    if gerr:
+                        raise HTTPException(status_code=422, detail=gerr)
+                    try:
+                        ds.config_json = json.dumps(raw, ensure_ascii=False)
+                    except (TypeError, ValueError):
+                        raise HTTPException(status_code=422, detail="config_json 序列化失败")
+                else:
+                    raise HTTPException(status_code=422, detail="config_json 格式不支持")
+            else:
+                # 专用型采集器：config_json 必须为空（null / "" / "{}" / {}）；非空一律拒绝
+                if raw is None:
                     ds.config_json = "{}"
-            elif isinstance(raw, dict):
-                if not raw:
-                    ds.config_json = "{}"
+                elif isinstance(raw, str):
+                    s = raw.strip()
+                    if s in ("", "{}"):
+                        ds.config_json = "{}"
+                    else:
+                        try:
+                            cfg = json.loads(s)
+                        except json.JSONDecodeError:
+                            raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
+                        if not isinstance(cfg, dict) or cfg:
+                            raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
+                        ds.config_json = "{}"
+                elif isinstance(raw, dict):
+                    if not raw:
+                        ds.config_json = "{}"
+                    else:
+                        raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
                 else:
                     raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
-            else:
-                raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
 
-    db.commit()
+        db.commit()
     db.refresh(ds)
     region_map = _region_map(db)
     return _serialize(ds, region_map)

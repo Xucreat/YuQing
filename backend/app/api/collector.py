@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.collectors.service import (
@@ -38,6 +38,7 @@ from app.schemas.collector import (
     CollectorStatusResponse,
     CollectorTaskResponse,
 )
+from app.services.audit_service import log_operation
 from app.services.event.aggregator import auto_aggregate_after_collect
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,27 @@ collector_router = APIRouter(
 )
 
 
-def _run_collect_task(task, session_factory):
+def _audit_collect_run(session_factory, operator_id, operator_username, task_id, batch_id, result, details):
+    """采集结果审计（后台任务内调用，无 request 上下文，ip/ua 为空属正常）。"""
+    sdb = session_factory()
+    try:
+        op = sdb.get(User, operator_id) if operator_id else None
+        log_operation(
+            sdb, action="COLLECT_RUN", operator=op, request=None,
+            resource_type="collection", resource_id=task_id, result=result,
+            details={"batch_id": batch_id, "operator": operator_username, **(details or {})},
+        )
+        sdb.commit()
+    except Exception:
+        try:
+            sdb.rollback()
+        except Exception:
+            pass
+    finally:
+        sdb.close()
+
+
+def _run_collect_task(task, session_factory, operator_id=None, operator_username=None):
     """后台任务体：并发采集 → 自动增量聚合，并实时上报进度。"""
     def _on_progress(done: int, total: int, name: str) -> None:
         task.progress = int(done / total * 100) if total else 100
@@ -60,24 +81,36 @@ def _run_collect_task(task, session_factory):
     batch_id = uuid.uuid4().hex
     task.batch_id = batch_id
 
-    service = CollectorService()
-    result = service.collect_and_analyze_concurrent(
-        session_factory, on_progress=_on_progress, batch_id=batch_id
-    )
-    collect_result = {
-        "collector_type": result.collector_type,
-        "fetched_raw": result.fetched_raw,
-        "created": result.created,
-        "analyzed": result.analyzed,
-        "failed": result.failed,
-    }
+    try:
+        service = CollectorService()
+        result = service.collect_and_analyze_concurrent(
+            session_factory, on_progress=_on_progress, batch_id=batch_id
+        )
+        collect_result = {
+            "collector_type": result.collector_type,
+            "fetched_raw": result.fetched_raw,
+            "created": result.created,
+            "analyzed": result.analyzed,
+            "failed": result.failed,
+        }
 
-    # 采集完成后自动增量聚合：新入库舆情立即聚成事件，无需再手动触发。
-    # 与「手动聚合」走同一逻辑；异常安全——聚合失败不废掉采集结果。
-    task.step = "采集完成，正在自动聚合事件…"
-    collect_result["aggregated"] = auto_aggregate_after_collect(session_factory)
-    task.step = "采集与自动聚合完成"
-    return collect_result
+        # 采集完成后自动增量聚合：新入库舆情立即聚成事件，无需再手动触发。
+        # 与「手动聚合」走同一逻辑；异常安全——聚合失败不废掉采集结果。
+        task.step = "采集完成，正在自动聚合事件…"
+        collect_result["aggregated"] = auto_aggregate_after_collect(session_factory)
+        task.step = "采集与自动聚合完成"
+        _audit_collect_run(
+            session_factory, operator_id, operator_username, task_id=task.task_id,
+            batch_id=batch_id, result="success", details=collect_result,
+        )
+        return collect_result
+    except Exception as exc:
+        # 采集整体失败：记录审计（failed），不掩盖异常（任务状态仍由 task_manager 置 failed）。
+        _audit_collect_run(
+            session_factory, operator_id, operator_username, task_id=task.task_id,
+            batch_id=batch_id, result="failed", details={"error": str(exc)[:1000]},
+        )
+        raise
 
 
 @collector_router.post(
@@ -86,7 +119,9 @@ def _run_collect_task(task, session_factory):
     status_code=status.HTTP_200_OK,
 )
 def run_collector(
-    _current_user: User = Depends(get_current_user),
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> CollectorTaskResponse:
     """触发一次采集 + 自动 AI 分析 + 自动聚合闭环（后台异步执行）。
 
@@ -95,8 +130,17 @@ def run_collector(
     ``GET /api/tasks/{task_id}`` 轮询进度与结果，结果含 ``aggregated`` 字段。
 
     Phase 3B：政府网站采集 5 秒内重复触发 → 429（任务会直接失败，错误信息提示频繁）。
+
+    Phase 6 P1-4：记录手动触发审计（action=COLLECT）。
     """
-    task_id = start_task("collector", _run_collect_task, SessionLocal)
+    task_id = start_task("collector", _run_collect_task, SessionLocal, current_user.id, current_user.username)
+    # 触发审计（任务已接受即记为 success；真实采集结果由后台任务内 COLLECT_RUN 记录）
+    log_operation(
+        db, action="COLLECT", operator=current_user, request=request,
+        resource_type="collection", resource_id=task_id, result="success",
+        details={"trigger_type": "manual"},
+    )
+    db.commit()
     return CollectorTaskResponse(success=True, task_id=task_id, message="采集中")
 
 

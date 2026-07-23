@@ -1,17 +1,37 @@
 """FastAPI 应用入口。"""
+import logging
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-import os
-from contextlib import asynccontextmanager
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import api_router
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
+from app.db.session import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app):
+    # Phase 6 P1-1：启动时对历史「仍 running」的 CollectorRun 做超时对账回收，
+    # 仅回收超过 collector_run_zombie_timeout_minutes 的记录，避免误判在途任务。
+    try:
+        from app.collectors.service import reclaim_zombie_runs
+
+        db = SessionLocal()
+        try:
+            n = reclaim_zombie_runs(db)
+            if n:
+                logger.info("启动对账：回收 %d 条超时僵尸采集运行记录", n)
+        finally:
+            db.close()
+    except SQLAlchemyError:
+        logger.exception("启动僵尸采集记录回收失败（不影响应用启动）")
     start_scheduler()
     yield
     stop_scheduler()

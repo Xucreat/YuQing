@@ -136,7 +136,7 @@ def test_collector_ai_failure_isolated(monkeypatch) -> None:
     class _FailingCollector(BaseCollector):
         source_name = "test"
 
-        def fetch(self):
+        def fetch(self, keywords=None):
             return [
                 {"title": "正常服务A", "content": "社区便民服务活动", "source": "test",
                  "url": "https://test.local/a", "publish_time": datetime(2026, 7, 16, 9, 0, 0)},

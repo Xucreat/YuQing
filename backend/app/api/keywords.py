@@ -11,7 +11,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.keyword import Keyword
 from app.models.user import User
+from app.services.audit_service import audit_write
 from app.services.keyword_service import clear_keyword_cache
 from pydantic import BaseModel, Field
 
@@ -121,7 +122,8 @@ def list_keywords(
 @keywords_router.post("", response_model=KeywordOut, status_code=status.HTTP_201_CREATED)
 def create_keyword(
     payload: KeywordCreate,
-    _: User = Depends(require_permission("keywords:write")),
+    request: Request,
+    current_user: User = Depends(require_permission("keywords:write")),
     db: Session = Depends(get_db),
 ):
     # (word, type) 复合唯一：同名但不同类型（监测 vs 敏感）允许共存。
@@ -136,18 +138,24 @@ def create_keyword(
             detail=f"关键词已存在（type={payload.type}）：{payload.word}",
         )
     now = datetime.now(timezone.utc)
-    kw = Keyword(
-        word=payload.word,
-        weight=payload.weight,
-        category=payload.category,
-        type=payload.type,
-        source=payload.source,
-        is_enabled=payload.is_enabled,
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(kw)
-    db.commit()
+    with audit_write(
+        db, action="CREATE", operator=current_user, request=request,
+        resource_type="keyword",
+        details={"word": payload.word, "type": payload.type, "source": payload.source},
+    ) as ctx:
+        kw = Keyword(
+            word=payload.word,
+            weight=payload.weight,
+            category=payload.category,
+            type=payload.type,
+            source=payload.source,
+            is_enabled=payload.is_enabled,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(kw)
+        db.commit()
+        ctx["resource_id"] = str(kw.id)
     db.refresh(kw)
     clear_keyword_cache()
     return kw
@@ -157,54 +165,57 @@ def create_keyword(
 def update_keyword(
     keyword_id: int,
     payload: KeywordUpdate,
-    _: User = Depends(require_permission("keywords:write")),
+    request: Request,
+    current_user: User = Depends(require_permission("keywords:write")),
     db: Session = Depends(get_db),
 ):
     kw = db.get(Keyword, keyword_id)
     if not kw:
         raise HTTPException(status_code=404, detail="Keyword not found")
 
-    # 系统内置敏感词：仅允许运行时启停，禁止篡改内容（保护核心风险语义）。
-    if _is_protected(kw):
-        if (
-            payload.word is not None
-            or payload.weight is not None
-            or payload.category is not None
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="系统内置敏感词不可修改内容，仅可启停",
-            )
-        if payload.is_enabled is not None:
-            kw.is_enabled = payload.is_enabled
-        kw.updated_at = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(kw)
-        clear_keyword_cache()
-        return kw
-
-    if payload.word is not None:
-        # 改词时需保证 (word, type) 不与他人冲突
-        clash = (
-            db.query(Keyword)
-            .filter(
-                Keyword.word == payload.word,
-                Keyword.type == kw.type,
-                Keyword.id != kw.id,
-            )
-            .first()
-        )
-        if clash:
-            raise HTTPException(status_code=409, detail="关键词已存在（同类型）")
-        kw.word = payload.word
-    if payload.weight is not None:
-        kw.weight = payload.weight
-    if payload.category is not None:
-        kw.category = payload.category
-    if payload.is_enabled is not None:
-        kw.is_enabled = payload.is_enabled
-    kw.updated_at = datetime.now(timezone.utc)
-    db.commit()
+    with audit_write(
+        db, action="UPDATE", operator=current_user, request=request,
+        resource_type="keyword", resource_id=str(keyword_id),
+        details=payload.model_dump(exclude_unset=True, mode="json"),
+    ):
+        # 系统内置敏感词：仅允许运行时启停，禁止篡改内容（保护核心风险语义）。
+        if _is_protected(kw):
+            if (
+                payload.word is not None
+                or payload.weight is not None
+                or payload.category is not None
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="系统内置敏感词不可修改内容，仅可启停",
+                )
+            if payload.is_enabled is not None:
+                kw.is_enabled = payload.is_enabled
+            kw.updated_at = datetime.now(timezone.utc)
+            db.commit()
+        else:
+            if payload.word is not None:
+                # 改词时需保证 (word, type) 不与他人冲突
+                clash = (
+                    db.query(Keyword)
+                    .filter(
+                        Keyword.word == payload.word,
+                        Keyword.type == kw.type,
+                        Keyword.id != kw.id,
+                    )
+                    .first()
+                )
+                if clash:
+                    raise HTTPException(status_code=409, detail="关键词已存在（同类型）")
+                kw.word = payload.word
+            if payload.weight is not None:
+                kw.weight = payload.weight
+            if payload.category is not None:
+                kw.category = payload.category
+            if payload.is_enabled is not None:
+                kw.is_enabled = payload.is_enabled
+            kw.updated_at = datetime.now(timezone.utc)
+            db.commit()
     db.refresh(kw)
     clear_keyword_cache()
     return kw
@@ -213,7 +224,8 @@ def update_keyword(
 @keywords_router.delete("/{keyword_id}", status_code=status.HTTP_200_OK)
 def delete_keyword(
     keyword_id: int,
-    _: User = Depends(require_permission("keywords:write")),
+    request: Request,
+    current_user: User = Depends(require_permission("keywords:write")),
     db: Session = Depends(get_db),
 ):
     kw = db.get(Keyword, keyword_id)
@@ -225,8 +237,13 @@ def delete_keyword(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="系统内置敏感词不可删除",
         )
-    db.delete(kw)
-    db.commit()
+    with audit_write(
+        db, action="DELETE", operator=current_user, request=request,
+        resource_type="keyword", resource_id=str(keyword_id),
+        details={"word": kw.word, "type": kw.type},
+    ):
+        db.delete(kw)
+        db.commit()
     clear_keyword_cache()
     return {"detail": "Keyword deleted", "id": keyword_id}
 

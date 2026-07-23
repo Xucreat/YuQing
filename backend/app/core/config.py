@@ -114,6 +114,17 @@ class Settings(BaseSettings):
     event_singleton_min_risk: int = 40
 
 
+    # ===== Phase 6 可靠性收口配置（集中阈值，禁止散落 magic number）=====
+    # P1-1：启动时对账「仍 running 的历史 CollectorRun」的超时阈值（分钟）。
+    # 仅回收开始时间早于 now - 该值的记录，避免误判刚启动/仍在途的任务。
+    collector_run_zombie_timeout_minutes: int = 60
+    # P1-3：后台任务（task_manager._tasks，内存态）终态 TTL 回收（分钟）。
+    # 终态（success/failed）任务超过该时长后自动清理，防止内存无限增长。
+    task_retention_minutes: int = 120
+    # P1-3：后台任务数量硬上限。超限时仅清理最老的终态任务，绝不删除运行中任务。
+    task_max_count: int = 1000
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

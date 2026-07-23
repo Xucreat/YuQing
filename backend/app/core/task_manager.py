@@ -18,6 +18,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 STATUS_PENDING = "pending"
@@ -34,6 +36,42 @@ _tasks_lock = threading.Lock()
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _reap_tasks() -> None:
+    """P1-3：后台任务内存回收，防止 ``_tasks`` 无限增长。
+
+    - 终态（success / failed）任务超过 ``task_retention_minutes`` 后清理（TTL）。
+    - 若总数超过 ``task_max_count``，仅清理最老的终态任务，
+      优先保护运行中任务，绝不删除仍在运行中的任务。
+    - 本阶段不引入 Redis / Celery / 新表 / 任务持久化（Phase 6 纪律）。
+    """
+    now = _now()
+    ttl_seconds = settings.task_retention_minutes * 60
+    with _tasks_lock:
+        # 1) TTL 回收：终态且超过保留期
+        expired = [
+            tid for tid, t in _tasks.items()
+            if t.status in (STATUS_SUCCESS, STATUS_FAILED)
+            and t.finished_at is not None
+            and (now - t.finished_at).total_seconds() > ttl_seconds
+        ]
+        for tid in expired:
+            del _tasks[tid]
+        # 2) 数量上限：仅清理最老的终态任务（运行中任务受保护）
+        if len(_tasks) > settings.task_max_count:
+            terminal = [
+                tid for tid, t in _tasks.items()
+                if t.status in (STATUS_SUCCESS, STATUS_FAILED)
+            ]
+            terminal.sort(
+                key=lambda tid: (
+                    _tasks[tid].finished_at or _tasks[tid].created_at or _now()
+                ).timestamp()
+            )
+            excess = len(_tasks) - settings.task_max_count
+            for tid in terminal[:excess]:
+                _tasks.pop(tid, None)
 
 
 class Task:
@@ -78,6 +116,7 @@ def start_task(task_type: str, func: Callable[..., Any], *args: Any, **kwargs: A
 
     返回 task_id；任务在独立线程执行，接口层可立即返回。
     """
+    _reap_tasks()
     task_id = uuid.uuid4().hex
     task = Task(task_id, task_type)
     with _tasks_lock:
@@ -107,5 +146,6 @@ def start_task(task_type: str, func: Callable[..., Any], *args: Any, **kwargs: A
 
 
 def get_task(task_id: str) -> Optional[Task]:
+    _reap_tasks()
     with _tasks_lock:
         return _tasks.get(task_id)
