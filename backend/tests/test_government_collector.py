@@ -17,6 +17,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from bs4 import BeautifulSoup
+
+from app.collectors.common import extract_article_text
 from app.collectors.government_collector import (
     BASE_URL,
     GovernmentCollector,
@@ -88,7 +91,8 @@ def _fake_get_factory(mapping: dict):
 # ---------------------------------------------------------------------------
 def test_parse_list_extract_title_url() -> None:
     col = GovernmentCollector(urls=["https://www.lfdc.gov.cn/jrdc.jhtml"])
-    articles = col._parse_list(LIST_HTML)
+    # 当前生产 API：_parse_list(html, base_url)——base_url 用于相对链接转绝对链接。
+    articles = col._parse_list(LIST_HTML, BASE_URL)
 
     # 忽略非 .jhtml；重复 url 去重 -> 剩 3 条
     assert len(articles) == 3, articles
@@ -105,7 +109,8 @@ def test_parse_list_extract_title_url() -> None:
 # ---------------------------------------------------------------------------
 def test_relative_to_absolute_url() -> None:
     col = GovernmentCollector(urls=["x"])
-    articles = col._parse_list(LIST_HTML)
+    # 当前生产 API：_parse_list(html, base_url)；此处显式提供站点根以验证 URL 规范化。
+    articles = col._parse_list(LIST_HTML, BASE_URL)
     url_map = {a["title"]: a["url"] for a in articles}
     assert url_map["大厂县召开政务服务大会"] == f"{BASE_URL}/news/1001.jhtml"
     # 相对无前导斜杠也应拼成绝对（相对站点根）
@@ -133,20 +138,26 @@ def test_network_error_returns_empty(monkeypatch) -> None:
 # 4) 详情页正文解析（容器 + 降级链）
 # ---------------------------------------------------------------------------
 def test_parse_detail_content_and_fallback() -> None:
-    col = GovernmentCollector(urls=["x"])
+    # 生产 API 演进：详情正文解析已从 _parse_detail 下沉到 common.extract_article_text；
+    # GovernmentCollector.fetch() 内以 extract_article_text(soup, use_paragraphs=True) 调用。
+    # 本测试直接验证该真实解析路径（容器优先 + <p> 降级链），保留原有业务意图。
+    def parse_detail(html: str) -> str:
+        return extract_article_text(
+            BeautifulSoup(html, "html.parser"), use_paragraphs=True
+        )
 
     # 常见容器 div.content
-    text = col._parse_detail(DETAIL_HTML_CONTENT)
+    text = parse_detail(DETAIL_HTML_CONTENT)
     assert "政府新闻正文第一段" in text
     assert "会议部署" in text
     assert "版权噪声" not in text  # 未把整个 body 原文入库
 
     # 政务常见 #Zoom 容器
-    text_zoom = col._parse_detail(DETAIL_HTML_ZOOM)
+    text_zoom = parse_detail(DETAIL_HTML_ZOOM)
     assert "Zoom 容器正文内容" in text_zoom
 
     # 无已知容器 -> 退回所有 <p>
-    text_p = col._parse_detail(DETAIL_HTML_PARAGRAPHS)
+    text_p = parse_detail(DETAIL_HTML_PARAGRAPHS)
     assert "退回抓取所有 p 标签" in text_p
     assert "第二段落文本" in text_p
 

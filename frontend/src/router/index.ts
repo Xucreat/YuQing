@@ -58,30 +58,54 @@ const router = createRouter({
     // 旧路由重定向到数据管理聚合页的对应子页，保留已有书签
     { path: '/keywords', redirect: { name: 'data', query: { tab: 'keywords' } } },
     { path: '/sources', redirect: { name: 'data', query: { tab: 'sources' } } },
+    // 系统管理：将用户管理/角色权限/登录日志/操作日志整合到一个页面，
+    // 内部以横向导航（SystemAdmin.vue 的 el-tabs）切换四个子路由。其余功能不变。
     {
-      path: '/users',
-      name: 'users',
-      component: () => import('@/views/Users.vue'),
-      meta: { requiresAuth: true, permission: 'users:read' },
+      path: '/system',
+      name: 'system',
+      component: () => import('@/views/SystemAdmin.vue'),
+      meta: { requiresAuth: true },
+      // 进入系统时按权限分流到首个可见子页；无系统权限则回退首页。
+      redirect: (to) => {
+        const { hasPermission } = usePermission()
+        if (hasPermission('users:read')) return '/system/users'
+        if (hasPermission('roles:read')) return '/system/roles'
+        if (hasPermission('login_logs:read')) return '/system/login-logs'
+        if (hasPermission('audit_logs:read')) return '/system/operation-logs'
+        return { path: '/dashboard' }
+      },
+      children: [
+        {
+          path: 'users',
+          name: 'users',
+          component: () => import('@/views/Users.vue'),
+          meta: { requiresAuth: true, permission: 'users:read' },
+        },
+        {
+          path: 'roles',
+          name: 'roles',
+          component: () => import('@/views/Roles.vue'),
+          meta: { requiresAuth: true, permission: 'roles:read' },
+        },
+        {
+          path: 'login-logs',
+          name: 'login-logs',
+          component: () => import('@/views/LoginLogs.vue'),
+          meta: { requiresAuth: true, permission: 'login_logs:read' },
+        },
+        {
+          path: 'operation-logs',
+          name: 'operation-logs',
+          component: () => import('@/views/OperationLogs.vue'),
+          meta: { requiresAuth: true, permission: 'audit_logs:read' },
+        },
+      ],
     },
-    {
-      path: '/roles',
-      name: 'roles',
-      component: () => import('@/views/Roles.vue'),
-      meta: { requiresAuth: true, permission: 'roles:read' },
-    },
-    {
-      path: '/login-logs',
-      name: 'login-logs',
-      component: () => import('@/views/LoginLogs.vue'),
-      meta: { requiresAuth: true, permission: 'login_logs:read' },
-    },
-    {
-      path: '/operation-logs',
-      name: 'operation-logs',
-      component: () => import('@/views/OperationLogs.vue'),
-      meta: { requiresAuth: true, permission: 'audit_logs:read' },
-    },
+    // 旧路由重定向到系统管理聚合页的对应子页，保留已有书签
+    { path: '/users', redirect: { name: 'users' } },
+    { path: '/roles', redirect: { name: 'roles' } },
+    { path: '/login-logs', redirect: { name: 'login-logs' } },
+    { path: '/operation-logs', redirect: { name: 'operation-logs' } },
     {
       path: '/propagation',
       name: 'propagation',

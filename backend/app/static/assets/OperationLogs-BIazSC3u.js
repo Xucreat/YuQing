@@ -1,4 +1,4 @@
-import { d as defineComponent, p as onMounted, w as withDirectives, c as createElementBlock, B as createVNode, z as withCtx, r as ref, g as api, E as ElMessage, C as resolveComponent, D as resolveDirective, o as openBlock, b as withKeys, e as createTextVNode, t as toDisplayString, a as createBaseVNode, _ as _export_sfc } from './index-DlEJu5JL.js';
+import { d as defineComponent, p as onMounted, w as withDirectives, c as createElementBlock, B as createVNode, z as withCtx, r as ref, g as api, E as ElMessage, C as resolveComponent, D as resolveDirective, o as openBlock, b as withKeys, e as createTextVNode, t as toDisplayString, a as createBaseVNode, _ as _export_sfc } from './index-BLa-krQZ.js';
 
 const _hoisted_1 = { class: "logs-page" };
 const _hoisted_2 = { class: "pagination" };
@@ -147,8 +147,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                 createVNode(_component_el_table_column, {
                   prop: "operator_username_snapshot",
                   label: "操作人",
-                  "min-width": "140",
-                  "show-overflow-tooltip": ""
+                  width: "160"
                 }),
                 createVNode(_component_el_table_column, {
                   label: "操作类型",
@@ -170,14 +169,12 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                 createVNode(_component_el_table_column, {
                   prop: "resource_type",
                   label: "资源类型",
-                  "min-width": "130",
-                  "show-overflow-tooltip": ""
+                  width: "150"
                 }),
                 createVNode(_component_el_table_column, {
                   prop: "resource_id",
                   label: "资源 ID",
-                  "min-width": "110",
-                  "show-overflow-tooltip": ""
+                  width: "140"
                 }),
                 createVNode(_component_el_table_column, {
                   label: "操作结果",
@@ -199,7 +196,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                 }),
                 createVNode(_component_el_table_column, {
                   label: "操作时间",
-                  "min-width": "180"
+                  width: "180"
                 }, {
                   default: withCtx(({ row }) => [
                     createTextVNode(toDisplayString(fmt(row.created_at)), 1)
@@ -209,14 +206,12 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                 createVNode(_component_el_table_column, {
                   prop: "ip_address",
                   label: "IP 地址",
-                  "min-width": "140",
-                  "show-overflow-tooltip": ""
+                  width: "160"
                 }),
                 createVNode(_component_el_table_column, {
                   prop: "details_json",
                   label: "详情",
-                  "min-width": "220",
-                  "show-overflow-tooltip": ""
+                  width: "400"
                 })
               ]),
               _: 1
@@ -241,6 +236,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
   }
 });
 
-const OperationLogs = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-fc9a4a9a"]]);
+const OperationLogs = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-f2f7bcb6"]]);
 
 export { OperationLogs as default };

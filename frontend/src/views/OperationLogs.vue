@@ -34,14 +34,14 @@
     <el-card shadow="never" class="table-card">
       <el-table :data="logs" stripe empty-text="暂无操作日志">
         <el-table-column type="index" :index="idxFn" label="ID" width="70" />
-        <el-table-column prop="operator_username_snapshot" label="操作人" min-width="140" show-overflow-tooltip />
+        <el-table-column prop="operator_username_snapshot" label="操作人" width="160" />
         <el-table-column label="操作类型" width="150">
           <template #default="{ row }">
             <el-tag :type="actionTag(row.action)" size="small">{{ row.action }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="resource_type" label="资源类型" min-width="130" show-overflow-tooltip />
-        <el-table-column prop="resource_id" label="资源 ID" min-width="110" show-overflow-tooltip />
+        <el-table-column prop="resource_type" label="资源类型" width="150" />
+        <el-table-column prop="resource_id" label="资源 ID" width="140" />
         <el-table-column label="操作结果" width="110" align="center">
           <template #default="{ row }">
             <el-tag :type="row.result === 'success' ? 'success' : 'danger'" size="small">
@@ -49,11 +49,11 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作时间" min-width="180">
+        <el-table-column label="操作时间" width="180">
           <template #default="{ row }">{{ fmt(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column prop="ip_address" label="IP 地址" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="details_json" label="详情" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="ip_address" label="IP 地址" width="160" />
+        <el-table-column prop="details_json" label="详情" width="400" />
       </el-table>
       <div class="pagination">
         <el-pagination

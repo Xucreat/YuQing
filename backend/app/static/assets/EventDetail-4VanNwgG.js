@@ -1,5 +1,5 @@
-import { d as defineComponent, p as onMounted, w as withDirectives, c as createElementBlock, a as createBaseVNode, t as toDisplayString, n as normalizeClass, e as createTextVNode, A as createCommentVNode, F as Fragment, i as renderList, B as createVNode, r as ref, g as api, E as ElMessage, D as resolveDirective, H as useRoute, o as openBlock, k as normalizeStyle, h as useRouter, _ as _export_sfc } from './index-CvCkiCkQ.js';
-import { O as OpinionDetailModal } from './OpinionDetailModal-B0DKWWme.js';
+import { d as defineComponent, p as onMounted, w as withDirectives, c as createElementBlock, a as createBaseVNode, t as toDisplayString, n as normalizeClass, e as createTextVNode, A as createCommentVNode, F as Fragment, i as renderList, B as createVNode, r as ref, g as api, E as ElMessage, D as resolveDirective, H as useRoute, o as openBlock, k as normalizeStyle, h as useRouter, _ as _export_sfc } from './index-BLa-krQZ.js';
+import { O as OpinionDetailModal } from './OpinionDetailModal-CInuryGZ.js';
 
 const _hoisted_1 = { class: "event-detail" };
 const _hoisted_2 = { class: "detail-back" };

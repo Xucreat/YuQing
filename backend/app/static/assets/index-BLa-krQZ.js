@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/Login-BQSArOuf.css","assets/OpinionDetailModal-D4bl0zW8.css","assets/Dashboard-CrPhdaqE.css","assets/Opinions-C2Fd1iNm.css","assets/OpinionDetail-BDSx6N8e.css","assets/Events-B15T_n3C.css","assets/EventDetail-sK5ZZfYT.css","assets/Alerts-D0Pm0Oa_.css","assets/Users-Xy2mLuWw.css","assets/Roles-BXLv1dK2.css","assets/LoginLogs-DPVtiRWm.css","assets/OperationLogs-CCLFcX7Q.css","assets/Propagation-CUjRGY5v.css","assets/CommandScreen-BIeJx4IY.css"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/Login-BQSArOuf.css","assets/OpinionDetailModal-D4bl0zW8.css","assets/Dashboard-CrPhdaqE.css","assets/Opinions-C2Fd1iNm.css","assets/OpinionDetail-BDSx6N8e.css","assets/Events-B15T_n3C.css","assets/EventDetail-sK5ZZfYT.css","assets/Alerts-D0Pm0Oa_.css","assets/SystemAdmin-Sbln6Eae.css","assets/Users-CKAPTRjh.css","assets/Roles-BXLv1dK2.css","assets/LoginLogs-DPVtiRWm.css","assets/OperationLogs-OijiQvYZ.css","assets/Propagation-CUjRGY5v.css","assets/CommandScreen-BIeJx4IY.css"])))=>i.map(i=>d[i]);
 /**
 * @vue/shared v3.5.40
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
@@ -79620,10 +79620,14 @@ const _sfc_main$6 = /* @__PURE__ */ defineComponent({
       const map = { admin: "管理员", analyst: "分析员", viewer: "观察员" };
       return map[role.value] || role.value || "未登录";
     });
+    const hasSystemPerm = computed(
+      () => hasPermission("users:read") || hasPermission("roles:read") || hasPermission("login_logs:read") || hasPermission("audit_logs:read")
+    );
     const collecting = ref(false);
     const activeMenu = computed(() => {
       if (route.path.startsWith("/opinion")) return "/opinions";
       if (route.path.startsWith("/event")) return "/events";
+      if (route.path.startsWith("/system")) return "/system";
       return route.path;
     });
     const pageTitle = computed(() => {
@@ -79638,6 +79642,11 @@ const _sfc_main$6 = /* @__PURE__ */ defineComponent({
         "/login-logs": "登录日志",
         "/operation-logs": "操作日志",
         "/propagation": "传播溯源",
+        "/system": "系统管理",
+        "/system/users": "用户管理",
+        "/system/roles": "角色权限",
+        "/system/login-logs": "登录日志",
+        "/system/operation-logs": "操作日志",
         "/command-screen": "指挥大屏"
       };
       if (route.path.startsWith("/opinion/")) return "舆情详情";
@@ -79656,6 +79665,11 @@ const _sfc_main$6 = /* @__PURE__ */ defineComponent({
         "/login-logs": "查看用户登录与注销记录",
         "/operation-logs": "查看系统操作审计记录",
         "/propagation": "溯源分析舆情传播路径",
+        "/system": "用户、角色权限与系统审计日志",
+        "/system/users": "管理系统用户与角色权限",
+        "/system/roles": "管理系统角色与权限分配",
+        "/system/login-logs": "查看用户登录与注销记录",
+        "/system/operation-logs": "查看系统操作审计记录",
         "/command-screen": "全域舆情实时态势驾驶舱"
       };
       if (route.path.startsWith("/opinion/")) return "舆情详细信息与AI分析";
@@ -79726,7 +79740,7 @@ const _sfc_main$6 = /* @__PURE__ */ defineComponent({
       const _component_router_view = resolveComponent("router-view");
       return openBlock(), createElementBlock("div", _hoisted_1$5, [
         createBaseVNode("aside", _hoisted_2$4, [
-          _cache[14] || (_cache[14] = createBaseVNode("div", { class: "brand" }, [
+          _cache[11] || (_cache[11] = createBaseVNode("div", { class: "brand" }, [
             createBaseVNode("div", { class: "brand-logo" }, "YQ"),
             createBaseVNode("div", { class: "brand-name" }, [
               createTextVNode(" 舆情监测研判平台 "),
@@ -79784,48 +79798,15 @@ const _sfc_main$6 = /* @__PURE__ */ defineComponent({
               ])]),
               _: 1
             }, 8, ["class"]),
-            _cache[12] || (_cache[12] = createBaseVNode("div", { class: "nav-sep" }, null, -1)),
-            unref(hasPermission)("users:read") ? (openBlock(), createBlock(_component_router_link, {
+            _cache[9] || (_cache[9] = createBaseVNode("div", { class: "nav-sep" }, null, -1)),
+            hasSystemPerm.value ? (openBlock(), createBlock(_component_router_link, {
               key: 0,
-              to: "/users",
-              class: normalizeClass(["nav-item", { active: activeMenu.value === "/users" }])
+              to: "/system",
+              class: normalizeClass(["nav-item", { active: activeMenu.value === "/system" }])
             }, {
               default: withCtx(() => [..._cache[6] || (_cache[6] = [
-                createBaseVNode("span", { class: "ico" }, "👤", -1),
-                createBaseVNode("span", null, "用户管理", -1)
-              ])]),
-              _: 1
-            }, 8, ["class"])) : createCommentVNode("", true),
-            unref(hasPermission)("roles:read") ? (openBlock(), createBlock(_component_router_link, {
-              key: 1,
-              to: "/roles",
-              class: normalizeClass(["nav-item", { active: activeMenu.value === "/roles" }])
-            }, {
-              default: withCtx(() => [..._cache[7] || (_cache[7] = [
-                createBaseVNode("span", { class: "ico" }, "🔐", -1),
-                createBaseVNode("span", null, "角色权限", -1)
-              ])]),
-              _: 1
-            }, 8, ["class"])) : createCommentVNode("", true),
-            unref(hasPermission)("login_logs:read") ? (openBlock(), createBlock(_component_router_link, {
-              key: 2,
-              to: "/login-logs",
-              class: normalizeClass(["nav-item", { active: activeMenu.value === "/login-logs" }])
-            }, {
-              default: withCtx(() => [..._cache[8] || (_cache[8] = [
-                createBaseVNode("span", { class: "ico" }, "📋", -1),
-                createBaseVNode("span", null, "登录日志", -1)
-              ])]),
-              _: 1
-            }, 8, ["class"])) : createCommentVNode("", true),
-            unref(hasPermission)("audit_logs:read") ? (openBlock(), createBlock(_component_router_link, {
-              key: 3,
-              to: "/operation-logs",
-              class: normalizeClass(["nav-item", { active: activeMenu.value === "/operation-logs" }])
-            }, {
-              default: withCtx(() => [..._cache[9] || (_cache[9] = [
-                createBaseVNode("span", { class: "ico" }, "🛡", -1),
-                createBaseVNode("span", null, "操作日志", -1)
+                createBaseVNode("span", { class: "ico" }, "⚙", -1),
+                createBaseVNode("span", null, "系统管理", -1)
               ])]),
               _: 1
             }, 8, ["class"])) : createCommentVNode("", true),
@@ -79833,7 +79814,7 @@ const _sfc_main$6 = /* @__PURE__ */ defineComponent({
               to: "/propagation",
               class: normalizeClass(["nav-item", { active: activeMenu.value === "/propagation" }])
             }, {
-              default: withCtx(() => [..._cache[10] || (_cache[10] = [
+              default: withCtx(() => [..._cache[7] || (_cache[7] = [
                 createBaseVNode("span", { class: "ico" }, "📡", -1),
                 createBaseVNode("span", null, "传播溯源", -1)
               ])]),
@@ -79843,14 +79824,14 @@ const _sfc_main$6 = /* @__PURE__ */ defineComponent({
               to: "/command-screen",
               class: normalizeClass(["nav-item nav-item--screen", { active: activeMenu.value === "/command-screen" }])
             }, {
-              default: withCtx(() => [..._cache[11] || (_cache[11] = [
+              default: withCtx(() => [..._cache[8] || (_cache[8] = [
                 createBaseVNode("span", { class: "ico" }, "▦", -1),
                 createBaseVNode("span", null, "指挥大屏", -1)
               ])]),
               _: 1
             }, 8, ["class"])
           ]),
-          _cache[15] || (_cache[15] = createBaseVNode("div", { class: "nav-spacer" }, null, -1)),
+          _cache[12] || (_cache[12] = createBaseVNode("div", { class: "nav-spacer" }, null, -1)),
           createBaseVNode("div", _hoisted_4$4, [
             createBaseVNode("div", _hoisted_5$4, toDisplayString((unref(authStore).username || "A")[0].toUpperCase()), 1),
             createBaseVNode("div", _hoisted_6$3, [
@@ -79863,7 +79844,7 @@ const _sfc_main$6 = /* @__PURE__ */ defineComponent({
               onClick: _cache[0] || (_cache[0] = //@ts-ignore
               (...args) => unref(openNotifications) && unref(openNotifications)(...args))
             }, [
-              _cache[13] || (_cache[13] = createBaseVNode("span", { class: "bell-ico" }, "🔔", -1)),
+              _cache[10] || (_cache[10] = createBaseVNode("span", { class: "bell-ico" }, "🔔", -1)),
               unref(redDot) ? (openBlock(), createElementBlock("span", _hoisted_9$3, toDisplayString(unref(unreadCount) > 99 ? "99+" : unref(unreadCount)), 1)) : createCommentVNode("", true)
             ], 2),
             createBaseVNode("button", {
@@ -79895,7 +79876,7 @@ const _sfc_main$6 = /* @__PURE__ */ defineComponent({
   }
 });
 
-const AppLayout = /* @__PURE__ */ _export_sfc(_sfc_main$6, [["__scopeId", "data-v-347f2ed6"]]);
+const AppLayout = /* @__PURE__ */ _export_sfc(_sfc_main$6, [["__scopeId", "data-v-a7742d52"]]);
 
 const _hoisted_1$4 = { class: "fullscreen-layout" };
 const _sfc_main$5 = /* @__PURE__ */ defineComponent({
@@ -81795,43 +81776,43 @@ const router = createRouter({
     {
       path: "/login",
       name: "login",
-      component: () => __vitePreload(() => import('./Login-CebyjLIS.js'),true?__vite__mapDeps([0]):void 0),
+      component: () => __vitePreload(() => import('./Login-pee1xT7w.js'),true?__vite__mapDeps([0]):void 0),
       meta: { requiresAuth: false }
     },
     {
       path: "/dashboard",
       name: "dashboard",
-      component: () => __vitePreload(() => import('./Dashboard-DYJ8Vt2j.js'),true?__vite__mapDeps([1,2]):void 0),
+      component: () => __vitePreload(() => import('./Dashboard-B7vht2Ll.js'),true?__vite__mapDeps([1,2]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/opinions",
       name: "opinions",
-      component: () => __vitePreload(() => import('./Opinions-EZgNAW4-.js'),true?__vite__mapDeps([1,3]):void 0),
+      component: () => __vitePreload(() => import('./Opinions-slMcguS9.js'),true?__vite__mapDeps([1,3]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/opinion/:id",
       name: "opinion-detail",
-      component: () => __vitePreload(() => import('./OpinionDetail-C7NEuD6w.js'),true?__vite__mapDeps([4]):void 0),
+      component: () => __vitePreload(() => import('./OpinionDetail-C4hNwCzQ.js'),true?__vite__mapDeps([4]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/events",
       name: "events",
-      component: () => __vitePreload(() => import('./Events-I6b701EM.js'),true?__vite__mapDeps([5]):void 0),
+      component: () => __vitePreload(() => import('./Events-DQH26Ejt.js'),true?__vite__mapDeps([5]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/event/:id",
       name: "event-detail",
-      component: () => __vitePreload(() => import('./EventDetail-LxoUAp8S.js'),true?__vite__mapDeps([1,6]):void 0),
+      component: () => __vitePreload(() => import('./EventDetail-4VanNwgG.js'),true?__vite__mapDeps([1,6]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/alerts",
       name: "alerts",
-      component: () => __vitePreload(() => import('./Alerts-Cc7qUTPu.js'),true?__vite__mapDeps([1,7]):void 0),
+      component: () => __vitePreload(() => import('./Alerts-CXnehF4D.js'),true?__vite__mapDeps([1,7]):void 0),
       meta: { requiresAuth: true }
     },
     {
@@ -81843,41 +81824,65 @@ const router = createRouter({
     // 旧路由重定向到数据管理聚合页的对应子页，保留已有书签
     { path: "/keywords", redirect: { name: "data", query: { tab: "keywords" } } },
     { path: "/sources", redirect: { name: "data", query: { tab: "sources" } } },
+    // 系统管理：将用户管理/角色权限/登录日志/操作日志整合到一个页面，
+    // 内部以横向导航（SystemAdmin.vue 的 el-tabs）切换四个子路由。其余功能不变。
     {
-      path: "/users",
-      name: "users",
-      component: () => __vitePreload(() => import('./Users-Bw4PS8dt.js'),true?__vite__mapDeps([8]):void 0),
-      meta: { requiresAuth: true, permission: "users:read" }
+      path: "/system",
+      name: "system",
+      component: () => __vitePreload(() => import('./SystemAdmin-BWaaRCq8.js'),true?__vite__mapDeps([8]):void 0),
+      meta: { requiresAuth: true },
+      // 进入系统时按权限分流到首个可见子页；无系统权限则回退首页。
+      redirect: (to) => {
+        const { hasPermission } = usePermission();
+        if (hasPermission("users:read")) return "/system/users";
+        if (hasPermission("roles:read")) return "/system/roles";
+        if (hasPermission("login_logs:read")) return "/system/login-logs";
+        if (hasPermission("audit_logs:read")) return "/system/operation-logs";
+        return { path: "/dashboard" };
+      },
+      children: [
+        {
+          path: "users",
+          name: "users",
+          component: () => __vitePreload(() => import('./Users-DODvR5T0.js'),true?__vite__mapDeps([9]):void 0),
+          meta: { requiresAuth: true, permission: "users:read" }
+        },
+        {
+          path: "roles",
+          name: "roles",
+          component: () => __vitePreload(() => import('./Roles-DZ74aBX0.js'),true?__vite__mapDeps([10]):void 0),
+          meta: { requiresAuth: true, permission: "roles:read" }
+        },
+        {
+          path: "login-logs",
+          name: "login-logs",
+          component: () => __vitePreload(() => import('./LoginLogs-V4TI1SG_.js'),true?__vite__mapDeps([11]):void 0),
+          meta: { requiresAuth: true, permission: "login_logs:read" }
+        },
+        {
+          path: "operation-logs",
+          name: "operation-logs",
+          component: () => __vitePreload(() => import('./OperationLogs-BIazSC3u.js'),true?__vite__mapDeps([12]):void 0),
+          meta: { requiresAuth: true, permission: "audit_logs:read" }
+        }
+      ]
     },
-    {
-      path: "/roles",
-      name: "roles",
-      component: () => __vitePreload(() => import('./Roles-DD-K45N-.js'),true?__vite__mapDeps([9]):void 0),
-      meta: { requiresAuth: true, permission: "roles:read" }
-    },
-    {
-      path: "/login-logs",
-      name: "login-logs",
-      component: () => __vitePreload(() => import('./LoginLogs-CB2pu7nT.js'),true?__vite__mapDeps([10]):void 0),
-      meta: { requiresAuth: true, permission: "login_logs:read" }
-    },
-    {
-      path: "/operation-logs",
-      name: "operation-logs",
-      component: () => __vitePreload(() => import('./OperationLogs-DLag3cHV.js'),true?__vite__mapDeps([11]):void 0),
-      meta: { requiresAuth: true, permission: "audit_logs:read" }
-    },
+    // 旧路由重定向到系统管理聚合页的对应子页，保留已有书签
+    { path: "/users", redirect: { name: "users" } },
+    { path: "/roles", redirect: { name: "roles" } },
+    { path: "/login-logs", redirect: { name: "login-logs" } },
+    { path: "/operation-logs", redirect: { name: "operation-logs" } },
     {
       path: "/propagation",
       name: "propagation",
-      component: () => __vitePreload(() => import('./Propagation-C_-3y-qk.js'),true?__vite__mapDeps([12]):void 0),
+      component: () => __vitePreload(() => import('./Propagation-CE2NQXUA.js'),true?__vite__mapDeps([13]):void 0),
       meta: { requiresAuth: true }
     },
     {
       // 指挥大屏：独立全屏布局（不套 AppLayout 侧边栏），复用现有认证机制
       path: "/command-screen",
       name: "command-screen",
-      component: () => __vitePreload(() => import('./CommandScreen-BvlyzQjj.js'),true?__vite__mapDeps([13]):void 0),
+      component: () => __vitePreload(() => import('./CommandScreen-CLKVm7hi.js'),true?__vite__mapDeps([14]):void 0),
       meta: { requiresAuth: true, layout: "fullscreen" }
     }
   ]

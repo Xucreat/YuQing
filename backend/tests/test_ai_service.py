@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.opinion import Opinion
 from app.models.region import Region
@@ -61,18 +62,23 @@ def test_fallback_provider_empty_keywords_uses_default() -> None:
     assert "爆炸" in r.keywords
 
 
-def test_deepseek_provider_instantiate_without_config(client: TestClient) -> None:
-    # 配置缺失（api_key 为空）时构造 Provider 不应报错
+def test_deepseek_provider_instantiate_without_config(monkeypatch) -> None:
+    # 配置缺失（api_key 为空）时构造 Provider 不应报错。
+    # 说明：当前运行环境的 .env 已注入 DEEPSEEK_API_KEY，因此显式将配置置空以
+    # 确定性地模拟「未配置」状态，验证真实的 is_configured 行为（api_key 非空判定）。
+    monkeypatch.setattr(settings, "deepseek_api_key", "")
     provider = DeepSeekProvider()
     assert isinstance(provider, BaseAIProvider)
-    assert provider.is_configured is False  # 本环境未配置 Key
+    assert provider.is_configured is False
 
 
-def test_deepseek_provider_analyze_raises_when_not_configured() -> None:
-    # Phase 2C-1：已真实实现；未配置 key 时 analyze 应上抛
-    # （由 AIService 捕获并降级到 RuleFallbackProvider）
+def test_deepseek_provider_analyze_raises_when_not_configured(monkeypatch) -> None:
+    # Phase 2C-1：真实实现；未配置 key 时 analyze 应上抛 RuntimeError
+    # （由 AIService 捕获并降级到 RuleFallbackProvider）。
+    # 显式置空 api_key 走真实 analyze -> _chat_json 路径，在发起任何网络调用前即上抛。
+    monkeypatch.setattr(settings, "deepseek_api_key", "")
     provider = DeepSeekProvider()
-    assert provider.is_configured is False  # 本环境未配置 Key
+    assert provider.is_configured is False
     with pytest.raises(RuntimeError):
         provider.analyze("测试文本")
 

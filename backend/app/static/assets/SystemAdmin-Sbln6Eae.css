@@ -1,0 +1,24 @@
+
+.sys-admin[data-v-fb77184d] {
+  display: flex;
+  flex-direction: column;
+}
+/* 横向导航栏贴合页面浅色风格 */
+.sys-tabs[data-v-fb77184d] {
+  margin-bottom: 4px;
+}
+.sys-tabs[data-v-fb77184d] .el-tabs__header {
+  margin: 0 0 18px;
+}
+.sys-tabs[data-v-fb77184d] .el-tabs__item {
+  font-size: 15px;
+  font-weight: 500;
+  height: 44px;
+  line-height: 44px;
+}
+.sys-tabs[data-v-fb77184d] .el-tabs__item.is-active {
+  font-weight: 600;
+}
+.sys-body[data-v-fb77184d] {
+  min-height: 320px;
+}
