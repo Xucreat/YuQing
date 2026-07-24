@@ -46,10 +46,17 @@
             <el-option label="中" value="medium" />
             <el-option label="低" value="low" />
           </el-select>
-          <el-select v-model="recFilterHandled" placeholder="处理状态" clearable style="width: 160px; margin-left: 12px" @change="loadRecords">
-            <el-option label="未处理" :value="false" />
-            <el-option label="已处理" :value="true" />
+          <el-select v-model="recFilterStatus" placeholder="处置状态" clearable style="width: 160px; margin-left: 12px" @change="loadRecords">
+            <el-option label="待处理" value="pending" />
+            <el-option label="处理中" value="processing" />
+            <el-option label="已解决" value="resolved" />
+            <el-option label="已忽略" value="ignored" />
+            <el-option label="误报" value="false_positive" />
           </el-select>
+          <span style="margin-left: 12px; display: inline-flex; align-items: center;">
+            <el-switch v-model="hideFalsePositive" @change="loadRecords" />
+            <span style="margin-left: 6px;">隐藏误报</span>
+          </span>
           <el-button @click="loadRecords" style="margin-left: 12px">刷新</el-button>
         </el-card>
 
@@ -73,16 +80,18 @@
               </template>
             </el-table-column>
             <el-table-column prop="trigger_reason" label="触发原因" min-width="220" show-overflow-tooltip />
-            <el-table-column label="状态" width="100" align="center">
-              <template #default="{ row }"><el-tag :type="row.handled ? 'success' : 'danger'" size="small">{{ row.handled ? '已处理' : '未处理' }}</el-tag></template>
+            <el-table-column label="处置状态" width="110" align="center">
+              <template #default="{ row }"><el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag></template>
+            </el-table-column>
+            <el-table-column label="处置人" width="100" align="center">
+              <template #default="{ row }">{{ row.handled_by ?? '-' }}</template>
             </el-table-column>
             <el-table-column label="触发时间" width="180">
               <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="100" align="center">
               <template #default="{ row }">
-                <el-button v-if="!row.handled" type="success" size="small" @click="handleRecord(row)">标记处理</el-button>
-                <span v-else style="color: #86868b; font-size: 13px;">已处理</span>
+                <el-button type="primary" size="small" link @click="openHandleDialog(row)">处置</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -101,7 +110,7 @@
         <el-form-item label="风险阈值"><el-input-number v-model="ruleForm.risk_threshold" :min="0" :max="100" /></el-form-item>
         <el-form-item label="关键词匹配"><el-input v-model="ruleForm.keywords" placeholder="多个关键词用逗号分隔" /></el-form-item>
         <el-form-item label="来源过滤"><el-input v-model="ruleForm.sources" placeholder="多个来源用逗号分隔，留空表示不限" /></el-form-item>
-        <el-form-item label="预警等级">
+        <el-form-item label="建议等级（不决定实际告警等级）">
           <el-select v-model="ruleForm.risk_level">
             <el-option label="严重" value="critical" />
             <el-option label="高" value="high" />
@@ -114,6 +123,28 @@
       <template #footer>
         <el-button @click="ruleDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="saveRule">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Handle (处置) Dialog -->
+    <el-dialog v-model="handleDialogVisible" title="预警处置" width="480px">
+      <el-form :model="handleForm" label-width="88px">
+        <el-form-item label="处置状态">
+          <el-select v-model="handleForm.status" style="width: 100%">
+            <el-option label="待处理" value="pending" />
+            <el-option label="处理中" value="processing" />
+            <el-option label="已解决" value="resolved" />
+            <el-option label="已忽略" value="ignored" />
+            <el-option label="误报" value="false_positive" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="处置备注">
+          <el-input v-model="handleForm.note" type="textarea" :rows="3" placeholder="可选：填写处置说明" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="handleDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="handling" @click="submitHandle">确认处置</el-button>
       </template>
     </el-dialog>
 
@@ -158,7 +189,8 @@ const recordsTotal = ref(0)
 const recordsPage = ref(1)
 const recordsSize = ref(20)
 const recFilterRisk = ref<string | null>(null)
-const recFilterHandled = ref<boolean | null>(null)
+const recFilterStatus = ref<string>('')
+const hideFalsePositive = ref<boolean>(true)
 
 // Rule dialog
 const ruleDialogVisible = ref(false)
@@ -166,6 +198,21 @@ const isEditing = ref(false)
 const editingId = ref<number | null>(null)
 const ruleForm = reactive({ name: '', description: '', risk_threshold: 70, keywords: '', sources: '', risk_level: 'high', enabled: true })
 const evalResult = ref<AlertEvaluateResponse | null>(null)
+
+// 处置弹窗（Phase 2-B.1 告警处置闭环）
+const handleDialogVisible = ref(false)
+const handling = ref(false)
+const handlingId = ref<number | null>(null)
+const handleForm = reactive({ status: 'resolved', note: '' })
+
+const STATUS_TEXT: Record<string, string> = {
+  pending: '待处理', processing: '处理中', resolved: '已解决', ignored: '已忽略', false_positive: '误报',
+}
+const STATUS_TAG: Record<string, string> = {
+  pending: 'danger', processing: 'warning', resolved: 'success', ignored: 'info', false_positive: 'info',
+}
+function statusText(s: string): string { return STATUS_TEXT[s] || s || '待处理' }
+function statusTag(s: string): string { return STATUS_TAG[s] || 'info' }
 
 function formatTime(t: string): string { if (!t) return '-'; return t.replace('T', ' ').slice(0, 19) }
 
@@ -182,7 +229,8 @@ async function loadRecords() {
   try {
     const params: any = { page: recordsPage.value, size: recordsSize.value }
     if (recFilterRisk.value) params.risk_level = recFilterRisk.value
-    if (recFilterHandled.value !== null) params.handled = recFilterHandled.value
+    if (recFilterStatus.value) params.status = recFilterStatus.value
+    if (hideFalsePositive.value) params.exclude_status = 'false_positive'
     const { data } = await api.get<AlertRecordListResponse>('/alerts/records', { params })
     records.value = data.items; recordsTotal.value = data.total
   } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载记录失败') } finally { loading.value = false }
@@ -246,12 +294,26 @@ async function handleEvaluate() {
   } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '评估失败') } finally { evaluating.value = false }
 }
 
-async function handleRecord(rec: AlertRecord) {
+function openHandleDialog(rec: AlertRecord) {
+  handlingId.value = rec.id
+  handleForm.status = rec.status || 'resolved'
+  handleForm.note = rec.handle_note || ''
+  handleDialogVisible.value = true
+}
+
+async function submitHandle() {
+  if (handlingId.value == null) return
+  handling.value = true
   try {
-    await api.put(`/alerts/records/${rec.id}/handle`)
-    rec.handled = true
-    ElMessage.success('已标记为已处理')
-  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '操作失败') }
+    const { data } = await api.put<AlertRecord>(`/alerts/records/${handlingId.value}/handle`, {
+      status: handleForm.status,
+      note: handleForm.note,
+    })
+    const idx = records.value.findIndex(r => r.id === handlingId.value)
+    if (idx >= 0) records.value[idx] = data
+    ElMessage.success('处置成功')
+    handleDialogVisible.value = false
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '处置失败') } finally { handling.value = false }
 }
 
 function handleRulesPage(p: number) { rulesPage.value = p; loadRules() }

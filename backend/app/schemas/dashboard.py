@@ -175,3 +175,50 @@ class DashboardStatsResponse(BaseModel):
     regions: List[RegionItem] = []
     region_detail: List[RegionItem] = []
     hot_keywords: List[HotKeywordItem] = []
+
+
+# ---------------------------------------------------------------------------
+# Phase 2-B.2：风险态势统计 + 告警运营统计
+# ---------------------------------------------------------------------------
+class DistributionItem(BaseModel):
+    """单个分布统计项。"""
+
+    label: str
+    count: int
+
+
+class RiskDistributionResponse(BaseModel):
+    """风险态势分布统计（窗口内）。
+
+    - risk_levels：按 risk_score 映射的低/中/高分布
+    - event_states：按 event_state 字段的 5 态分布
+    - risk_categories：按 risk_category 字段的分类分布（NULL 归入 other）
+    """
+
+    days: int
+    risk_levels: List[DistributionItem]
+    event_states: List[DistributionItem]
+    risk_categories: List[DistributionItem]
+
+
+class AlertStatusItem(BaseModel):
+    """告警状态分布单项。"""
+
+    status: str
+    count: int
+
+
+class AlertStatsResponse(BaseModel):
+    """告警运营统计。
+
+    - total_alerts：窗口内告警总数
+    - by_status：按 status 5 态分布
+    - handling_rate：处置率（status ∈ {resolved, ignored, false_positive} / total）
+    - mttr_hours：平均处置时长（小时，仅 status=resolved 且 handled_at 非空的记录）
+    """
+
+    days: int
+    total_alerts: int
+    by_status: List[AlertStatusItem]
+    handling_rate: float
+    mttr_hours: Optional[float] = None

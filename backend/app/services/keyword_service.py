@@ -24,6 +24,8 @@ from app.core.config import settings
 from app.models.keyword import Keyword
 # 内置默认敏感词表：作为「数据库无启用敏感词」时的兜底，保证风险评分零回归。
 from app.services.ai.fallback import DEFAULT_KEYWORDS
+# 内置默认严重度词表：Phase 2-A RiskEngine 的 severity_weight fallback。
+from app.services.risk_engine import DEFAULT_SEVERITY_KEYWORDS
 
 # 进程内缓存（dict 形式保存引用，便于原子替换）
 _MON_CACHE: dict = {"words": None, "ts": 0.0}
@@ -81,6 +83,34 @@ def get_sensitive_keywords(db: Session) -> List[Tuple[str, int]]:
     _SENS_CACHE["words"] = words
     _SENS_CACHE["ts"] = now
     return words
+
+
+def get_severity_keywords(db: Session) -> Dict[str, int]:
+    """返回严重度词典 ``{harm_word: severity_weight, ...}``（Phase 2-A RiskEngine 用）。
+
+    策略：以内置 ``DEFAULT_SEVERITY_KEYWORDS`` 为底座，再用 keywords 表
+    ``type='sensitive'`` 且已启用的 ``severity_weight`` 覆盖（DB 优先），
+    保证「无数据库 / 未播种 severity_weight / 测试 / 演示」路径行为确定，
+    同时支持业务经 keywords 表标定严重度。
+
+    仅读取 keywords 表，不写入。
+    """
+    result: Dict[str, int] = dict(DEFAULT_SEVERITY_KEYWORDS)
+    try:
+        rows = (
+            db.query(Keyword.word, Keyword.severity_weight)
+            .filter(Keyword.type == "sensitive", Keyword.is_enabled == True)  # noqa: E712
+            .all()
+        )
+    except Exception:
+        # severity_weight 列尚未迁移 / 查询异常 → 直接退回内置常量，保证健壮。
+        return result
+    for word, sw in rows:
+        # 仅当 DB 配置了「正严重度权重」时才覆盖默认（severity_weight 为 0/未配置
+        # 视为「沿用默认」，避免新列默认值 0 把 DEFAULT_SEVERITY_KEYWORDS 全部清零）。
+        if word and sw:
+            result[word] = sw
+    return result
 
 
 def clear_keyword_cache() -> None:

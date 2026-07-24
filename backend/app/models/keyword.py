@@ -39,6 +39,13 @@ class Keyword(Base):
     weight: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     category: Mapped[str] = mapped_column(String(64), nullable=False, default="general")
 
+    # —— Phase 2-A：严重度权重（仅真实危害词有非零值；语境词保持 0）——
+    # 驱动 RiskEngine 的 Severity 子评分；与 `weight`（驱动 RuleFallbackProvider 的
+    # risk_score）职责分离、并行存在，过渡期不冲突。
+    severity_weight: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
     # —— 分层管理扩展字段 ——
     type: Mapped[str] = mapped_column(
         String(16), nullable=False, default="monitoring", server_default="monitoring"

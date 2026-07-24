@@ -23,6 +23,8 @@ from app.schemas.dashboard import (
     KpiTrendsResponse,
     RecentOpinionItem,
     RegionChildrenResponse,
+    RiskDistributionResponse,
+    AlertStatsResponse,
 )
 from app.services import dashboard_service
 
@@ -117,3 +119,31 @@ def dashboard_kpi_trends(
     前端据此在 KPI 卡片右下角绘制 SVG 迷你折线图。
     """
     return KpiTrendsResponse(**dashboard_service.get_kpi_trends(db, days=days))
+
+
+@dashboard_router.get("/risk-distribution", response_model=RiskDistributionResponse)
+def dashboard_risk_distribution(
+    db: Session = Depends(get_db),
+    _u: User = Depends(get_current_user),
+    days: int = Query(default=7, ge=1, le=90, description="统计窗口天数"),
+) -> RiskDistributionResponse:
+    """Phase 2-B.2：风险态势分布统计（窗口内）。
+
+    返回 risk_levels（低/中/高）、event_states（5态）、risk_categories（分类）分布。
+    只读聚合查询，不改变业务数据。
+    """
+    return RiskDistributionResponse(**dashboard_service.get_risk_distribution(db, days=days))
+
+
+@dashboard_router.get("/alert-stats", response_model=AlertStatsResponse)
+def dashboard_alert_stats(
+    db: Session = Depends(get_db),
+    _u: User = Depends(get_current_user),
+    days: int = Query(default=7, ge=1, le=90, description="统计窗口天数"),
+) -> AlertStatsResponse:
+    """Phase 2-B.2：告警运营统计（窗口内）。
+
+    返回 total_alerts / by_status / handling_rate / mttr_hours。
+    只读聚合查询，不改变业务数据。
+    """
+    return AlertStatsResponse(**dashboard_service.get_alert_stats(db, days=days))

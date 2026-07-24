@@ -604,3 +604,125 @@ def get_hot_keywords(db: Session, days: int = 7, limit: int = 10) -> dict:
     data = {"items": items, "days": days}
     cache_set(key, data)
     return data
+
+
+# ---------------------------------------------------------------------------
+# Phase 2-B.2：风险态势分布 + 告警运营统计
+# ---------------------------------------------------------------------------
+def get_risk_distribution(db: Session, days: int = 7) -> dict:
+    """风险态势分布统计（窗口内，只读聚合）。
+
+    - risk_levels：按 risk_score 映射 low/medium/high
+    - event_states：按 event_state 5 态分布
+    - risk_categories：按 risk_category 分布（NULL 归入 other）
+    """
+    key = f"dash:risk_dist:{days}"
+    cached = cache_get(key)
+    if cached is not None:
+        return cached
+
+    today_date: date = db.scalar(select(func.current_date()))
+    window_start = today_date - timedelta(days=days - 1)
+
+    # risk_levels：CASE 映射
+    rl_rows = db.execute(
+        select(
+            case(
+                (Opinion.risk_score >= 70, "high"),
+                (Opinion.risk_score >= 40, "medium"),
+                else_="low",
+            ).label("level"),
+            func.count(Opinion.id).label("cnt"),
+        )
+        .where(cast(Opinion.created_at, Date) >= window_start)
+        .group_by("level")
+    ).all()
+    risk_levels = [{"label": r.level, "count": r.cnt} for r in rl_rows]
+
+    # event_states
+    es_rows = db.execute(
+        select(Opinion.event_state, func.count(Opinion.id))
+        .where(cast(Opinion.created_at, Date) >= window_start)
+        .group_by(Opinion.event_state)
+    ).all()
+    event_states = [{"label": s or "unknown", "count": c} for s, c in es_rows]
+
+    # risk_categories（NULL → other）
+    rc_rows = db.execute(
+        select(
+            func.coalesce(Opinion.risk_category, "other").label("cat"),
+            func.count(Opinion.id).label("cnt"),
+        )
+        .where(cast(Opinion.created_at, Date) >= window_start)
+        .group_by("cat")
+    ).all()
+    risk_categories = [{"label": r.cat, "count": r.cnt} for r in rc_rows]
+
+    data = {
+        "days": days,
+        "risk_levels": risk_levels,
+        "event_states": event_states,
+        "risk_categories": risk_categories,
+    }
+    cache_set(key, data)
+    return data
+
+
+def get_alert_stats(db: Session, days: int = 7) -> dict:
+    """告警运营统计（窗口内，只读聚合）。
+
+    - total_alerts / by_status：alert_records 按 status 5 态分布
+    - handling_rate：处置率（resolved+ignored+false_positive / total）
+    - mttr_hours：平均处置时长（小时，仅 resolved 且 handled_at 非空）
+    """
+    key = f"dash:alert_stats:{days}"
+    cached = cache_get(key)
+    if cached is not None:
+        return cached
+
+    today_date: date = db.scalar(select(func.current_date()))
+    window_start = today_date - timedelta(days=days - 1)
+
+    total = db.scalar(
+        select(func.count(AlertRecord.id)).where(
+            cast(AlertRecord.created_at, Date) >= window_start
+        )
+    ) or 0
+
+    status_rows = db.execute(
+        select(AlertRecord.status, func.count(AlertRecord.id))
+        .where(cast(AlertRecord.created_at, Date) >= window_start)
+        .group_by(AlertRecord.status)
+    ).all()
+    by_status = [{"status": s or "pending", "count": c} for s, c in status_rows]
+
+    resolved_count = sum(
+        c for s, c in status_rows if s in ("resolved", "ignored", "false_positive")
+    )
+    handling_rate = round(resolved_count / total, 4) if total > 0 else 0.0
+
+    # MTTR：仅 status=resolved 且 handled_at 非空
+    mttr_seconds = db.scalar(
+        select(
+            func.avg(
+                func.extract("epoch", AlertRecord.handled_at - AlertRecord.created_at)
+            )
+        ).where(
+            and_(
+                cast(AlertRecord.created_at, Date) >= window_start,
+                AlertRecord.status == "resolved",
+                AlertRecord.handled_at.isnot(None),
+            )
+        )
+    )
+    mttr_hours = round(float(mttr_seconds) / 3600.0, 2) if mttr_seconds else None
+
+    data = {
+        "days": days,
+        "total_alerts": total,
+        "by_status": by_status,
+        "handling_rate": handling_rate,
+        "mttr_hours": mttr_hours,
+    }
+    cache_set(key, data)
+    return data

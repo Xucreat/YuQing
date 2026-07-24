@@ -1,0 +1,873 @@
+{
+ "phase": "7.5-B",
+ "generated_at": "2026-07-24T12:35:47",
+ "source_audit": "_audit_b_pre.json",
+ "backup_file": "C:\\Users\\Administrator\\Desktop\\YQ\\backups\\opinion_db_pre_phase75B_20260724.dump",
+ "summary": {
+  "dup_groups": 43,
+  "keep_events": 43,
+  "redundant_events_to_delete": 43,
+  "redundant_event_opinions_to_delete": 63,
+  "redundant_propagation_nodes_to_delete": 63,
+  "alerts_to_migrate": 0
+ },
+ "groups": [
+  {
+   "title": "2026年交通运输产教融合系列活动在廊坊开幕等2条相关舆情聚集",
+   "keep_event_id": 336,
+   "redundant_event_ids": [
+    339
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    392,
+    1091
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    392,
+    1091
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "7点出发|河北石家庄遭遇暴雨,有路段积水深至大腿!等2条相关舆情聚集",
+   "keep_event_id": 337,
+   "redundant_event_ids": [
+    340
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    1066,
+    1087
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    1066,
+    1087
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "“十五五”开局看河北|河北经济半年报亮点解析之一:存量焕新增量...等2条相关舆情聚集",
+   "keep_event_id": 330,
+   "redundant_event_ids": [
+    334
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    1063,
+    1064
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    1063,
+    1064
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "一习话·人民之心丨“宁可十防九空 也不能万一失防”等2条相关舆情聚集",
+   "keep_event_id": 281,
+   "redundant_event_ids": [
+    284
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    981
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    981
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "一见·总书记为何高度重视基础教育等3条相关舆情聚集",
+   "keep_event_id": 280,
+   "redundant_event_ids": [
+    283
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    962,
+    977
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    962,
+    977
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "上半年沧州海关各类签证助出口企业减免关税1.89亿元今年上半年，沧州海关共签发各类原产地证书13420份，签证金额达48.32亿元，创近年来…等2条相关舆情聚集",
+   "keep_event_id": 265,
+   "redundant_event_ids": [
+    272
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    941
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    941
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "与降雨赛跑，道路“闪修”保安全等2条相关舆情聚集",
+   "keep_event_id": 346,
+   "redundant_event_ids": [
+    351
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    1046,
+    1111
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    1046,
+    1111
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "中华经典诵读大会海选作品|河北站选手灵动演绎《我喜欢出发》等2条相关舆情聚集",
+   "keep_event_id": 304,
+   "redundant_event_ids": [
+    306
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    986,
+    1016
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    986,
+    1016
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "丰润区医保局靶向整治临床检验领域违规问题",
+   "keep_event_id": 341,
+   "redundant_event_ids": [
+    342
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1098
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1098
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "书香消夏趣度暑期石家庄市图20余项主题活动启幕等2条相关舆情聚集",
+   "keep_event_id": 344,
+   "redundant_event_ids": [
+    349
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    1015,
+    1101
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    1015,
+    1101
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "从克服本位主义、地方保护主义入手端正政绩观等3条相关舆情聚集",
+   "keep_event_id": 289,
+   "redundant_event_ids": [
+    293
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    873,
+    996
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    873,
+    996
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "同比增长84%！上半年黄骅港外贸集装箱吞吐量完成3.17万标箱今年上半年，黄骅港外贸集装箱吞吐量完成3.17万标箱，同比增长84%。其中，出…等2条相关舆情聚集",
+   "keep_event_id": 277,
+   "redundant_event_ids": [
+    279
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    966
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    966
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "四川多部门联动 全链条护航暑期食品安全等2条相关舆情聚集",
+   "keep_event_id": 268,
+   "redundant_event_ids": [
+    275
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    907,
+    932
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    907,
+    932
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "学而时习之丨不断开创基础教育高质量发展新局面等2条相关舆情聚集",
+   "keep_event_id": 296,
+   "redundant_event_ids": [
+    299
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1008
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1008
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "学而时习之等2条相关舆情聚集",
+   "keep_event_id": 297,
+   "redundant_event_ids": [
+    300
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1010
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1010
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "对\"义乌发展经验\"的调研等2条相关舆情聚集",
+   "keep_event_id": 313,
+   "redundant_event_ids": [
+    317
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1034
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1034
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "年中经济观察|能源供给抵住冲击展现韧性等2条相关舆情聚集",
+   "keep_event_id": 315,
+   "redundant_event_ids": [
+    319
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1041
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1041
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "张家口市委常委会召开扩大会议",
+   "keep_event_id": 335,
+   "redundant_event_ids": [
+    338
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1092
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1092
+   ],
+   "keep_alerts": 1,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "新华解码丨“十五五”时期，我国可再生能源这样发展等2条相关舆情聚集",
+   "keep_event_id": 321,
+   "redundant_event_ids": [
+    323
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1051
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1051
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "新华鲜报丨中央部门“晒”2025年度决算“账本”等2条相关舆情聚集",
+   "keep_event_id": 290,
+   "redundant_event_ids": [
+    294
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    998
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    998
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "沧州为何是首批唯一的地级市“全国武术之乡”近年来，沧州市武术健儿纷纷在重要赛事上夺冠，众多国外武术爱好者也常到沧州来学武，沧州武术越来越受到…等2条相关舆情聚集",
+   "keep_event_id": 264,
+   "redundant_event_ids": [
+    271
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    938
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    938
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "沧州市2026年希望工程“圆梦大学”行动启动日前，记者从共青团沧州市委获悉，2026年希望工程“圆梦大学”行动启动。[详细]2026-07-…等2条相关舆情聚集",
+   "keep_event_id": 266,
+   "redundant_event_ids": [
+    273
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    943
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    943
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "沧州市中心医院博施志愿服务红十字基金项目揭牌启用此基金将着力构建规范化、透明化的爱心募捐管理机制，深化与红十字会的协同联动，精准救助重病及低…等2条相关舆情聚集",
+   "keep_event_id": 331,
+   "redundant_event_ids": [
+    327
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1080
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1080
+   ],
+   "keep_alerts": 1,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "沧州市获批12355与12345热线联动试点日前，经团省委和省数政局批准，沧州市正式成为《河北省12355青少年服务台和12345政务服务便…等2条相关舆情聚集",
+   "keep_event_id": 267,
+   "redundant_event_ids": [
+    274
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    945
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    945
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "沧州经济开发区全周期精准服务激活发展新动能等2条相关舆情聚集",
+   "keep_event_id": 262,
+   "redundant_event_ids": [
+    269
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    934
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    934
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "河北上半年经济“成绩单”出炉!GDP超2.4万亿元等2条相关舆情聚集",
+   "keep_event_id": 258,
+   "redundant_event_ids": [
+    259
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    654,
+    913
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    654,
+    913
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "河北省加快推进河道防洪治理工程建设等2条相关舆情聚集",
+   "keep_event_id": 302,
+   "redundant_event_ids": [
+    303
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    955,
+    1013
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    955,
+    1013
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "河北省委常委会召开扩大会议等2条相关舆情聚集",
+   "keep_event_id": 309,
+   "redundant_event_ids": [
+    311
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    950,
+    1021
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    950,
+    1021
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "河北省石家庄市工会职工子女爱心托管服务全域启幕等2条相关舆情聚集",
+   "keep_event_id": 276,
+   "redundant_event_ids": [
+    278
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    882,
+    960
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    882,
+    960
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "河北省第十四届人民代表大会常务委员会公告等3条相关舆情聚集",
+   "keep_event_id": 310,
+   "redundant_event_ids": [
+    312
+   ],
+   "keep_opinion_count": 3,
+   "keep_opinion_ids": [
+    1027,
+    1028,
+    1029
+   ],
+   "redundant_opinion_count": 3,
+   "redundant_opinion_ids": [
+    1027,
+    1028,
+    1029
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 3,
+   "redundant_propagation_nodes": 3
+  },
+  {
+   "title": "燕子一家楼道灯泡上“安家”10年在沧州市新华区红阳小区2居民楼楼道里，灯泡旁有一个搭建了10年的燕窝。每年春天，燕子都会如约而至。居民赵女士…等2条相关舆情聚集",
+   "keep_event_id": 263,
+   "redundant_event_ids": [
+    270
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    936
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    936
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "生态遇上非遗 湿地公园“潮”起来等2条相关舆情聚集",
+   "keep_event_id": 345,
+   "redundant_event_ids": [
+    350
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    1024,
+    1109
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    1024,
+    1109
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "百日千万招聘专项行动夏季双选会举行等2条相关舆情聚集",
+   "keep_event_id": 282,
+   "redundant_event_ids": [
+    285
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    983
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    983
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "石家庄:奏响太行滹沱间的时代强音等2条相关舆情聚集",
+   "keep_event_id": 298,
+   "redundant_event_ids": [
+    301
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    931,
+    1007
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    931,
+    1007
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "科技向善的中国答案等2条相关舆情聚集",
+   "keep_event_id": 316,
+   "redundant_event_ids": [
+    320
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1043
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1043
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "粤上半年涉电摩交通事故死亡人数降27.2%等2条相关舆情聚集",
+   "keep_event_id": 288,
+   "redundant_event_ids": [
+    292
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1001
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1001
+   ],
+   "keep_alerts": 1,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "让群众在好山好水中有更多获得感——北戴河新区以绿水青山铺就高质量发展之路等2条相关舆情聚集",
+   "keep_event_id": 322,
+   "redundant_event_ids": [
+    324
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1053
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1053
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "走！到沧州南川老街逛中医药文化夜市去河北日报记者王雅楠摄此次活动以“沧海传岐黄药香润狮城”为主题，为期一周，旨在进一步深化沧州“大运河+中医…等2条相关舆情聚集",
+   "keep_event_id": 329,
+   "redundant_event_ids": [
+    333
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1082
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1082
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "长城观察丨增长4.8%!三个关键词读懂河北经济“半年报”等2条相关舆情聚集",
+   "keep_event_id": 305,
+   "redundant_event_ids": [
+    307
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    987,
+    1017
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    987,
+    1017
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "院庆70年系列文章之四蔡福金：中华文化学院的成立过程等3条相关舆情聚集",
+   "keep_event_id": 343,
+   "redundant_event_ids": [
+    348
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    878,
+    1103
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    878,
+    1103
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "雄安新区举办空天信息产教融合交流会等2条相关舆情聚集",
+   "keep_event_id": 291,
+   "redundant_event_ids": [
+    295
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1004
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1004
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  },
+  {
+   "title": "面对极端“险情”，把好每道关口等2条相关舆情聚集",
+   "keep_event_id": 347,
+   "redundant_event_ids": [
+    352
+   ],
+   "keep_opinion_count": 2,
+   "keep_opinion_ids": [
+    1048,
+    1112
+   ],
+   "redundant_opinion_count": 2,
+   "redundant_opinion_ids": [
+    1048,
+    1112
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 2,
+   "redundant_propagation_nodes": 2
+  },
+  {
+   "title": "骑行红川绿谷 领略太行胜景等2条相关舆情聚集",
+   "keep_event_id": 328,
+   "redundant_event_ids": [
+    332
+   ],
+   "keep_opinion_count": 1,
+   "keep_opinion_ids": [
+    1078
+   ],
+   "redundant_opinion_count": 1,
+   "redundant_opinion_ids": [
+    1078
+   ],
+   "keep_alerts": 0,
+   "redundant_alerts": 0,
+   "keep_propagation_nodes": 1,
+   "redundant_propagation_nodes": 1
+  }
+ ]
+}

@@ -60,6 +60,30 @@
                   <span class="meta-item">情感 <b>{{ sentimentText(detail.sentiment) }}</b></span>
                 </div>
 
+                <!-- Phase 2-B.2: 风险解释区块（按字段存在性展示，不因单字段NULL隐藏整个区域）-->
+                <div class="risk-explain" v-if="hasRiskExplain">
+                  <div class="risk-explain-item" v-if="detail.risk_category">
+                    <span class="re-label">风险分类</span>
+                    <el-tag size="small" :type="categoryTagType(detail.risk_category)">{{ categoryText(detail.risk_category) }}</el-tag>
+                  </div>
+                  <div class="risk-explain-item" v-if="detail.severity_score != null && detail.severity_score > 0">
+                    <span class="re-label">危害严重度</span>
+                    <span class="re-value"><b :style="{ color: riskColor(detail.severity_score) }">{{ detail.severity_score }}</b></span>
+                  </div>
+                  <div class="risk-explain-item" v-if="detail.event_state">
+                    <span class="re-label">事件状态</span>
+                    <span class="re-value">{{ stateText(detail.event_state) }}</span>
+                  </div>
+                  <div class="risk-explain-item" v-if="factorHits.length">
+                    <span class="re-label">命中危害词</span>
+                    <span v-for="h in factorHits" :key="h.keyword" class="re-hit-tag">{{ h.keyword }}({{ h.score }})</span>
+                  </div>
+                  <div class="risk-explain-item" v-if="detail.risk_model_version">
+                    <span class="re-label">模型版本</span>
+                    <span class="re-value re-muted">{{ detail.risk_model_version }}</span>
+                  </div>
+                </div>
+
                 <div class="report-body">
                   <p v-if="detail.summary" class="report-p">{{ detail.summary }}</p>
                   <p v-else class="report-p report-muted">暂无系统研判摘要。</p>
@@ -172,6 +196,35 @@ const keywordList = computed(() =>
 const aiKeywordList = computed(() =>
   (detail.value?.ai_keywords || '').split(',').map(k => k.trim()).filter(Boolean)
 )
+
+// Phase 2-B.2: 风险解释区块
+const factorHits = computed(() => {
+  const factors = detail.value?.risk_factors
+  if (!factors || typeof factors !== 'object') return []
+  const sev = (factors as any).severity
+  return Array.isArray(sev) ? sev.filter((h: any) => h && h.keyword) : []
+})
+
+const hasRiskExplain = computed(() =>
+  !!(detail.value?.risk_category ||
+     (detail.value?.severity_score != null && detail.value.severity_score > 0) ||
+     detail.value?.event_state ||
+     factorHits.value.length ||
+     detail.value?.risk_model_version)
+)
+
+const CATEGORY_TEXT: Record<string, string> = {
+  safety_accident: '安全事故', social_security: '社会治安', political: '政治舆情', other: '其他',
+}
+const CATEGORY_TAG: Record<string, string> = {
+  safety_accident: 'danger', social_security: 'warning', political: 'info', other: 'info',
+}
+const STATE_TEXT: Record<string, string> = {
+  occurred: '已发生', notice: '已通报', deploy: '已部署', prevent: '预防/防灾', resolved: '已解决',
+}
+function categoryText(c: string): string { return CATEGORY_TEXT[c] || c }
+function categoryTagType(c: string): string { return CATEGORY_TAG[c] || 'info' }
+function stateText(s: string): string { return STATE_TEXT[s] || s }
 
 interface OriginalResult {
   url: string | null
@@ -343,6 +396,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .kw-label { font-size: 13px; color: #86868b; margin-right: 2px; }
 .kw-tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .kw-tag { background: #e8f1fd; color: #0071e3; padding: 5px 12px; border-radius: 980px; font-size: 13px; font-weight: 500; }
+
+/* Phase 2-B.2: 风险解释区块 */
+.risk-explain { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 14px; padding: 10px 14px; background: #f5f5f7; border-radius: 12px; }
+.risk-explain-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.re-label { color: #86868b; }
+.re-value { color: #1d1d1f; font-weight: 500; }
+.re-muted { color: #86868b; font-weight: 400; }
+.re-hit-tag { background: #fff3e0; color: #c77700; padding: 3px 9px; border-radius: 980px; font-size: 12px; font-weight: 500; }
 .report-time { font-size: 12.5px; color: #86868b; }
 /* Apple capsule primary button (mirrors the app's .btn system, scoped here) */
 .btn {

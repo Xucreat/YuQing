@@ -43,7 +43,12 @@ from app.models.opinion import Opinion
 from app.models.region import Region
 from app.models.collector_run import CollectorRun
 from app.services.ai.fallback import RuleFallbackProvider
-from app.services.keyword_service import get_monitoring_keywords, get_sensitive_keywords
+from app.services.keyword_service import (
+    get_monitoring_keywords,
+    get_severity_keywords,
+    get_sensitive_keywords,
+)
+from app.services.risk_engine import RISK_MODEL_VERSION, RiskEngine
 
 # ---------------------------------------------------------------------------
 # Phase 3A temporary implementation.
@@ -333,6 +338,9 @@ class CollectorService:
             # 敏感/风险词由 keywords 表（type='sensitive'）注入；无启用敏感词时
             # get_sensitive_keywords 自动回退内置 DEFAULT_KEYWORDS，风险评分零回归。
             ai = RuleFallbackProvider(keywords=get_sensitive_keywords(db))
+            # Phase 2-A：独立风险精炼层（Severity/EventState/ResolutionFlag/final）。
+            # 纯函数、不查库；severity 词典经注入，缺省用内置 DEFAULT_SEVERITY_KEYWORDS。
+            risk_engine = RiskEngine(severity_keywords=get_severity_keywords(db))
 
             c_created = c_analyzed = c_failed = 0
             for item in items:
@@ -370,9 +378,21 @@ class CollectorService:
                     analysis = ai.analyze(
                         f"标题：{opinion.title}\n正文：{opinion.content}"
                     )
+                    # Phase 2-A：用 RiskEngine 精炼评分，覆盖 risk_score 并写入新字段。
+                    refine = risk_engine.refine(
+                        opinion.title, opinion.content, analysis.sentiment
+                    )
                     opinion.summary = analysis.summary
                     opinion.sentiment = analysis.sentiment
-                    opinion.risk_score = analysis.risk_score
+                    opinion.risk_score = refine.final_risk_score
+                    opinion.severity_score = refine.severity_score
+                    opinion.event_state = refine.event_state
+                    opinion.resolution_flag = refine.resolution_flag
+                    # Phase 2-A.1：风险解释字段（仅解释，不参与评分）+ 模型版本。
+                    opinion.risk_factors = refine.risk_factors
+                    opinion.risk_model_version = RISK_MODEL_VERSION
+                    # Phase 2-B.2：风险分类（纯解释性标签，与 risk_factors 同源写入）。
+                    opinion.risk_category = refine.risk_category
                     opinion.keywords = ",".join(analysis.keywords)
                     opinion.analysis_suggestion = analysis.suggestion
                     opinion.analysis_status = "completed"

@@ -195,16 +195,17 @@ function renderGraph() {
   }))
 
   const links = graphData.value.links.map(l => ({
-    source: l.source_id,
-    target: l.target_id,
+    source: String(l.source_id),
+    target: String(l.target_id),
     lineStyle: { color: '#c0ccda', width: 1.5 },
   }))
 
-  const categories = [
-    { name: '源头' },
-    { name: '一级传播' },
-    { name: '二级传播' },
-  ]
+  // 动态生成分类，避免 node.category(=depth) 越界导致深层节点丢失分类着色
+  const maxDepth = nodes.reduce((m, n) => Math.max(m, n.depth || 0), 0)
+  const categories = []
+  for (let d = 0; d <= maxDepth; d++) {
+    categories.push({ name: d === 0 ? '源头' : `${d}级传播` })
+  }
 
   chart.setOption({
     tooltip: { trigger: 'item', formatter: (p: any) => p.data?.name || '' },
@@ -213,7 +214,7 @@ function renderGraph() {
       layout: 'force',
       roam: true,
       draggable: true,
-      categories: categories.slice(0, 3),
+      categories: categories,
       data: nodes,
       links: links,
       force: { repulsion: 300, edgeLength: [120, 300], gravity: 0.1 },

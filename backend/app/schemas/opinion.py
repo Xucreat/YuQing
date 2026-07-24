@@ -5,7 +5,7 @@
 故响应模型仅包含当前已存在的字段。
 """
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -54,6 +54,18 @@ class OpinionOut(OpinionBase):
     ai_analysis_status: str = "pending"
     ai_analysis_time: Optional[datetime] = None
     ai_analysis_suggestion: Optional[str] = None
+
+    # ===== Phase 2-A：风险精炼字段（此前已入库但未回传，Phase 2-A.1 补齐）=====
+    severity_score: int = 0
+    event_state: str = "occurred"
+    resolution_flag: bool = False
+
+    # ===== Phase 2-A.1：风险可解释性（仅解释，不参与评分；历史数据为 NULL）=====
+    risk_factors: Optional[Dict[str, Any]] = None
+    risk_model_version: Optional[str] = None
+
+    # ===== Phase 2-B.2：风险分类（纯解释性标签；历史数据为 NULL）=====
+    risk_category: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

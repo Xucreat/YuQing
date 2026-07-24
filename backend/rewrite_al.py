@@ -111,7 +111,7 @@ const pageSub = computed(() => {
     '/alerts': '预警规则配置与预警记录',
     '/keywords': '管理舆情关键词库，支持分类与权重',
     '/sources': '查看各数据源状态与采集历史',
-    '/propagation': '溯源分析舆情传播路径',
+    '/propagation': '基于多源舆情数据的传播演化分析',
   }
   if (route.path.startsWith('/opinion/')) return '舆情详细信息与AI分析'
   if (route.path.startsWith('/event/')) return '事件详情与关联舆情'

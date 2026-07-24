@@ -43,7 +43,13 @@ from typing import Iterable, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from app.core.advisory_lock import (
+    make_lock_key,
+    try_acquire_advisory_lock,
+    release_advisory_lock,
+)
 from app.core.config import settings
+from app.db.session import engine
 from app.models.event import Event
 from app.models.event_opinion import EventOpinion
 from app.models.opinion import Opinion
@@ -51,6 +57,11 @@ from app.services.ai.fallback import DEFAULT_KEYWORDS
 from app.services.event.title_format import build_cluster_title, representative_title
 
 logger = logging.getLogger(__name__)
+
+# 事件聚合并发锁键（Phase 7.5-A）：复用 scheduler advisory lock 的「思想」
+# （PG 会话级咨询锁 + sha1 派生稳定键），但语义为「每次聚合调用的短锁」，
+# 非进程级长锁。键由 app.core.advisory_lock.make_lock_key 派生。
+EVENT_AGGREGATE_LOCK_KEY = make_lock_key("opinion-platform-event-aggregate")
 
 
 # ---------------------------------------------------------------------------
@@ -263,11 +274,38 @@ class EventAggregator:
         默认（rebuild=False, incremental=False）保持历史「全量重聚类」行为，
         以兼容既有测试与直接调用方。
         """
-        if rebuild:
-            return self._aggregate_full(db, dry_run=dry_run)
-        if incremental:
-            return self._aggregate_incremental(db, dry_run=dry_run)
-        return self._aggregate_full(db, dry_run=dry_run)
+        # ===== 并发保护（Phase 7.5-A）：跨进程 advisory lock =====
+        # 同一时刻只允许一个聚合运行，避免并发双物化产生重复事件。
+        # 复用 scheduler 单例锁的「思想」（PG 会话级 advisory lock + sha1 派生键），
+        # 但为「每次聚合调用」级别的短锁：用独立连接持有，非进程级长锁。
+        # 关键：锁须持有在独立连接而非聚合用的 db 会话上——否则 db 会话被
+        # 归还连接池后，会话级 advisory lock 会残留并污染后续测试/请求。
+        # 锁随连接关闭释放；finally 中显式释放并关闭连接，双重保险。
+        lock_conn = engine.connect()
+        try:
+            try:
+                acquired = try_acquire_advisory_lock(lock_conn, EVENT_AGGREGATE_LOCK_KEY)
+            except Exception:
+                # 锁获取异常（如数据库短暂不可用）时保守放行，避免聚合静默丢失；
+                # 仅 DB 故障才会走到这里，正常并发由下面的 acquired=False 处理。
+                logger.warning("获取事件聚合 advisory lock 异常，本次放行（可能并存另一聚合）")
+                acquired = True
+            if not acquired:
+                logger.info("事件聚合跳过：另一聚合正在运行（advisory lock 未获取）")
+                return {"skipped": True, "reason": "another aggregation in progress"}
+            try:
+                if rebuild:
+                    return self._aggregate_full(db, dry_run=dry_run)
+                if incremental:
+                    return self._aggregate_incremental(db, dry_run=dry_run)
+                return self._aggregate_full(db, dry_run=dry_run)
+            finally:
+                release_advisory_lock(lock_conn, EVENT_AGGREGATE_LOCK_KEY)
+        finally:
+            try:
+                lock_conn.close()
+            except Exception:
+                pass
 
     # ----- 全量重聚类（历史默认行为，rebuild / 兼容测试）----------------
     def _aggregate_full(self, db: Session, dry_run: bool = False) -> dict:

@@ -148,3 +148,23 @@
 - **测试**：新增 `tests/test_events.py`（8 项，真实 PG `opinion_test`）：Event ORM 持久化、同 keyword→1 Event、异 keyword→2 Event、多 Opinion 关联同一 Event（经 `event_opinions` 验证）、`risk_level` 映射、重复执行幂等、API 聚合返回格式、API 列表分页。pytest **53 passed**（既有 45 + 本阶段 8）。
 - **验证**：`alembic heads` 仍为 **0003_add_analysis_suggestion（无新迁移）**；`versions/` 仅 0001/0002/0003；OpenAPI 含 `/api/events`、`/api/events/aggregate`；真实站点烟测同 keyword 形成同一 Event、异 keyword 分离、幂等、分页正确。
 - **约束遵守**：未修改 Opinion 表/Model / Collector / GovernmentCollector / AIService / Dashboard / frontend / 已有 migration（0001/0002/0003）；**未新增 migration**；`event_service.py` 仅标记 deprecated 不删；未引入 Redis / ES / MQ / Celery / 定时任务 / AI 聚类 / 图数据库 / 聚类算法 / AI embedding；不使用 `relationship.append()`。保持 PostgreSQL only。**已停止，等待下一阶段指令**（不进入下一阶段）。
+
+## [0.1.0] - 2026-07-24（Phase 7）
+
+### Phase 7 - 采集幂等性加固（根治重复采集 + 调度单例）
+
+> 目标：消除「同一数据源同一篇文章重复入库」与「定时采集被多后端实例触发两次」。全程未改业务代码、未引入 Redis、未碰未验证数据。
+
+- **根因（只读排查确认）**：① 多后端实例各自启动 APScheduler → 每整半点采集触发两次；② `opinions.url` 无唯一约束、采集层去重非强一致；③ `event_opinions` 无唯一约束，重复舆情聚合到同事件产生字面重复行 → 传播树失真。
+- **调度单例（根因治理）**（`app/core/scheduler.py`，`[MODIFIED]`）：新增 `SCHEDULER_ADVISORY_LOCK_KEY`、`_try_acquire_scheduler_lock()`、`_release_scheduler_lock()`；`start_scheduler()` 经 `pg_try_advisory_lock` 竞争 PostgreSQL 会话级咨询锁，仅持锁实例启动调度器，未持锁实例打印"跳过"且其余功能正常；`stop_scheduler()` 释放锁。从根上杜绝双触发。
+- **数据库约束（纵深防御）**：
+  - `app/models/opinion.py`（`[MODIFIED]`）：`__table_args__` 新增 `Index("ix_opinions_url_unique","url",unique=True,postgresql_where=text("url<>''"))`（部分唯一索引，空串允许多条，与迁移 `p6urluniq01` 一致）。
+  - `app/models/event_opinion.py`（`[MODIFIED]`）：`__table_args__` 新增 `UniqueConstraint("event_id","opinion_id",name="uq_event_opinions_event_opinion")`。
+  - **新增迁移** `alembic/versions/p7_event_opinions_unique.py`（`[NEW]`，`revision="p7evtuniq01"`，`down_revision="p6urluniq01"`）：`upgrade` 建 `uq_event_opinions_event_opinion`，`downgrade` 删除。
+- **存量清理（一次性，受控）**（`backend/cleanup_duplicate_opinions.sql`，`[DATA]`）：单事务内执行；步骤 0.5（删前将 delete 舆情 `event_opinions` INSERT 回 keep 防关联丢失）、0.6（删 `propagation_nodes` 前置空自引用 `parent_id` 避免 NO ACTION 阻断）；删除顺序 alert_records→propagation_nodes→event_opinions→字面重复→opinions；删除前 SELECT 验证（url 重复/eo 重复/FK 悬空/删除集残留 全 0）后才 COMMIT。
+- **生产实施（已执行，零异常零回滚）**：① `pg_dump` 备份 `backup/opinion_db_pre_cleanup_20260724_103142.dump`；② 事务内清理 COMMIT，删冗余舆情 34 / event_opinions 63+10 / propagation_nodes 61 / alert_records 5；③ `alembic upgrade head` → `p7evtuniq01`；④ 64 个受影响事件 `rebuild_for_event` 全部成功（fail=0）；⑤ 验证 scheduler 单实例（pg_locks 恰 1 持有者，10:30 起单批）。
+- **最终验收（只读，通过）**：24h 内 `opinions.url` 重复 0 组、`event_opinions` 重复 0 行、opinions=966；调度单例三重证据闭环；数据一致性 7 项全 0；**系统可靠性评级 A-**。
+- **验证**：`alembic current`=`p7evtuniq01`（head）；`pg_indexes`/`pg_constraint` 确认两约束在位；测试库演练清理 SQL ALL PASS。
+- **文档**：`docs/architecture.md`（§2.1/§3/新增 §7 采集调度单例与数据完整性）、`docs/changelog.md`（本段）、`采集幂等性加固_生产实施报告.md`、`采集幂等性加固_Phase最终验收报告.md`、`采集幂等性加固_Phase7_收口报告.md`。
+- **约束遵守**：未改 `collectors/service.py` / `ai_service.py` / `aggregator.py` / `common.py` 等任何业务代码；未引入 Redis / ES / MQ / Celery / 定时框架；未碰未验证数据；清理在单事务内验证后才提交。保持 PostgreSQL only。**Phase 7 正式收口，进入下一阶段开发。**
+- **后续技术债**：① `:8011` 冗余实例待关停（中）；② 采集层 url 冲突 `IntegrityError` 未捕获（低）；③ url 精确匹配不拦参数/大小写变体（低）；④ 锁会话闪断理论双调度窗口（低，单实例后消除）；⑤ 清理脚本未纳入运维手册（低）；⑥ 传播树 rebuild 无自动化（低）。

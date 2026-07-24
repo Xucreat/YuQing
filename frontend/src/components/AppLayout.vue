@@ -23,20 +23,22 @@
         <router-link to="/alerts" class="nav-item" :class="{ active: activeMenu === '/alerts' }">
           <span class="ico">🔔</span><span>预警中心</span>
         </router-link>
-        <router-link to="/data" class="nav-item" :class="{ active: activeMenu === '/data' }">
-          <span class="ico">🗂</span><span>数据管理</span>
-        </router-link>
-        <div class="nav-sep"></div>
-                <!-- 系统管理：用户管理/角色权限/登录日志/操作日志 整合入口（横向 Tab 切换） -->
-        <router-link v-if="hasSystemPerm" to="/system" class="nav-item" :class="{ active: activeMenu === '/system' }">
-          <span class="ico">⚙</span><span>系统管理</span>
-        </router-link>
-<router-link to="/propagation" class="nav-item" :class="{ active: activeMenu === '/propagation' }">
+        <router-link to="/propagation" class="nav-item" :class="{ active: activeMenu === '/propagation' }">
           <span class="ico">📡</span><span>传播溯源</span>
         </router-link>
         <router-link to="/command-screen" class="nav-item nav-item--screen" :class="{ active: activeMenu === '/command-screen' }">
           <span class="ico">▦</span><span>指挥大屏</span>
         </router-link>
+        
+        <div class="nav-sep"></div>
+                <!-- 系统管理：用户管理/角色权限/登录日志/操作日志 整合入口（横向 Tab 切换） -->
+        <router-link to="/data" class="nav-item" :class="{ active: activeMenu === '/data' }">
+          <span class="ico">🗂</span><span>数据管理</span>
+        </router-link>
+        <router-link v-if="hasSystemPerm" to="/system" class="nav-item" :class="{ active: activeMenu === '/system' }">
+          <span class="ico">⚙</span><span>系统管理</span>
+        </router-link>
+
       </nav>
 
       <div class="nav-spacer"></div>
@@ -146,7 +148,7 @@ const pageSub = computed(() => {
     '/roles': '管理系统角色与权限分配',
     '/login-logs': '查看用户登录与注销记录',
     '/operation-logs': '查看系统操作审计记录',
-    '/propagation': '溯源分析舆情传播路径',
+    '/propagation': '基于多源舆情数据的传播演化分析',
     '/system': '用户、角色权限与系统审计日志',
     '/system/users': '管理系统用户与角色权限',
     '/system/roles': '管理系统角色与权限分配',
