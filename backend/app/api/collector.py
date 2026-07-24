@@ -1,8 +1,8 @@
 """Collector 采集接口（Phase 3A）。
 
 路由（挂载在 /api 下，由 main.py 统一加前缀）：
-  POST   /collector/run     触发一次采集 + 自动 AI 分析闭环（Bearer JWT）
-  GET    /collector/status  查询采集状态（Bearer JWT，内存，重启丢失）
+  POST   /collector/run     触发一次采集 + 自动 AI 分析闭环（仅超级管理员 require_admin）
+  GET    /collector/status  查询采集状态（登录即可，内存，重启丢失）
 
 严格范围（本阶段）：
 - 仅「手动触发一次采集」。不做定时 / Celery / Redis / 前端。
@@ -31,6 +31,7 @@ from app.collectors.service import (
     get_collector_status,
 )
 from app.core.dependencies import get_current_user
+from app.core.permissions import require_admin
 from app.core.task_manager import start_task
 from app.db.session import SessionLocal, get_db
 from app.models.user import User
@@ -121,9 +122,12 @@ def _run_collect_task(task, session_factory, operator_id=None, operator_username
 def run_collector(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ) -> CollectorTaskResponse:
     """触发一次采集 + 自动 AI 分析 + 自动聚合闭环（后台异步执行）。
+
+    仅超级管理员可触发（require_admin）：采集属于系统基础设施操作（消耗外部
+    抓取额度与 AI 计费、向 opinions/events 表写入），故收敛为 admin-only。
 
     本接口立即返回 task_id，采集在后台并发抓取（各数据源独立线程，整体耗时≈最慢
     单源）；采集完成后自动跑一次增量聚合（见 _run_collect_task）。前端通过

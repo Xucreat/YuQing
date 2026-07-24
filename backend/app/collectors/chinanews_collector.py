@@ -17,6 +17,7 @@ from app.collectors.common import (
     http_get,
     make_session,
     matches_keywords,
+    parse_publish_date_from_url,
     parse_rss,
 )
 from app.core.config import settings
@@ -54,7 +55,10 @@ class ChinanewsCollector(BaseCollector):
                     "content": it["content"] or it["title"],
                     "source": self.source_name,
                     "url": it["url"],
-                    "publish_time": None,
+                    # 优先用 RSS 提供的发布时间；RSS 缺失时回退到 URL 路径中的日期
+                    # （中国新闻网文章 URL 形如 /gn/2026/07-24/...，含真实发布日期）。
+                    "publish_time": it.get("publish_time")
+                    or parse_publish_date_from_url(it["url"]),
                 }
             )
         return results

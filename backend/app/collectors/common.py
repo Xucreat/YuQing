@@ -307,7 +307,21 @@ def _parse_date_string(s: str) -> Optional[_dt.datetime]:
     return _parse_absolute(s)
 
 
-def extract_publish_time(soup) -> Optional[_dt.datetime]:
+def parse_publish_date_from_url(url: Optional[str]) -> Optional[_dt.datetime]:
+    """从文章 URL 路径中解析发布日期（如 /2026/07-24/ 或 /2026/07/24/）。
+
+    作为采集器未能从页面 meta/JSON-LD/text 或 RSS 取得发布时间时的兜底来源
+    （许多新闻/政务站点会把日期编码进 URL 路径）。解析失败返回 None。
+    """
+    if not url:
+        return None
+    m = re.search(r"(?:19|20)\d{2}[/\-]\d{1,2}[/\-]\d{1,2}", url)
+    if not m:
+        return None
+    return _parse_absolute(m.group(0))
+
+
+def extract_publish_time(soup, url: Optional[str] = None) -> Optional[_dt.datetime]:
     """从文章页（BeautifulSoup/Tag）抽取发布时间，失败返回 None。
 
     优先级：<meta> 时间属性 > JSON-LD datePublished > <time datetime> >
@@ -361,6 +375,11 @@ def extract_publish_time(soup) -> Optional[_dt.datetime]:
     m = re.search(r"(?:前天|昨天|今天|今日)[^\n]{0,12}", text)
     if m:
         dt = _parse_relative(m.group(0))
+        if dt:
+            return dt
+    # 5) URL 兜底：页面/RSS 均无日期时，从 URL 路径解析（如 /2026/07-24/）
+    if url:
+        dt = parse_publish_date_from_url(url)
         if dt:
             return dt
     return None

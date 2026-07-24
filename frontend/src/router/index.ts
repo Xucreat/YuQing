@@ -47,7 +47,7 @@ const router = createRouter({
       path: '/alerts',
       name: 'alerts',
       component: () => import('@/views/Alerts.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, permission: 'alerts:read' },
     },
     {
       path: '/data',
@@ -110,7 +110,7 @@ const router = createRouter({
       path: '/propagation',
       name: 'propagation',
       component: () => import('@/views/Propagation.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, permission: 'propagation:read' },
     },
     {
       // 指挥大屏：独立全屏布局（不套 AppLayout 侧边栏），复用现有认证机制

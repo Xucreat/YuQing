@@ -100,7 +100,7 @@ class HebeiDailyCollector(BaseCollector):
                         "content": content,
                         "source": self.source_name,
                         "url": art["url"],
-                        "publish_time": extract_publish_time(dsoup),
+                        "publish_time": extract_publish_time(dsoup, art["url"]),
                     }
                 )
         return results

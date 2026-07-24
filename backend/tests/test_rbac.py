@@ -324,3 +324,54 @@ def test_privilege_escalation_denied(client: TestClient, viewer_user, analyst_us
         else:
             r = client.post(path, json=body, headers=headers)
         assert r.status_code == 403, f"escalation {method} {path} -> {r.status_code} {r.text[:200]} (expected 403)"
+
+
+# ===========================================================================
+# 8. RBAC 收口回归：collector 收敛 + sources:read 分层 + viewer 领导查看
+# ===========================================================================
+def test_collector_run_requires_admin(client: TestClient, admin_headers, analyst_user, viewer_user):
+    # 未认证 -> 401
+    r = client.post("/api/collector/run")
+    assert r.status_code == 401, r.status_code
+    # 管理员 -> 200（立即返回 task_id，后台异步执行）
+    r = client.post("/api/collector/run", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    assert "task_id" in r.json(), r.text
+    # 非管理员（analyst / viewer）-> 403（采集收敛为 admin-only）
+    for label, (headers, _) in [("analyst", analyst_user), ("viewer", viewer_user)]:
+        r = client.post("/api/collector/run", headers=headers)
+        assert r.status_code == 403, f"{label} POST /api/collector/run -> {r.status_code} (expected 403)"
+
+
+def test_collector_status_login_only(client: TestClient, viewer_user):
+    # 状态查询保持登录可读（低风险只读）
+    headers, _ = viewer_user
+    r = client.get("/api/collector/status", headers=headers)
+    assert r.status_code == 200, r.text
+
+
+def test_data_sources_read_permission_split(client: TestClient, admin_headers, analyst_user, viewer_user):
+    # 管理员可读
+    r = client.get("/api/admin/data-sources", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    # analyst 持有 sources:read -> 200
+    ah, _ = analyst_user
+    r = client.get("/api/admin/data-sources", headers=ah)
+    assert r.status_code == 200, r.text
+    # viewer 无 sources:read -> 403
+    vh, _ = viewer_user
+    r = client.get("/api/admin/data-sources", headers=vh)
+    assert r.status_code == 403, r.text
+
+
+def test_viewer_leader_reads_after_migration(client: TestClient, viewer_user):
+    """viewer 经迁移获得 alerts:read / propagation:read（领导查看预警与传播）。"""
+    headers, _ = viewer_user
+    r = _login(client, "rbac_viewer", "Passw0rd1")
+    perms = r.json()["permissions"]
+    assert "alerts:read" in perms, perms
+    assert "propagation:read" in perms, perms
+    # 读接口（后端仅校验登录，但权限已授予，前端路由放行）
+    for path in ["/api/alerts/records", "/api/propagation/events"]:
+        rr = client.get(path, headers=headers)
+        assert rr.status_code == 200, f"viewer GET {path} -> {rr.status_code} {rr.text[:200]}"

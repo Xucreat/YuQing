@@ -57,6 +57,16 @@
             <el-switch v-model="hideFalsePositive" @change="loadRecords" />
             <span style="margin-left: 6px;">隐藏误报</span>
           </span>
+          <el-date-picker
+            v-model="recDateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            style="margin-left: 12px"
+            @change="onDateRangeChange"
+          />
           <el-button @click="loadRecords" style="margin-left: 12px">刷新</el-button>
         </el-card>
 
@@ -110,13 +120,14 @@
         <el-form-item label="风险阈值"><el-input-number v-model="ruleForm.risk_threshold" :min="0" :max="100" /></el-form-item>
         <el-form-item label="关键词匹配"><el-input v-model="ruleForm.keywords" placeholder="多个关键词用逗号分隔" /></el-form-item>
         <el-form-item label="来源过滤"><el-input v-model="ruleForm.sources" placeholder="多个来源用逗号分隔，留空表示不限" /></el-form-item>
-        <el-form-item label="建议等级（不决定实际告警等级）">
-          <el-select v-model="ruleForm.risk_level">
+        <el-form-item label="建议等级">
+          <el-select v-model="ruleForm.risk_level" style="width: 100%">
             <el-option label="严重" value="critical" />
             <el-option label="高" value="high" />
             <el-option label="中" value="medium" />
             <el-option label="低" value="low" />
           </el-select>
+          <div class="form-hint">说明：该等级为规则建议值，不决定实际告警等级（实际等级由舆情风险分派生）。</div>
         </el-form-item>
         <el-form-item label="启用"><el-switch v-model="ruleForm.enabled" /></el-form-item>
       </el-form>
@@ -191,6 +202,7 @@ const recordsSize = ref(20)
 const recFilterRisk = ref<string | null>(null)
 const recFilterStatus = ref<string>('')
 const hideFalsePositive = ref<boolean>(true)
+const recDateRange = ref<[string, string] | null>(null)
 
 // Rule dialog
 const ruleDialogVisible = ref(false)
@@ -231,6 +243,8 @@ async function loadRecords() {
     if (recFilterRisk.value) params.risk_level = recFilterRisk.value
     if (recFilterStatus.value) params.status = recFilterStatus.value
     if (hideFalsePositive.value) params.exclude_status = 'false_positive'
+    if (recDateRange.value && recDateRange.value[0]) params.date_from = recDateRange.value[0]
+    if (recDateRange.value && recDateRange.value[1]) params.date_to = recDateRange.value[1]
     const { data } = await api.get<AlertRecordListResponse>('/alerts/records', { params })
     records.value = data.items; recordsTotal.value = data.total
   } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载记录失败') } finally { loading.value = false }
@@ -318,6 +332,10 @@ async function submitHandle() {
 
 function handleRulesPage(p: number) { rulesPage.value = p; loadRules() }
 function handleRecordsPage(p: number) { recordsPage.value = p; loadRecords() }
+function onDateRangeChange() {
+  recordsPage.value = 1
+  loadRecords()
+}
 
 onMounted(() => {
   loadRules()
@@ -353,4 +371,6 @@ watch(() => route.query.tab, (tab) => {
 
 .nav-link { color: #409eff; text-decoration: none; }
 .nav-link:hover { text-decoration: underline; }
+
+.form-hint { color: #909399; font-size: 12px; line-height: 1.5; margin-top: 4px; }
 </style>

@@ -65,7 +65,7 @@
           <p class="h-page-sub">{{ pageSub }}</p>
         </div>
         <div class="actions">
-          <button class="btn btn-primary" :disabled="collecting" @click="handleCollect">
+          <button v-if="isSuperuser" class="btn btn-primary" :disabled="collecting" @click="handleCollect">
             {{ collecting ? '采集中...' : '采集数据' }}
           </button>
         </div>
@@ -93,7 +93,7 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const collectStore = useCollectStore()
-const { role, hasPermission } = usePermission()
+const { role, isSuperuser, hasPermission } = usePermission()
 const { redDot, unreadCount, openNotifications, start } = useAlertNotifier()
 const roleLabel = computed(() => {
   const map: Record<string, string> = { admin: '管理员', analyst: '分析员', viewer: '观察员' }

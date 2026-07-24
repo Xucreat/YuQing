@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.collectors.generic_site import GenericSiteCollector
 from app.collectors.registry import import_class
 from app.core.dependencies import get_current_user
-from app.core.permissions import require_admin
+from app.core.permissions import require_admin, require_permission
 from app.db.session import get_db
 from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
@@ -242,7 +242,7 @@ def list_data_sources(
     enabled: bool | None = None,
     region_code: str | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("sources:read")),
 ):
     region_map = _region_map(db)
 
@@ -478,7 +478,7 @@ def data_source_runs(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("sources:read")),
 ):
     """复用 collector_runs（按 collector_name == ds.name）查询该源最近采集记录。"""
     ds = db.get(DataSource, ds_id)
@@ -504,7 +504,7 @@ def collection_logs(
     from_: str | None = Query(None, alias="from", description="ISO 起始时间（含）"),
     to: str | None = Query(None, description="ISO 结束时间（含）"),
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("sources:read")),
 ):
     """采集日志：按批次（batch_id；历史按 start_time 兼容）聚合每次采集触发的整体记录。
 
@@ -597,7 +597,7 @@ def collection_log_runs(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("sources:read")),
 ):
     """某次采集批次下各数据源的逐源明细（复用 _run_to_dict 序列化）。
 

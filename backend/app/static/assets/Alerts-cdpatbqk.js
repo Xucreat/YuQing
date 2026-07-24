@@ -1,5 +1,5 @@
-import { d as defineComponent, L as useAlertNotifier, p as onMounted, m as watch, w as withDirectives, c as createElementBlock, B as createVNode, z as withCtx, r as ref, H as useRoute, g as api, E as ElMessage, C as resolveComponent, D as resolveDirective, o as openBlock, e as createTextVNode, t as toDisplayString, A as createCommentVNode, x as unref, M as riskTag, N as riskText, a as createBaseVNode, y as createBlock, f as reactive, O as ElMessageBox, _ as _export_sfc } from './index-RG8CyrnA.js';
-import { O as OpinionDetailModal } from './OpinionDetailModal-Cu2awz7m.js';
+import { d as defineComponent, L as useAlertNotifier, p as onMounted, m as watch, w as withDirectives, c as createElementBlock, B as createVNode, z as withCtx, r as ref, H as useRoute, g as api, E as ElMessage, C as resolveComponent, D as resolveDirective, o as openBlock, e as createTextVNode, t as toDisplayString, A as createCommentVNode, x as unref, M as riskTag, N as riskText, a as createBaseVNode, y as createBlock, f as reactive, O as ElMessageBox, _ as _export_sfc } from './index-iT_24xn-.js';
+import { O as OpinionDetailModal } from './OpinionDetailModal-F6pRp4VO.js';
 
 const _hoisted_1 = { class: "alerts" };
 const _hoisted_2 = {
@@ -38,6 +38,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
     const recFilterRisk = ref(null);
     const recFilterStatus = ref("");
     const hideFalsePositive = ref(true);
+    const recDateRange = ref(null);
     const ruleDialogVisible = ref(false);
     const isEditing = ref(false);
     const editingId = ref(null);
@@ -90,6 +91,8 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         if (recFilterRisk.value) params.risk_level = recFilterRisk.value;
         if (recFilterStatus.value) params.status = recFilterStatus.value;
         if (hideFalsePositive.value) params.exclude_status = "false_positive";
+        if (recDateRange.value && recDateRange.value[0]) params.date_from = recDateRange.value[0];
+        if (recDateRange.value && recDateRange.value[1]) params.date_to = recDateRange.value[1];
         const { data } = await api.get("/alerts/records", { params });
         records.value = data.items;
         recordsTotal.value = data.total;
@@ -209,6 +212,10 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
       recordsPage.value = p;
       loadRecords();
     }
+    function onDateRangeChange() {
+      recordsPage.value = 1;
+      loadRecords();
+    }
     onMounted(() => {
       loadRules();
       if (route.query.tab === "records") {
@@ -239,6 +246,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
       const _component_el_tab_pane = resolveComponent("el-tab-pane");
       const _component_el_option = resolveComponent("el-option");
       const _component_el_select = resolveComponent("el-select");
+      const _component_el_date_picker = resolveComponent("el-date-picker");
       const _component_router_link = resolveComponent("router-link");
       const _component_el_tabs = resolveComponent("el-tabs");
       const _component_el_input = resolveComponent("el-input");
@@ -250,7 +258,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
       return withDirectives((openBlock(), createElementBlock("div", _hoisted_1, [
         createVNode(_component_el_tabs, {
           modelValue: activeTab.value,
-          "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => activeTab.value = $event)
+          "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => activeTab.value = $event)
         }, {
           default: withCtx(() => [
             createVNode(_component_el_tab_pane, {
@@ -267,13 +275,13 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                       type: "primary",
                       onClick: _cache[0] || (_cache[0] = ($event) => openRuleDialog(null))
                     }, {
-                      default: withCtx(() => [..._cache[19] || (_cache[19] = [
+                      default: withCtx(() => [..._cache[20] || (_cache[20] = [
                         createTextVNode("新增规则", -1)
                       ])]),
                       _: 1
                     }),
                     createVNode(_component_el_button, { onClick: loadRules }, {
-                      default: withCtx(() => [..._cache[20] || (_cache[20] = [
+                      default: withCtx(() => [..._cache[21] || (_cache[21] = [
                         createTextVNode("刷新", -1)
                       ])]),
                       _: 1
@@ -283,7 +291,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                       loading: evaluating.value,
                       onClick: handleEvaluate
                     }, {
-                      default: withCtx(() => [..._cache[21] || (_cache[21] = [
+                      default: withCtx(() => [..._cache[22] || (_cache[22] = [
                         createTextVNode("执行评估", -1)
                       ])]),
                       _: 1
@@ -373,7 +381,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                               link: "",
                               onClick: ($event) => openRuleDialog(row)
                             }, {
-                              default: withCtx(() => [..._cache[22] || (_cache[22] = [
+                              default: withCtx(() => [..._cache[23] || (_cache[23] = [
                                 createTextVNode("编辑", -1)
                               ])]),
                               _: 1
@@ -384,7 +392,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                               link: "",
                               onClick: ($event) => deleteRule(row)
                             }, {
-                              default: withCtx(() => [..._cache[23] || (_cache[23] = [
+                              default: withCtx(() => [..._cache[24] || (_cache[24] = [
                                 createTextVNode("删除", -1)
                               ])]),
                               _: 1
@@ -487,13 +495,24 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => hideFalsePositive.value = $event),
                         onChange: loadRecords
                       }, null, 8, ["modelValue"]),
-                      _cache[24] || (_cache[24] = createBaseVNode("span", { style: { "margin-left": "6px" } }, "隐藏误报", -1))
+                      _cache[25] || (_cache[25] = createBaseVNode("span", { style: { "margin-left": "6px" } }, "隐藏误报", -1))
                     ]),
+                    createVNode(_component_el_date_picker, {
+                      modelValue: recDateRange.value,
+                      "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => recDateRange.value = $event),
+                      type: "daterange",
+                      "range-separator": "至",
+                      "start-placeholder": "开始日期",
+                      "end-placeholder": "结束日期",
+                      "value-format": "YYYY-MM-DD",
+                      style: { "margin-left": "12px" },
+                      onChange: onDateRangeChange
+                    }, null, 8, ["modelValue"]),
                     createVNode(_component_el_button, {
                       onClick: loadRecords,
                       style: { "margin-left": "12px" }
                     }, {
-                      default: withCtx(() => [..._cache[25] || (_cache[25] = [
+                      default: withCtx(() => [..._cache[26] || (_cache[26] = [
                         createTextVNode("刷新", -1)
                       ])]),
                       _: 1
@@ -628,7 +647,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                               link: "",
                               onClick: ($event) => openHandleDialog(row)
                             }, {
-                              default: withCtx(() => [..._cache[26] || (_cache[26] = [
+                              default: withCtx(() => [..._cache[27] || (_cache[27] = [
                                 createTextVNode("处置", -1)
                               ])]),
                               _: 1
@@ -660,15 +679,15 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         }, 8, ["modelValue"]),
         createVNode(_component_el_dialog, {
           modelValue: ruleDialogVisible.value,
-          "onUpdate:modelValue": _cache[13] || (_cache[13] = ($event) => ruleDialogVisible.value = $event),
+          "onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => ruleDialogVisible.value = $event),
           title: isEditing.value ? "编辑规则" : "新增规则",
           width: "600px"
         }, {
           footer: withCtx(() => [
             createVNode(_component_el_button, {
-              onClick: _cache[12] || (_cache[12] = ($event) => ruleDialogVisible.value = false)
+              onClick: _cache[13] || (_cache[13] = ($event) => ruleDialogVisible.value = false)
             }, {
-              default: withCtx(() => [..._cache[27] || (_cache[27] = [
+              default: withCtx(() => [..._cache[29] || (_cache[29] = [
                 createTextVNode("取消", -1)
               ])]),
               _: 1
@@ -678,7 +697,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loading: saving.value,
               onClick: saveRule
             }, {
-              default: withCtx(() => [..._cache[28] || (_cache[28] = [
+              default: withCtx(() => [..._cache[30] || (_cache[30] = [
                 createTextVNode("保存", -1)
               ])]),
               _: 1
@@ -694,7 +713,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: ruleForm.name,
-                      "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => ruleForm.name = $event),
+                      "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => ruleForm.name = $event),
                       placeholder: "请输入规则名称"
                     }, null, 8, ["modelValue"])
                   ]),
@@ -704,7 +723,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: ruleForm.description,
-                      "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => ruleForm.description = $event),
+                      "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => ruleForm.description = $event),
                       type: "textarea",
                       rows: 2,
                       placeholder: "描述该规则的用途"
@@ -716,7 +735,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input_number, {
                       modelValue: ruleForm.risk_threshold,
-                      "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => ruleForm.risk_threshold = $event),
+                      "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => ruleForm.risk_threshold = $event),
                       min: 0,
                       max: 100
                     }, null, 8, ["modelValue"])
@@ -727,7 +746,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: ruleForm.keywords,
-                      "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => ruleForm.keywords = $event),
+                      "onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => ruleForm.keywords = $event),
                       placeholder: "多个关键词用逗号分隔"
                     }, null, 8, ["modelValue"])
                   ]),
@@ -737,17 +756,18 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: ruleForm.sources,
-                      "onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => ruleForm.sources = $event),
+                      "onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => ruleForm.sources = $event),
                       placeholder: "多个来源用逗号分隔，留空表示不限"
                     }, null, 8, ["modelValue"])
                   ]),
                   _: 1
                 }),
-                createVNode(_component_el_form_item, { label: "建议等级（不决定实际告警等级）" }, {
+                createVNode(_component_el_form_item, { label: "建议等级" }, {
                   default: withCtx(() => [
                     createVNode(_component_el_select, {
                       modelValue: ruleForm.risk_level,
-                      "onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => ruleForm.risk_level = $event)
+                      "onUpdate:modelValue": _cache[11] || (_cache[11] = ($event) => ruleForm.risk_level = $event),
+                      style: { "width": "100%" }
                     }, {
                       default: withCtx(() => [
                         createVNode(_component_el_option, {
@@ -768,7 +788,8 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         })
                       ]),
                       _: 1
-                    }, 8, ["modelValue"])
+                    }, 8, ["modelValue"]),
+                    _cache[28] || (_cache[28] = createBaseVNode("div", { class: "form-hint" }, "说明：该等级为规则建议值，不决定实际告警等级（实际等级由舆情风险分派生）。", -1))
                   ]),
                   _: 1
                 }),
@@ -776,7 +797,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_switch, {
                       modelValue: ruleForm.enabled,
-                      "onUpdate:modelValue": _cache[11] || (_cache[11] = ($event) => ruleForm.enabled = $event)
+                      "onUpdate:modelValue": _cache[12] || (_cache[12] = ($event) => ruleForm.enabled = $event)
                     }, null, 8, ["modelValue"])
                   ]),
                   _: 1
@@ -789,15 +810,15 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         }, 8, ["modelValue", "title"]),
         createVNode(_component_el_dialog, {
           modelValue: handleDialogVisible.value,
-          "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => handleDialogVisible.value = $event),
+          "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => handleDialogVisible.value = $event),
           title: "预警处置",
           width: "480px"
         }, {
           footer: withCtx(() => [
             createVNode(_component_el_button, {
-              onClick: _cache[16] || (_cache[16] = ($event) => handleDialogVisible.value = false)
+              onClick: _cache[17] || (_cache[17] = ($event) => handleDialogVisible.value = false)
             }, {
-              default: withCtx(() => [..._cache[29] || (_cache[29] = [
+              default: withCtx(() => [..._cache[31] || (_cache[31] = [
                 createTextVNode("取消", -1)
               ])]),
               _: 1
@@ -807,7 +828,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loading: handling.value,
               onClick: submitHandle
             }, {
-              default: withCtx(() => [..._cache[30] || (_cache[30] = [
+              default: withCtx(() => [..._cache[32] || (_cache[32] = [
                 createTextVNode("确认处置", -1)
               ])]),
               _: 1
@@ -823,7 +844,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_select, {
                       modelValue: handleForm.status,
-                      "onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => handleForm.status = $event),
+                      "onUpdate:modelValue": _cache[15] || (_cache[15] = ($event) => handleForm.status = $event),
                       style: { "width": "100%" }
                     }, {
                       default: withCtx(() => [
@@ -857,7 +878,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: handleForm.note,
-                      "onUpdate:modelValue": _cache[15] || (_cache[15] = ($event) => handleForm.note = $event),
+                      "onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => handleForm.note = $event),
                       type: "textarea",
                       rows: 3,
                       placeholder: "可选：填写处置说明"
@@ -873,7 +894,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         }, 8, ["modelValue"]),
         createVNode(OpinionDetailModal, {
           modelValue: detailVisible.value,
-          "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => detailVisible.value = $event),
+          "onUpdate:modelValue": _cache[19] || (_cache[19] = ($event) => detailVisible.value = $event),
           "opinion-id": detailId.value
         }, null, 8, ["modelValue", "opinion-id"])
       ])), [
@@ -883,6 +904,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
   }
 });
 
-const Alerts = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-b4dc3b74"]]);
+const Alerts = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-e187c5c1"]]);
 
 export { Alerts as default };

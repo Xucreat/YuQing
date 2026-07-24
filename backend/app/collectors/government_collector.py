@@ -106,7 +106,7 @@ class GovernmentCollector(BaseCollector):
                     "url": art["url"],
                     "content": content,
                     "source": self.source_name,
-                    "publish_time": extract_publish_time(dsoup),
+                    "publish_time": extract_publish_time(dsoup, art["url"]),
                 }
             )
         return results

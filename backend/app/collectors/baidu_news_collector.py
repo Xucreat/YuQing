@@ -20,7 +20,7 @@ from urllib.parse import quote, urljoin
 import requests
 
 from app.collectors.base import BaseCollector
-from app.collectors.common import extract_publish_time
+from app.collectors.common import extract_publish_time, parse_publish_date_from_url
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -104,7 +104,10 @@ class BaiduNewsCollector(BaseCollector):
                     "content": content,
                     "source": self.source_name,
                     "url": href,
-                    "publish_time": extract_publish_time(item),
+                    # 搜索结果片段通常无可靠日期；extract_publish_time 先查片段文本，
+                    # 再以 URL 兜底（百度落地页 URL 无日期时返回 None，属正常）。
+                    "publish_time": extract_publish_time(item, href)
+                    or parse_publish_date_from_url(href),
                 })
 
         session.close()

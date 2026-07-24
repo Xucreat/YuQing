@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user
 from app.core.permissions import require_permission
@@ -117,6 +118,8 @@ def list_records(
     handled: bool | None = None,
     status: str | None = None,
     exclude_status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     db: Session = Depends(get_db),
     _u: User = Depends(get_current_user),
 ):
@@ -140,6 +143,19 @@ def list_records(
         q = q.where(AlertRecord.status == status)
     if exclude_status:
         q = q.where(AlertRecord.status != exclude_status)
+    # 时间范围过滤（沿用 opinions 的 YYYY-MM-DD 约定，按 created_at 日期部分）
+    if date_from:
+        try:
+            d = datetime.strptime(date_from, "%Y-%m-%d").date()
+            q = q.where(func.date(AlertRecord.created_at) >= d)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            d = datetime.strptime(date_to, "%Y-%m-%d").date()
+            q = q.where(func.date(AlertRecord.created_at) <= d)
+        except ValueError:
+            pass
     total = q.count()
     rows = q.order_by(AlertRecord.id.desc()).offset((page - 1) * size).limit(size).all()
     return AlertRecordListResponse(items=rows, total=total, page=page, size=size)
