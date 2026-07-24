@@ -94,7 +94,7 @@
               <template #default="{ row }"><el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag></template>
             </el-table-column>
             <el-table-column label="处置人" width="100" align="center">
-              <template #default="{ row }">{{ row.handled_by ?? '-' }}</template>
+              <template #default="{ row }">{{ row.handled_by_name ?? '-' }}</template>
             </el-table-column>
             <el-table-column label="触发时间" width="180">
               <template #default="{ row }">{{ formatTime(row.created_at) }}</template>

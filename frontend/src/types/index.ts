@@ -206,6 +206,7 @@ export interface AlertRecord {
   handled: boolean
   status: string
   handled_by: number | null
+  handled_by_name?: string | null
   handled_at: string | null
   handle_note: string | null
   created_at: string

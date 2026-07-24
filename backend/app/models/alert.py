@@ -1,8 +1,9 @@
 ﻿from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
+from app.models.user import User
 
 class AlertRule(Base):
     __tablename__ = "alert_rules"
@@ -47,9 +48,20 @@ class AlertRecord(Base):
     handled_by: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )
+    # 处置人（用户对象）。lazy="joined" 使列表/详情查询一次性带出，避免 N+1。
+    handler: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[handled_by], lazy="joined"
+    )
     handled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     handle_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def handled_by_name(self) -> Optional[str]:
+        """处置人用户名（供前端展示，替代裸 ID）。无处置人时返回 None。"""
+        if self.handler is None:
+            return None
+        return self.handler.username
 
     __table_args__ = (
         CheckConstraint(

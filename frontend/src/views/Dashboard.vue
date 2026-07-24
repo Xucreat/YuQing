@@ -581,7 +581,6 @@ onBeforeUnmount(() => {
 .feed-item.clickable, .alert-item.clickable { cursor: pointer; transition: background 0.15s; }
 .feed-item.clickable:hover, .alert-item.clickable:hover { background: #f5f8fd; border-radius: 8px; }
 .feed-item.clickable:hover .fi-title, .alert-item.clickable:hover .ai-title { color: #0071e3; }
-.alert-item.handled { opacity: 0.55; }
 .fi-tag, .ai-tag { flex-shrink: 0; font-size: 11px; padding: 2px 7px; border-radius: 6px; font-weight: 600; }
 .fi-tag.neg, .ai-tag.crit { background: rgba(255, 59, 48, 0.12); color: #ff3b30; }
 .fi-tag.neu, .ai-tag.low { background: rgba(134, 134, 139, 0.12); color: #6e6e73; }

@@ -54,6 +54,8 @@ class AlertRecordOut(BaseModel):
     # Phase 2-B.1 告警处置闭环字段（旧数据 status 由迁移回填，其余可空）
     status: str = "pending"
     handled_by: Optional[int] = None
+    # 处置人用户名（替代裸 ID，前端展示用）。由 AlertRecord.handled_by_name 计算。
+    handled_by_name: Optional[str] = None
     handled_at: Optional[datetime] = None
     handle_note: Optional[str] = None
     created_at: datetime

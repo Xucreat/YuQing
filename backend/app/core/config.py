@@ -91,6 +91,22 @@ class Settings(BaseSettings):
             return [u.strip() for u in v.split(",") if u.strip()]
         return v
 
+    @field_validator("secret_key")
+    @classmethod
+    def _reject_default_secret_key(cls, v: str) -> str:
+        """生产安全门禁（ARCH-01 修复）：禁止以公开默认弱密钥启动。
+
+        若 SECRET_KEY 仍为源码公开默认值 'change-me-in-production'，
+        说明生产环境未配置强密钥，启动时直接失败，杜绝认证被绕过。
+        """
+        if v == "change-me-in-production":
+            raise ValueError(
+                "SECRET_KEY 仍为公开默认弱值 'change-me-in-production'，"
+                "存在认证绕过风险（ARCH-01）。请在生产 .env 中设置强随机密钥"
+                "（python -c \"import secrets; print(secrets.token_urlsafe(48))\"）后重试。"
+            )
+        return v
+
     # ===== Event 聚合配置（Phase 3C-0）=====
     # 聚合窗口：仅归并最近 N 天内、analysis_status=completed 的 Opinion。
     # Phase 4-Event-1 起：不再要求 keywords 非空（文本相似度也可召回），
