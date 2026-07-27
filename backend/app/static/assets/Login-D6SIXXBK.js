@@ -1,4 +1,4 @@
-import { d as defineComponent, u as useAuthStore, c as createElementBlock, a as createBaseVNode, w as withDirectives, v as vModelText, b as withKeys, t as toDisplayString, e as createTextVNode, r as ref, f as reactive, E as ElMessage, g as api, h as useRouter, o as openBlock, _ as _export_sfc } from './index-BmexwUgp.js';
+import { d as defineComponent, u as useAuthStore, c as createElementBlock, a as createBaseVNode, w as withDirectives, v as vModelText, b as withKeys, t as toDisplayString, e as createTextVNode, r as ref, f as reactive, E as ElMessage, g as api, h as useRouter, o as openBlock, _ as _export_sfc } from './index-hrIey9kD.js';
 
 const _hoisted_1 = { class: "login-screen" };
 const _hoisted_2 = { class: "login-card" };
@@ -13,7 +13,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
     const loading = ref(false);
     const form = reactive({
       username: "admin",
-      password: "admin123"
+      password: ""
     });
     async function handleLogin() {
       if (!form.username.trim() || !form.password.trim()) {
@@ -81,8 +81,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
           _cache[7] || (_cache[7] = createBaseVNode("p", { class: "login-hint" }, [
             createTextVNode(" 默认账号 "),
             createBaseVNode("code", null, "admin"),
-            createTextVNode(" / "),
-            createBaseVNode("code", null, "admin123")
+            createTextVNode("（初始密码请联系系统管理员获取） ")
           ], -1))
         ])
       ]);
@@ -90,6 +89,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
   }
 });
 
-const Login = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-cd30c09f"]]);
+const Login = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-8d62ddc1"]]);
 
 export { Login as default };

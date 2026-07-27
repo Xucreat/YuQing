@@ -1,27 +1,26 @@
-import { d as defineComponent, p as onMounted, w as withDirectives, c as createElementBlock, B as createVNode, z as withCtx, r as ref, g as api, E as ElMessage, C as resolveComponent, D as resolveDirective, o as openBlock, b as withKeys, e as createTextVNode, t as toDisplayString, a as createBaseVNode, _ as _export_sfc } from './index-BmexwUgp.js';
+import { d as defineComponent, p as onMounted, w as withDirectives, c as createElementBlock, B as createVNode, z as withCtx, r as ref, g as api, E as ElMessage, C as resolveComponent, D as resolveDirective, o as openBlock, b as withKeys, e as createTextVNode, t as toDisplayString, a as createBaseVNode, _ as _export_sfc } from './index-hrIey9kD.js';
 
 const _hoisted_1 = { class: "logs-page" };
 const _hoisted_2 = { class: "pagination" };
 const _sfc_main = /* @__PURE__ */ defineComponent({
-  __name: "LoginLogs",
+  __name: "OperationLogs",
   setup(__props) {
     const loading = ref(false);
     const logs = ref([]);
     const total = ref(0);
     const page = ref(1);
     const size = ref(20);
-    const username = ref("");
-    const status = ref("");
+    const operator = ref("");
+    const action = ref("");
+    const result = ref("");
     function fmt(t) {
       return t ? t.replace("T", " ").slice(0, 19) : "-";
     }
-    function statusTag(s) {
-      if (s === "success") return "success";
-      if (s === "failed") return "danger";
+    function actionTag(a) {
+      if (a === "DELETE" || a === "ROLE_DELETE") return "danger";
+      if (a === "CREATE" || a === "ROLE_CREATE") return "success";
+      if (a === "PASSWORD_RESET") return "warning";
       return "info";
-    }
-    function statusText(s) {
-      return { success: "成功", failed: "失败", logout: "退出" }[s] || s;
     }
     function idxFn(i) {
       return (page.value - 1) * size.value + i + 1;
@@ -30,13 +29,14 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
       loading.value = true;
       try {
         const params = { page: page.value, size: size.value };
-        if (username.value) params.username = username.value;
-        if (status.value) params.status = status.value;
-        const { data } = await api.get("/login-logs", { params });
+        if (operator.value) params.operator = operator.value;
+        if (action.value) params.action = action.value;
+        if (result.value) params.result = result.value;
+        const { data } = await api.get("/operation-logs", { params });
         logs.value = data.items || [];
         total.value = data.total || 0;
       } catch (e) {
-        ElMessage.error(e?.response?.data?.detail || "加载登录日志失败");
+        ElMessage.error(e?.response?.data?.detail || "加载操作日志失败");
       } finally {
         loading.value = false;
       }
@@ -46,8 +46,9 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
       reload();
     }
     function resetFilters() {
-      username.value = "";
-      status.value = "";
+      operator.value = "";
+      action.value = "";
+      result.value = "";
       page.value = 1;
       reload();
     }
@@ -70,18 +71,27 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         }, {
           default: withCtx(() => [
             createVNode(_component_el_input, {
-              modelValue: username.value,
-              "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => username.value = $event),
-              placeholder: "用户名",
+              modelValue: operator.value,
+              "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => operator.value = $event),
+              placeholder: "操作人",
               clearable: "",
-              style: { "width": "200px" },
+              style: { "width": "180px" },
+              onKeyup: withKeys(reload, ["enter"]),
+              onClear: reload
+            }, null, 8, ["modelValue"]),
+            createVNode(_component_el_input, {
+              modelValue: action.value,
+              "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => action.value = $event),
+              placeholder: "操作类型 (如 CREATE/UPDATE/DELETE)",
+              clearable: "",
+              style: { "width": "260px", "margin-left": "12px" },
               onKeyup: withKeys(reload, ["enter"]),
               onClear: reload
             }, null, 8, ["modelValue"]),
             createVNode(_component_el_select, {
-              modelValue: status.value,
-              "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => status.value = $event),
-              placeholder: "登录结果",
+              modelValue: result.value,
+              "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => result.value = $event),
+              placeholder: "操作结果",
               clearable: "",
               style: { "width": "160px", "margin-left": "12px" },
               onChange: reload
@@ -94,10 +104,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                 createVNode(_component_el_option, {
                   label: "失败",
                   value: "failed"
-                }),
-                createVNode(_component_el_option, {
-                  label: "退出",
-                  value: "logout"
                 })
               ]),
               _: 1
@@ -107,13 +113,13 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               style: { "margin-left": "12px" },
               onClick: reload
             }, {
-              default: withCtx(() => [..._cache[2] || (_cache[2] = [
+              default: withCtx(() => [..._cache[3] || (_cache[3] = [
                 createTextVNode("查询", -1)
               ])]),
               _: 1
             }),
             createVNode(_component_el_button, { onClick: resetFilters }, {
-              default: withCtx(() => [..._cache[3] || (_cache[3] = [
+              default: withCtx(() => [..._cache[4] || (_cache[4] = [
                 createTextVNode("重置", -1)
               ])]),
               _: 1
@@ -129,7 +135,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
             createVNode(_component_el_table, {
               data: logs.value,
               stripe: "",
-              "empty-text": "暂无登录日志"
+              "empty-text": "暂无操作日志"
             }, {
               default: withCtx(() => [
                 createVNode(_component_el_table_column, {
@@ -139,38 +145,21 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   width: "70"
                 }),
                 createVNode(_component_el_table_column, {
-                  prop: "username",
-                  label: "用户名",
-                  "min-width": "140",
-                  "show-overflow-tooltip": ""
+                  prop: "operator_username_snapshot",
+                  label: "操作人",
+                  width: "160"
                 }),
                 createVNode(_component_el_table_column, {
-                  label: "登录时间",
-                  "min-width": "180"
-                }, {
-                  default: withCtx(({ row }) => [
-                    createTextVNode(toDisplayString(fmt(row.login_at)), 1)
-                  ]),
-                  _: 1
-                }),
-                createVNode(_component_el_table_column, {
-                  prop: "ip_address",
-                  label: "IP 地址",
-                  "min-width": "140",
-                  "show-overflow-tooltip": ""
-                }),
-                createVNode(_component_el_table_column, {
-                  label: "登录结果",
-                  width: "120",
-                  align: "center"
+                  label: "操作类型",
+                  width: "150"
                 }, {
                   default: withCtx(({ row }) => [
                     createVNode(_component_el_tag, {
-                      type: statusTag(row.status),
+                      type: actionTag(row.action),
                       size: "small"
                     }, {
                       default: withCtx(() => [
-                        createTextVNode(toDisplayString(statusText(row.status)), 1)
+                        createTextVNode(toDisplayString(row.action), 1)
                       ]),
                       _: 2
                     }, 1032, ["type"])
@@ -178,16 +167,51 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   _: 1
                 }),
                 createVNode(_component_el_table_column, {
-                  prop: "failure_reason",
-                  label: "失败原因",
-                  "min-width": "160",
-                  "show-overflow-tooltip": ""
+                  prop: "resource_type",
+                  label: "资源类型",
+                  width: "150"
                 }),
                 createVNode(_component_el_table_column, {
-                  prop: "user_agent",
-                  label: "用户代理 / 设备",
-                  "min-width": "220",
-                  "show-overflow-tooltip": ""
+                  prop: "resource_id",
+                  label: "资源 ID",
+                  width: "140"
+                }),
+                createVNode(_component_el_table_column, {
+                  label: "操作结果",
+                  width: "110",
+                  align: "center"
+                }, {
+                  default: withCtx(({ row }) => [
+                    createVNode(_component_el_tag, {
+                      type: row.result === "success" ? "success" : "danger",
+                      size: "small"
+                    }, {
+                      default: withCtx(() => [
+                        createTextVNode(toDisplayString(row.result === "success" ? "成功" : "失败"), 1)
+                      ]),
+                      _: 2
+                    }, 1032, ["type"])
+                  ]),
+                  _: 1
+                }),
+                createVNode(_component_el_table_column, {
+                  label: "操作时间",
+                  width: "180"
+                }, {
+                  default: withCtx(({ row }) => [
+                    createTextVNode(toDisplayString(fmt(row.created_at)), 1)
+                  ]),
+                  _: 1
+                }),
+                createVNode(_component_el_table_column, {
+                  prop: "ip_address",
+                  label: "IP 地址",
+                  width: "160"
+                }),
+                createVNode(_component_el_table_column, {
+                  prop: "details_json",
+                  label: "详情",
+                  width: "400"
                 })
               ]),
               _: 1
@@ -212,6 +236,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
   }
 });
 
-const LoginLogs = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-f39b70e0"]]);
+const OperationLogs = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-f2f7bcb6"]]);
 
-export { LoginLogs as default };
+export { OperationLogs as default };

@@ -176,8 +176,8 @@ class CollectorService:
         """按采集器声明的 scope_region_codes 绑定区域（省→市→县）。
 
         - 取 scope 中最具体的 code（最长 = 县>市>省）；
-        - scope 为空/None（国家级源，靠关键词过滤河北）→ 绑定河北省(130000)；
-        - 若目标区域不存在，回退 130000，再回退任意区域（避免种子缺失时整体失败）。
+        - scope 为空/None（国家级源，靠关键词过滤廊坊）→ 绑定廊坊市(131000)；
+        - 若目标区域不存在，回退 131000，再回退任意区域（避免种子缺失时整体失败）。
         """
         codes = getattr(collector, "scope_region_codes", None)
         target_code = max(codes, key=len) if codes else None
@@ -185,7 +185,7 @@ class CollectorService:
         if target_code:
             region = db.query(Region).filter(Region.code == target_code).first()
         if region is None:
-            region = db.query(Region).filter(Region.code == "130000").first()
+            region = db.query(Region).filter(Region.code == "131000").first()
         if region is None:
             region = db.query(Region).first()
         if region is None:

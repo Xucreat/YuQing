@@ -43,7 +43,11 @@ class Settings(BaseSettings):
 
     # ===== 初始化管理员 =====
     init_admin_username: str = "admin"
-    init_admin_password: str = "admin123"
+    # ARCH-10 同源残留清理：原公开弱默认值 "admin123" 已移除。
+    # 该字段仅在 init_db 首次创建 admin 时使用；为空/未配置时由下方
+    # validator 给出明确启动提示，要求通过 .env 的 INIT_ADMIN_PASSWORD
+    # 显式设置强密码，杜绝弱口令兜底。已存在 admin 时不会被写入。
+    init_admin_password: str = ""
 
     # ===== Collector 采集配置（Phase 3B）=====
     # 采集方式（非数据来源）：government | mock
@@ -58,8 +62,8 @@ class Settings(BaseSettings):
     alert_eval_interval_minutes: int = 30
     # 监测关键词（兜底用）：keywords 表已成为采集过滤 + 预警匹配的唯一权威源
     # （见 app/services/keyword_service.py，表空时回退到此配置）。
-    # 历史上为大厂县视角；扩省时仅加「河北」。现由 keywords 表驱动，此值仅作应急兜底。
-    collector_keywords: str = "河北,大厂,舆情,消防,安全生产,民生,投诉,廊坊,大厂回族"
+    # 廊坊市全域视角（廊坊+大厂+三河+香河+固安）。现由 keywords 表驱动，此值仅作应急兜底。
+    collector_keywords: str = "廊坊,大厂,大厂回族自治县,三河,香河,固安,舆情,消防,安全生产,民生,投诉"
     # P0: new data sources
     # 以下开关已在 collectors/service.py:resolve_collectors 中真正生效（此前为死配置）。
     baidu_news_enabled: bool = True
@@ -104,6 +108,25 @@ class Settings(BaseSettings):
                 "SECRET_KEY 仍为公开默认弱值 'change-me-in-production'，"
                 "存在认证绕过风险（ARCH-01）。请在生产 .env 中设置强随机密钥"
                 "（python -c \"import secrets; print(secrets.token_urlsafe(48))\"）后重试。"
+            )
+        return v
+
+    @field_validator("init_admin_password")
+    @classmethod
+    def _warn_empty_init_admin_password(cls, v: str) -> str:
+        """ARCH-10 同源残留清理：初始化管理员备用密码安全提示。
+
+        该字段仅在 init_db 首次创建 admin 时使用；为空/未配置时给出明确
+        启动提示，要求通过 .env 的 INIT_ADMIN_PASSWORD 显式设置强密码，
+        杜绝弱口令兜底。已存在 admin 时不会被写入，不影响现有登录。
+        """
+        if not v:
+            import sys
+            print(
+                "[SECURITY WARNING] INIT_ADMIN_PASSWORD 为空或未配置；"
+                "若需首次初始化管理员，请在 .env 中设置强随机密码，"
+                "否则 init_db 不会写入可用的默认凭据。",
+                file=sys.stderr,
             )
         return v
 

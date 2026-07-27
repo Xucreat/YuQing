@@ -33,7 +33,7 @@
       </button>
 
       <p class="login-hint">
-        默认账号 <code>admin</code> / <code>admin123</code>
+        默认账号 <code>admin</code>（初始密码请联系系统管理员获取）
       </p>
     </div>
   </div>
@@ -53,7 +53,7 @@ const loading = ref(false)
 
 const form = reactive({
   username: 'admin',
-  password: 'admin123',
+  password: '',
 })
 
 async function handleLogin() {

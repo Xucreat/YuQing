@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/Login-BQSArOuf.css","assets/OpinionDetailModal-CjLYoEmJ.css","assets/Dashboard-BSofhbJL.css","assets/Opinions-C2Fd1iNm.css","assets/OpinionDetail-BDSx6N8e.css","assets/Events-B15T_n3C.css","assets/EventDetail-sK5ZZfYT.css","assets/Alerts-CJXbxpkC.css","assets/SystemAdmin-Sbln6Eae.css","assets/Users-CKAPTRjh.css","assets/Roles-BXLv1dK2.css","assets/LoginLogs-DPVtiRWm.css","assets/OperationLogs-OijiQvYZ.css","assets/Propagation-BdpSe0PO.css","assets/CommandScreen-BIeJx4IY.css"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/Login-C-TRDo5l.css","assets/OpinionDetailModal-CjLYoEmJ.css","assets/Dashboard-BSofhbJL.css","assets/Opinions-C2Fd1iNm.css","assets/OpinionDetail-BDSx6N8e.css","assets/Events-B15T_n3C.css","assets/EventDetail-sK5ZZfYT.css","assets/Alerts-CJXbxpkC.css","assets/SystemAdmin-Sbln6Eae.css","assets/Users-CKAPTRjh.css","assets/Roles-BXLv1dK2.css","assets/LoginLogs-DPVtiRWm.css","assets/OperationLogs-OijiQvYZ.css","assets/Propagation-BdpSe0PO.css","assets/CommandScreen-BIeJx4IY.css"])))=>i.map(i=>d[i]);
 /**
 * @vue/shared v3.5.40
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
@@ -81777,43 +81777,43 @@ const router = createRouter({
     {
       path: "/login",
       name: "login",
-      component: () => __vitePreload(() => import('./Login-rjz0Tk4o.js'),true?__vite__mapDeps([0]):void 0),
+      component: () => __vitePreload(() => import('./Login-D6SIXXBK.js'),true?__vite__mapDeps([0]):void 0),
       meta: { requiresAuth: false }
     },
     {
       path: "/dashboard",
       name: "dashboard",
-      component: () => __vitePreload(() => import('./Dashboard-DuVzHwcY.js'),true?__vite__mapDeps([1,2]):void 0),
+      component: () => __vitePreload(() => import('./Dashboard-CXbPTA99.js'),true?__vite__mapDeps([1,2]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/opinions",
       name: "opinions",
-      component: () => __vitePreload(() => import('./Opinions-Dj-39qYX.js'),true?__vite__mapDeps([1,3]):void 0),
+      component: () => __vitePreload(() => import('./Opinions-BwVEHvQh.js'),true?__vite__mapDeps([1,3]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/opinion/:id",
       name: "opinion-detail",
-      component: () => __vitePreload(() => import('./OpinionDetail-BrZweRHy.js'),true?__vite__mapDeps([4]):void 0),
+      component: () => __vitePreload(() => import('./OpinionDetail-ZfFjdT8S.js'),true?__vite__mapDeps([4]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/events",
       name: "events",
-      component: () => __vitePreload(() => import('./Events-DB_BmYlI.js'),true?__vite__mapDeps([5]):void 0),
+      component: () => __vitePreload(() => import('./Events-BGqlvNHh.js'),true?__vite__mapDeps([5]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/event/:id",
       name: "event-detail",
-      component: () => __vitePreload(() => import('./EventDetail-Bx-Y2nRk.js'),true?__vite__mapDeps([1,6]):void 0),
+      component: () => __vitePreload(() => import('./EventDetail-C6n3tqMV.js'),true?__vite__mapDeps([1,6]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/alerts",
       name: "alerts",
-      component: () => __vitePreload(() => import('./Alerts-DM0WlXur.js'),true?__vite__mapDeps([1,7]):void 0),
+      component: () => __vitePreload(() => import('./Alerts-BEP8x13Q.js'),true?__vite__mapDeps([1,7]):void 0),
       meta: { requiresAuth: true, permission: "alerts:read" }
     },
     {
@@ -81830,7 +81830,7 @@ const router = createRouter({
     {
       path: "/system",
       name: "system",
-      component: () => __vitePreload(() => import('./SystemAdmin-A_e961YB.js'),true?__vite__mapDeps([8]):void 0),
+      component: () => __vitePreload(() => import('./SystemAdmin-EzaKzDMt.js'),true?__vite__mapDeps([8]):void 0),
       meta: { requiresAuth: true },
       // 进入系统时按权限分流到首个可见子页；无系统权限则回退首页。
       redirect: (to) => {
@@ -81845,25 +81845,25 @@ const router = createRouter({
         {
           path: "users",
           name: "users",
-          component: () => __vitePreload(() => import('./Users-bZPf4W5C.js'),true?__vite__mapDeps([9]):void 0),
+          component: () => __vitePreload(() => import('./Users-CpABtBlU.js'),true?__vite__mapDeps([9]):void 0),
           meta: { requiresAuth: true, permission: "users:read" }
         },
         {
           path: "roles",
           name: "roles",
-          component: () => __vitePreload(() => import('./Roles-BucM-BDQ.js'),true?__vite__mapDeps([10]):void 0),
+          component: () => __vitePreload(() => import('./Roles-DmVfr5bF.js'),true?__vite__mapDeps([10]):void 0),
           meta: { requiresAuth: true, permission: "roles:read" }
         },
         {
           path: "login-logs",
           name: "login-logs",
-          component: () => __vitePreload(() => import('./LoginLogs-CZwkbdCG.js'),true?__vite__mapDeps([11]):void 0),
+          component: () => __vitePreload(() => import('./LoginLogs-D-VqU_H8.js'),true?__vite__mapDeps([11]):void 0),
           meta: { requiresAuth: true, permission: "login_logs:read" }
         },
         {
           path: "operation-logs",
           name: "operation-logs",
-          component: () => __vitePreload(() => import('./OperationLogs-YszYLBbv.js'),true?__vite__mapDeps([12]):void 0),
+          component: () => __vitePreload(() => import('./OperationLogs-C07R47Tp.js'),true?__vite__mapDeps([12]):void 0),
           meta: { requiresAuth: true, permission: "audit_logs:read" }
         }
       ]
@@ -81876,14 +81876,14 @@ const router = createRouter({
     {
       path: "/propagation",
       name: "propagation",
-      component: () => __vitePreload(() => import('./Propagation-DD8P7gI5.js'),true?__vite__mapDeps([13]):void 0),
+      component: () => __vitePreload(() => import('./Propagation-DP7spVb9.js'),true?__vite__mapDeps([13]):void 0),
       meta: { requiresAuth: true, permission: "propagation:read" }
     },
     {
       // 指挥大屏：独立全屏布局（不套 AppLayout 侧边栏），复用现有认证机制
       path: "/command-screen",
       name: "command-screen",
-      component: () => __vitePreload(() => import('./CommandScreen-CSan-QeM.js'),true?__vite__mapDeps([14]):void 0),
+      component: () => __vitePreload(() => import('./CommandScreen-CVc2gqUo.js'),true?__vite__mapDeps([14]):void 0),
       meta: { requiresAuth: true, layout: "fullscreen" }
     }
   ]
