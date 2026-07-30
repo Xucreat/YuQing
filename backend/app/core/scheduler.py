@@ -52,11 +52,15 @@ def _run_weibo_consumer_job():
         service = CollectorService(include_data_source_keys={"weibo_octopus"})
         result = service.collect_and_analyze(db, trigger_type="weibo_scheduled")
         logger.info(
-            "Scheduled Weibo collect: fetched=%d created=%d analyzed=%d failed=%d",
+            "Scheduled Weibo collect: fetched=%d upstream=%s returned=%d created=%d duplicate=%d analyzed=%d failed=%d ack=%s",
             result.fetched_raw,
+            result.upstream_total,
+            result.upstream_returned,
             result.created,
+            result.duplicate,
             result.analyzed,
             result.failed,
+            result.ack_status,
         )
         agg = auto_aggregate_after_collect(SessionLocal)
         logger.info(

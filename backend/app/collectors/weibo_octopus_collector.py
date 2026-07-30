@@ -19,7 +19,7 @@
 八爪鱼开放 API（https://openapi.bazhuayu.com）：
   - POST /token                      username/password/grant_type=password -> access_token
   - GET  /data/notexported?taskId&size   拉取未导出数据（增量语义）
-  - POST /data/notexported/update        确认已导出（body: {taskId}）
+  - POST /data/markexported              确认已导出（body: {taskId}）
   路径可经 config_json 覆盖（api 变更时免改代码）。
 
 数据映射（用户约定）：
@@ -112,7 +112,7 @@ class WeiboOctopusCollector(BaseCollector):
         # API 路径可覆盖（八爪鱼版本变更免改代码）
         self.path_token: str = cfg.get("path_token", "/token")
         self.path_notexported: str = cfg.get("path_notexported", "/data/notexported")
-        self.path_mark_exported: str = cfg.get("path_mark_exported", "/data/notexported/update")
+        self.path_mark_exported: str = cfg.get("path_mark_exported", "/data/markexported")
         # 字段映射：默认候选 + config 覆盖（覆盖为整键替换）
         fm = dict(DEFAULT_FIELD_MAP)
         for k, v in (cfg.get("field_map") or {}).items():
@@ -297,20 +297,13 @@ class WeiboOctopusCollector(BaseCollector):
         return rows
 
     def can_ack_pending_export(self) -> bool:
-        """Return whether this response covers the complete task queue."""
-        return (
-            self._pending_export_token is not None
-            and self.last_not_exported_total is not None
-            and self.last_not_exported_returned >= self.last_not_exported_total
-        )
+        """Return whether a successful fetch has a pending export confirmation."""
+        return self._pending_export_token is not None
 
     def ack_pending_export(self) -> bool:
         """Confirm the fetched export after CollectorService commits persistence."""
         token = self._pending_export_token
         if not token:
-            return False
-        # A task-scoped ack must never confirm a response known to be partial.
-        if self.last_not_exported_total is not None and not self.can_ack_pending_export():
             return False
         self._confirm_exported(token)
         self._pending_export_token = None

@@ -22,6 +22,7 @@ class CollectorRunResponse(BaseModel):
     upstream_total: Optional[int] = None
     upstream_returned: int = 0
     created: int = 0       # 本次新增 Opinion 数
+    duplicate: int = 0     # 本次命中已有 Opinion 的条数
     analyzed: int = 0       # AI 分析成功（completed）数
     failed: int = 0         # 失败数 = created - analyzed（记录保留，状态 failed）
     acknowledged: int = 0

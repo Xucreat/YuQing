@@ -115,32 +115,24 @@
         <thead>
           <tr>
             <th style="width:70px">ID</th>
-            <th style="min-width:280px">事件标题</th>
-            <th class="col-center operation-col">操作</th>
-            <th style="width:120px">地区</th>
-            <th style="width:120px">主题</th>
-            <th style="width:120px" class="col-center">风险等级</th>
-            <th style="width:90px" class="col-center">风险分</th>
-            <th style="width:90px" class="col-center">热度</th>
-            <th style="width:100px" class="col-center">趋势</th>
-            <th style="width:120px" class="col-center">关联舆情</th>
+            <th style="width:280px">事件标题</th>
+            <th style="width:110px">主题</th>
+            <th style="width:110px" class="col-center">风险等级</th>
+            <th style="width:80px" class="col-center">风险分</th>
+            <th style="width:80px" class="col-center">热度</th>
+            <th style="width:90px" class="col-center">趋势</th>
+            <th style="width:100px" class="col-center">关联舆情</th>
             <th style="width:100px" class="col-center">处置状态</th>
-            <th style="width:170px">首次发现</th>
-            <th style="width:170px">最后更新</th>
+            <th style="width:190px">首次发现</th>
+            <th style="width:190px">最后更新</th>
+            <th class="col-center operation-col">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(row, idx) in rows" :key="row.id" @click="$router.push('/event/' + row.id)" style="cursor:pointer">
             <td>{{ (page - 1) * size + idx + 1 }}</td>
             <td><span class="t-title">{{ row.title }}</span></td>
-            <td class="col-center operation-col" @click.stop>
-              <div class="row-actions">
-                <button class="btn-operate" title="查看事件并进行人工处置" @click="$router.push('/event/' + row.id)">处置</button>
-                <button class="btn-icon btn-delete" title="删除事件" @click="handleDelete(row)">🗑</button>
-              </div>
-            </td>
-            <td>{{ row.region_name || (row.region_id ? `地区 ${row.region_id}` : '-') }}</td>
-            <td>{{ topicText(row.topic_category) }}</td>
+            <td class="nowrap">{{ topicText(row.topic_category) }}</td>
             <td class="col-center">
               <span class="pill" :class="riskPill(row.risk_level)"><span class="dot"></span>{{ riskText(row.risk_level) }}</span>
               <span v-if="isKeyEvent(row)" class="focus-mark">重点关注</span>
@@ -152,11 +144,17 @@
             </td>
             <td class="col-center risk-num">{{ row.opinion_count }}</td>
             <td class="col-center"><span class="pill" :class="eventStatusPill(row.status)"><span class="dot"></span>{{ eventStatusLabel(row.status) }}</span></td>
-            <td>{{ formatTime(row.first_time) }}</td>
-            <td>{{ formatTime(row.last_time) }}</td>
+            <td class="nowrap">{{ formatTime(row.first_time) }}</td>
+            <td class="nowrap">{{ formatTime(row.last_time) }}</td>
+            <td class="col-center operation-col" @click.stop>
+              <div class="row-actions">
+                <button class="btn-operate" title="打开事件处置弹窗" @click.stop="openHandle(row)">处置</button>
+                <button class="btn-icon btn-delete" title="删除事件" @click="handleDelete(row)">🗑</button>
+              </div>
+            </td>
           </tr>
           <tr v-if="rows.length===0 && !loading">
-            <td colspan="13" class="empty-row">暂无事件数据</td>
+            <td colspan="12" class="empty-row">暂无事件数据</td>
           </tr>
         </tbody>
       </table>
@@ -168,6 +166,90 @@
         <button :disabled="page>=maxPage" @click="page++; loadData()">›</button>
       </div>
     </div>
+
+    <el-dialog
+      v-model="handleDialogVisible"
+      title="事件处置"
+      width="820px"
+      top="6vh"
+      :close-on-click-modal="true"
+      class="op-dialog"
+    >
+      <div v-if="handleEvent" class="op-modal-body">
+        <div class="op-left">
+          <div class="operation-header">
+            <div>
+              <h3 class="section-title">事件处置</h3>
+              <div class="operation-current">
+                当前处置状态
+                <span class="pill" :class="eventStatusPill(handleEvent.status)">{{ eventStatusLabel(handleEvent.status) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="canUpdateEvent" class="status-actions" aria-label="变更事件处置状态">
+            <button
+              v-for="option in EVENT_STATUS_OPTIONS"
+              :key="option.value"
+              class="status-button"
+              :class="{ current: handleEvent.status === option.value }"
+              :disabled="savingStatus || !canChangeStatus(option.value)"
+              @click="changeStatus(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+
+          <div v-if="canUpdateEvent" class="note-editor">
+            <textarea
+              v-model="noteContent"
+              maxlength="5000"
+              rows="3"
+              placeholder="填写核查、联络或处置进展"
+              :disabled="savingNote"
+            ></textarea>
+            <div class="note-submit-row">
+              <span>{{ noteContent.length }}/5000</span>
+              <button class="btn btn-primary" :disabled="savingNote || !noteContent.trim()" @click="addNote">
+                {{ savingNote ? '提交中' : '添加备注' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="op-right">
+          <div class="op-right-title">
+            处置记录<span class="op-count">{{ handleEvent.actions.length }}</span>
+          </div>
+          <div class="op-right-scroll">
+            <div class="action-timeline">
+              <div v-for="action in handleEvent.actions" :key="action.id" class="timeline-item">
+                <span class="timeline-dot"></span>
+                <div class="timeline-body">
+                  <div class="timeline-meta">
+                    <time>{{ formatTime(action.created_at) }}</time>
+                    <strong>{{ action.username || (action.user_id ? `用户 ${action.user_id}` : '系统') }}</strong>
+                    <span>{{ actionTypeText(action.action_type) }}</span>
+                  </div>
+                  <div class="timeline-content">
+                    <template v-if="action.action_type === 'status_change' && action.old_status && action.new_status">
+                      {{ eventStatusLabel(action.old_status) }} → {{ eventStatusLabel(action.new_status) }}
+                    </template>
+                    <template v-else>{{ action.content }}</template>
+                  </div>
+                </div>
+              </div>
+              <div v-if="handleEvent.actions.length === 0" class="timeline-empty">暂无处置记录</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-else class="op-loading">加载中…</div>
+      <template #footer>
+        <button class="btn btn-ghost" @click="handleDialogVisible = false">关闭</button>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -175,8 +257,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api, { pollTask } from '@/api'
-import type { EventItem, EventListResponse, EventCreateResponse } from '@/types'
+import type { EventItem, EventListResponse, EventCreateResponse, EventActionItem } from '@/types'
 import { EVENT_STATUS_OPTIONS, eventStatusLabel, eventStatusPill } from '@/utils/event'
+import { usePermission } from '@/composables/usePermission'
 
 const loading = ref(false)
 const aggregating = ref(false)
@@ -195,6 +278,17 @@ const heatMin = ref('')
 const heatMax = ref('')
 const searchFocused = ref(false) // 搜索框聚焦态（驱动苹果蓝聚焦环）
 const riskOpen = ref(false)      // 风险下拉浮层开合
+
+// 事件处置弹窗（点击列表“处置”按钮唤起）
+interface HandleEvent { id: number; status: string; actions: EventActionItem[] }
+const handleDialogVisible = ref(false)
+const handleEventId = ref<number | null>(null)
+const handleEvent = ref<HandleEvent | null>(null)
+const savingStatus = ref(false)
+const savingNote = ref(false)
+const noteContent = ref('')
+const { hasPermission } = usePermission()
+const canUpdateEvent = computed(() => hasPermission('events:write'))
 const riskOptions = [
   { value: '', label: '全部风险' },
   { value: 'low', label: '低风险' },
@@ -331,6 +425,54 @@ async function handleDelete(row: EventItem) {
 }
 
 onMounted(loadData)
+
+// ── 事件处置弹窗逻辑（与详情页一致） ──
+const nextStatus: Partial<Record<string, string>> = {
+  active: 'verifying', verifying: 'processing', processing: 'resolved', resolved: 'closed',
+}
+function actionTypeText(value: string): string {
+  return ({ status_change: '状态变更', note: '备注', assign: '指派', resolve: '解决' } as Record<string, string>)[value] || value
+}
+function canChangeStatus(target: string): boolean {
+  const current = handleEvent.value?.status
+  if (!current || target === current) return false
+  return target === 'active' || nextStatus[current] === target
+}
+function openHandle(row: EventItem) {
+  handleEventId.value = row.id
+  handleEvent.value = null
+  handleDialogVisible.value = true
+  loadHandleEvent()
+}
+async function loadHandleEvent() {
+  if (!handleEventId.value) return
+  try {
+    const { data } = await api.get('/events/' + handleEventId.value)
+    handleEvent.value = data
+  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '加载事件详情失败') }
+}
+async function changeStatus(target: string) {
+  if (!canChangeStatus(target) || !handleEvent.value) return
+  savingStatus.value = true
+  try {
+    await api.patch(`/events/${handleEvent.value.id}/status`, { status: target })
+    ElMessage.success(`处置状态已更新为${eventStatusLabel(target)}`)
+    await loadHandleEvent()
+    const r = rows.value.find((x) => x.id === handleEvent.value!.id)
+    if (r) r.status = target
+  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '更新处置状态失败') } finally { savingStatus.value = false }
+}
+async function addNote() {
+  const content = noteContent.value.trim()
+  if (!content || !handleEvent.value) return
+  savingNote.value = true
+  try {
+    await api.post(`/events/${handleEvent.value.id}/actions`, { action_type: 'note', content })
+    noteContent.value = ''
+    ElMessage.success('事件备注已添加')
+    await loadHandleEvent()
+  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '添加事件备注失败') } finally { savingNote.value = false }
+}
 </script>
 
 <style scoped>
@@ -434,9 +576,9 @@ onMounted(loadData)
 .pop-enter-from, .pop-leave-to { opacity: 0; transform: translateY(-8px) scale(0.97); }
 
 .card { background: #ffffff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05); }
-.table-card { padding: 6px 6px 14px; overflow-x: auto; }
+.table-card { padding: 6px 0 14px 6px; overflow-x: auto; }
 
-table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.tbl { width: 100%; min-width: 1520px; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
 table.tbl thead th {
   text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b;
   padding: 14px 18px; border-bottom: 1px solid #e8e8ed; white-space: nowrap;
@@ -448,6 +590,7 @@ table.tbl tbody tr { transition: background-color 0.12s ease; }
 table.tbl tbody tr:hover { background: #fafafc; }
 table.tbl tbody tr:last-child td { border-bottom: none; }
 .col-center { text-align: center; }
+.nowrap { white-space: nowrap; }
 .t-title { font-weight: 500; color: #1d1d1f; }
 .risk-num { font-weight: 600; font-variant-numeric: tabular-nums; }
 .empty-row td { text-align: center; color: #86868b; padding: 40px 0; }
@@ -493,4 +636,62 @@ table.tbl tbody tr:hover .operation-col { background: #fafafc; }
 }
 .btn-operate:hover { background: #e8f1fd; border-color: #7eb4e6; }
 .btn-delete:hover { background: rgba(255,59,48,0.1); }
+
+/* ── 事件处置弹窗（点击列表“处置”按钮唤起，与详情页一致） ── */
+.op-modal-body { display: flex; gap: 24px; align-items: stretch; min-height: 0; height: 520px; }
+.op-left { flex: 1 1 0; min-width: 0; }
+.op-right {
+  flex: 0 0 440px; min-width: 0; position: relative; overflow: hidden;
+  border: 1px solid #e8e8ed; border-radius: 12px; background: #fff;
+}
+.op-right-title {
+  position: relative; z-index: 1; background: #fff;
+  display: flex; align-items: center; gap: 8px;
+  height: 48px; padding: 0 16px; box-sizing: border-box;
+  font-size: 14px; font-weight: 600; color: #1d1d1f;
+}
+.op-right-scroll {
+  position: absolute; top: 48px; left: 0; right: 0; bottom: 0;
+  overflow-y: auto; padding: 2px 16px 14px;
+}
+.op-count {
+  font-size: 12px; font-weight: 500; color: #86868b;
+  background: #f0f0f3; border-radius: 980px; padding: 1px 8px;
+}
+.op-loading { padding: 48px; text-align: center; color: #86868b; font-size: 14px; }
+.operation-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.operation-current { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: #6e6e73; font-size: 13px; }
+.status-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.status-button {
+  border: 1px solid #d2d2d7; background: #fff; color: #1d1d1f; border-radius: 6px;
+  min-width: 84px; height: 36px; padding: 0 14px; cursor: pointer; font-size: 13px;
+}
+.status-button:hover:not(:disabled) { border-color: #0071e3; color: #0066cc; }
+.status-button.current { border-color: #1d1d1f; background: #1d1d1f; color: #fff; }
+.status-button:disabled { cursor: not-allowed; opacity: 0.48; }
+.note-editor { margin-top: 18px; max-width: 760px; }
+.note-editor textarea {
+  box-sizing: border-box; width: 100%; resize: vertical; border: 1px solid #d2d2d7; border-radius: 6px;
+  padding: 11px 12px; color: #1d1d1f; background: #fff; font: inherit; line-height: 1.6;
+}
+.note-editor textarea:focus { outline: none; border-color: #0071e3; box-shadow: 0 0 0 2px rgba(0,113,227,0.12); }
+.note-submit-row { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 8px; color: #86868b; font-size: 12px; }
+.btn-primary { background: #0071e3; color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #0066cc; }
+.btn:disabled { cursor: not-allowed; opacity: 0.5; }
+.action-timeline { min-width: 0; }
+.timeline-item { position: relative; display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; padding-bottom: 18px; }
+.timeline-item:not(:last-child)::before { content: ''; position: absolute; left: 5px; top: 12px; bottom: 0; width: 1px; background: #d2d2d7; }
+.timeline-dot { width: 11px; height: 11px; margin-top: 4px; border-radius: 50%; background: #0071e3; z-index: 1; }
+.timeline-meta { display: flex; flex-wrap: wrap; gap: 12px; color: #86868b; font-size: 12px; }
+.timeline-meta strong { color: #1d1d1f; font-weight: 600; }
+.timeline-content { margin-top: 5px; color: #3a3a3c; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.timeline-empty { color: #86868b; padding: 10px 0 4px; font-size: 14px; }
+.section-title { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: #1d1d1f; }
+
+@media (max-width: 860px) {
+  .op-modal-body { flex-direction: column; height: auto; }
+  .op-right { flex: 1 1 auto; width: 100%; max-height: 340px; position: static; display: flex; flex-direction: column; }
+  .op-right-scroll { position: static; flex: 1 1 auto; min-height: 0; }
+}
 </style>

@@ -37,6 +37,8 @@ from app.schemas.event import (
 )
 from app.schemas.opinion import OpinionListResponse, OpinionOut
 from app.services.event.aggregator import EventAggregator
+from app.services.event.risk_service import EventRiskService
+from app.services.event.situation import EventSituationService
 from app.services.audit_service import audit_write
 
 events_router = APIRouter(
@@ -63,13 +65,14 @@ NEXT_EVENT_STATUS = {
 
 def _event_out(db: Session, event: Event) -> EventOut:
     region = db.get(Region, event.region_id) if event.region_id else None
+    risk_score = EventRiskService.get_score(db, event.id)
     return EventOut(
         id=event.id,
         title=event.title,
         region_id=event.region_id,
         region_name=region.name if region else None,
-        risk_level=event.risk_level,
-        risk_score=event.risk_score,
+        risk_level=EventRiskService.level_from_score(risk_score),
+        risk_score=risk_score,
         topic_category=event.topic_category,
         heat_score=event.heat_score,
         trend=event.trend,
@@ -129,6 +132,22 @@ def aggregate_events(
 
 
 @events_router.get(
+    "/{event_id}/situation",
+    status_code=status.HTTP_200_OK,
+)
+def get_event_situation(
+    event_id: int,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Return a read-only event situation snapshot and risk explanation."""
+    situation = EventSituationService().build(db, event_id)
+    if situation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+    return situation
+
+
+@events_router.get(
     "/{event_id}/opinions",
     response_model=OpinionListResponse,
     status_code=status.HTTP_200_OK,
@@ -184,13 +203,14 @@ def get_event(
         .order_by(EventAction.created_at.desc(), EventAction.id.desc())
         .all()
     )
+    risk_score = EventRiskService.get_score(db, event.id)
     return EventDetailResponse(
         id=event.id,
         title=event.title,
         region_id=event.region_id,
         region_name=region.name if region else None,
-        risk_level=event.risk_level,
-        risk_score=event.risk_score,
+        risk_level=EventRiskService.level_from_score(risk_score),
+        risk_score=risk_score,
         topic_category=event.topic_category,
         heat_score=event.heat_score,
         trend=event.trend,
@@ -370,8 +390,11 @@ def list_events(
         q = q.filter(Event.title.ilike(f"%{title.strip()}%"))
     if region_id is not None:
         q = q.filter(Event.region_id == region_id)
+    risk_score_expr = EventRiskService.score_expression()
     if risk_level:
-        q = q.filter(Event.risk_level == risk_level)
+        q = q.filter(
+            EventRiskService.level_expression(risk_score_expr) == risk_level
+        )
     if topic_category:
         q = q.filter(Event.topic_category == topic_category)
     if event_status:
@@ -384,8 +407,9 @@ def list_events(
         q = q.filter(Event.heat_score <= heat_max)
     total = q.count()
     rows = (
-        q.order_by(
-            Event.risk_score.desc(),
+        q.add_columns(risk_score_expr.label("computed_risk_score"))
+        .order_by(
+            risk_score_expr.desc(),
             Event.heat_score.desc(),
             Event.last_time.desc().nullslast(),
         )
@@ -393,7 +417,11 @@ def list_events(
         .limit(size)
         .all()
     )
-    region_ids = {event.region_id for event in rows if event.region_id is not None}
+    region_ids = {
+        event.region_id
+        for event, _computed_score in rows
+        if event.region_id is not None
+    }
     region_names = {
         region.id: region.name
         for region in db.query(Region).filter(Region.id.in_(region_ids)).all()
@@ -404,8 +432,8 @@ def list_events(
             title=e.title,
             region_id=e.region_id,
             region_name=region_names.get(e.region_id),
-            risk_level=e.risk_level,
-            risk_score=e.risk_score,
+            risk_level=EventRiskService.level_from_score(computed_score),
+            risk_score=EventRiskService.clamp_score(computed_score),
             topic_category=e.topic_category,
             heat_score=e.heat_score,
             trend=e.trend,
@@ -414,6 +442,6 @@ def list_events(
             first_time=e.first_time,
             last_time=e.last_time,
         )
-        for e in rows
+        for e, computed_score in rows
     ]
     return EventListResponse(items=items, total=total, page=page, size=size)

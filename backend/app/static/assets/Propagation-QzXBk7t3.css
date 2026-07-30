@@ -1,0 +1,51 @@
+
+.source-time-view[data-v-d1971b87] { min-height: 100%;
+}
+.page-note[data-v-d1971b87] { margin-bottom: 14px; color: #6e6e73; font-size: 13px;
+}
+.layout[data-v-d1971b87] { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 16px;
+}
+.event-list-card[data-v-d1971b87], .detail-card[data-v-d1971b87] { min-height: 520px;
+}
+.card-title-row[data-v-d1971b87] { display: flex; justify-content: space-between; align-items: center;
+}
+.event-list[data-v-d1971b87] { margin-top: 12px;
+}
+.event-item[data-v-d1971b87] { display: flex; width: 100%; flex-direction: column; gap: 5px; padding: 12px; border: 0; border-bottom: 1px solid #eee; background: #fff; text-align: left; cursor: pointer;
+}
+.event-item[data-v-d1971b87]:hover, .event-item.active[data-v-d1971b87] { background: #f5f7fb;
+}
+.event-title[data-v-d1971b87] { color: #1d1d1f; font-size: 14px;
+}
+.event-meta[data-v-d1971b87] { color: #86868b; font-size: 12px;
+}
+.summary-grid[data-v-d1971b87] { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 1px; background: #e8e8ed;
+}
+.summary-grid div[data-v-d1971b87] { display: flex; flex-direction: column; gap: 7px; padding: 14px; background: #fff;
+}
+.summary-grid span[data-v-d1971b87], .source-row[data-v-d1971b87], .timeline-row small[data-v-d1971b87] { color: #6e6e73; font-size: 12px;
+}
+.summary-grid strong[data-v-d1971b87] { color: #1d1d1f; font-size: 16px;
+}
+.columns[data-v-d1971b87] { display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; margin-top: 24px;
+}
+h3[data-v-d1971b87] { margin: 0 0 12px; font-size: 15px; color: #1d1d1f;
+}
+.source-row[data-v-d1971b87] { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #eee;
+}
+.timeline-row[data-v-d1971b87] { display: grid; grid-template-columns: 150px minmax(0, 1fr) 100px; gap: 10px; padding: 9px 0; border-bottom: 1px solid #eee; font-size: 13px;
+}
+.timeline-row time[data-v-d1971b87] { color: #6e6e73; font-variant-numeric: tabular-nums;
+}
+.timeline-row span[data-v-d1971b87] { overflow-wrap: anywhere;
+}
+.empty-detail[data-v-d1971b87] { min-height: 520px;
+}
+@media (max-width: 900px) {
+.layout[data-v-d1971b87], .columns[data-v-d1971b87] { grid-template-columns: 1fr;
+}
+.event-list-card[data-v-d1971b87], .detail-card[data-v-d1971b87] { min-height: auto;
+}
+.timeline-row[data-v-d1971b87] { grid-template-columns: 1fr; gap: 3px;
+}
+}

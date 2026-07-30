@@ -27,7 +27,7 @@
           <span class="ico">🔔</span><span>预警中心</span>
         </router-link>
         <router-link to="/propagation" class="nav-item" :class="{ active: activeMenu === '/propagation' }">
-          <span class="ico">📡</span><span>传播溯源</span>
+          <span class="ico">📡</span><span>来源与时间态势</span>
         </router-link>
         <router-link to="/command-screen" class="nav-item nav-item--screen" :class="{ active: activeMenu === '/command-screen' }">
           <span class="ico">▦</span><span>指挥大屏</span>
@@ -52,10 +52,24 @@
           <div class="u-name">{{ authStore.username || 'admin' }}</div>
           <div class="u-role">{{ roleLabel }}</div>
         </div>
-        <button class="nav-bell" :class="{ active: messageRedDot }" title="消息提醒" @click="openMessages">
-          <span class="bell-ico">🔔</span>
-          <span v-if="messageRedDot" class="bell-dot">{{ messageCount > 99 ? '99+' : messageCount }}</span>
-        </button>
+        <div class="nav-bell-wrap">
+          <button class="nav-bell" :class="{ active: messageRedDot }" title="消息提醒" @click="toggleMessages">
+            <span class="bell-ico">🔔</span>
+            <span v-if="messageRedDot" class="bell-dot"></span>
+          </button>
+          <div v-if="menuVisible" class="msg-menu" @click.stop>
+            <div class="msg-menu-item" :class="{ has: unreadCount > 0 }" @click="goAlerts">
+              <span class="mm-ico">⚠️</span>
+              <span class="mm-label">预警记录</span>
+              <span v-if="unreadCount > 0" class="mm-count">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+            </div>
+            <div class="msg-menu-item" :class="{ has: bochaPendingCount > 0 }" @click="goBocha">
+              <span class="mm-ico">🤖</span>
+              <span class="mm-label">AI线索审核</span>
+              <span v-if="bochaPendingCount > 0" class="mm-count">{{ bochaPendingCount > 99 ? '99+' : bochaPendingCount }}</span>
+            </div>
+          </div>
+        </div>
         <button class="u-out" title="退出登录" @click="handleLogout">↩</button>
       </div>
     </aside>
@@ -102,7 +116,6 @@ const bochaPendingCount = ref(0)
 let bochaPendingTimer: number | null = null
 
 const messageRedDot = computed(() => redDot.value || bochaPendingCount.value > 0)
-const messageCount = computed(() => unreadCount.value + bochaPendingCount.value)
 const roleLabel = computed(() => {
   const map: Record<string, string> = { admin: '管理员', analyst: '分析员', viewer: '观察员' }
   return map[role.value] || role.value || '未登录'
@@ -133,7 +146,7 @@ const pageTitle = computed(() => {
     '/roles': '角色权限',
     '/login-logs': '登录日志',
     '/operation-logs': '操作日志',
-    '/propagation': '传播溯源',
+    '/propagation': '来源与时间态势',
     '/system': '系统管理',
     '/system/users': '用户管理',
     '/system/roles': '角色权限',
@@ -158,7 +171,7 @@ const pageSub = computed(() => {
     '/roles': '管理系统角色与权限分配',
     '/login-logs': '查看用户登录与注销记录',
     '/operation-logs': '查看系统操作审计记录',
-    '/propagation': '基于多源舆情数据的传播演化分析',
+    '/propagation': '根据来源与时间进行只读态势研判',
     '/system': '用户、角色权限与系统审计日志',
     '/system/users': '管理系统用户与角色权限',
     '/system/roles': '管理系统角色与权限分配',
@@ -248,12 +261,25 @@ async function refreshBochaPendingCount() {
   }
 }
 
-function openMessages() {
-  if (bochaPendingCount.value > 0) {
-    router.push({ path: '/data', query: { tab: 'bocha-leads' } })
-    return
-  }
+const menuVisible = ref(false)
+function toggleMessages() {
+  menuVisible.value = !menuVisible.value
+}
+function goAlerts() {
+  menuVisible.value = false
   openNotifications()
+}
+function goBocha() {
+  menuVisible.value = false
+  router.push({ path: '/data', query: { tab: 'bocha-leads' } })
+}
+function closeMenuOutside(e: MouseEvent) {
+  if (menuVisible.value && !(e.target as HTMLElement).closest('.nav-bell-wrap')) {
+    menuVisible.value = false
+  }
+}
+function onKeyEsc(e: KeyboardEvent) {
+  if (e.key === 'Escape') menuVisible.value = false
 }
 
 function handleBochaLeadsRefresh() {
@@ -266,6 +292,8 @@ onMounted(() => {
   refreshBochaPendingCount()
   bochaPendingTimer = window.setInterval(refreshBochaPendingCount, 20_000)
   window.addEventListener('bocha-leads-refresh', handleBochaLeadsRefresh)
+  document.addEventListener('click', closeMenuOutside)
+  window.addEventListener('keydown', onKeyEsc)
 })
 
 onUnmounted(() => {
@@ -274,6 +302,8 @@ onUnmounted(() => {
     bochaPendingTimer = null
   }
   window.removeEventListener('bocha-leads-refresh', handleBochaLeadsRefresh)
+  document.removeEventListener('click', closeMenuOutside)
+  window.removeEventListener('keydown', onKeyEsc)
 })
 </script>
 
@@ -434,7 +464,6 @@ onUnmounted(() => {
 /* ---- 预警通知铃铛 + 红点 ---- */
 .nav-bell {
   position: relative;
-  margin-left: auto;
   border: none;
   background: transparent;
   color: #86868b;
@@ -450,24 +479,61 @@ onUnmounted(() => {
 .bell-ico { display: block; }
 .bell-dot {
   position: absolute;
-  top: 0;
-  right: 0;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 999px;
+  top: 1px;
+  right: 1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
   background: #ff3b30;
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 700;
-  line-height: 16px;
-  text-align: center;
   box-shadow: 0 0 0 2px #fff;
   animation: bell-pop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes bell-pop {
   from { transform: scale(0.4); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
+}
+
+/* ---- 铃铛上拉消息菜单 ---- */
+.nav-bell-wrap { position: relative; margin-left: auto; }
+.msg-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 208px;
+  background: #fff;
+  border: 1px solid #e8e8ed;
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+  padding: 6px;
+  z-index: 200;
+}
+.msg-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: #6e6e73;
+  font-size: 14px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.msg-menu-item:hover { background: #f0f0f3; color: #1d1d1f; }
+.msg-menu-item.has { color: #1d1d1f; font-weight: 500; }
+.mm-ico { font-size: 15px; }
+.mm-label { flex: 1; }
+.mm-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
 }
 
 /* ---- Main ---- */
@@ -537,4 +603,3 @@ onUnmounted(() => {
   .main { margin-left: 0; padding: 24px 18px 48px; }
 }
 </style>
-

@@ -29,6 +29,7 @@
             <th style="width:240px">关键词策略</th>
             <th style="width:96px">启用</th>
             <th style="width:120px">优先级</th>
+            <th style="width:170px">健康状态</th>
             <th style="width:110px">最近状态</th>
             <th style="width:130px">最近抓取 / 新增</th>
             <th style="width:132px">采集质量</th>
@@ -80,6 +81,18 @@
               />
             </td>
             <td>
+              <template v-if="s.health_summary">
+                <span class="pill" :class="healthPill(s.health_summary.health_status)">
+                  {{ healthText(s.health_summary.health_status) }}
+                </span>
+                <div class="quality-hint">{{ s.health_summary.health_reason }}</div>
+                <div v-if="s.health_summary.last_error_code" class="quality-hint">
+                  {{ s.health_summary.last_error_code }} · 连续失败 {{ s.health_summary.consecutive_failures }} 次
+                </div>
+              </template>
+              <span v-else class="muted">未知</span>
+            </td>
+            <td>
               <span v-if="s.latest_run_status" class="pill" :class="runPill(s.latest_run_status)">{{ runText(s.latest_run_status) }}</span>
               <span v-else class="muted">—</span>
             </td>
@@ -109,7 +122,7 @@
               <button class="btn btn-mini" @click="openConfig(s)">配置</button>
             </td>
           </tr>
-          <tr v-if="!sources.length"><td colspan="10" class="empty-row">暂无数据源</td></tr>
+          <tr v-if="!sources.length"><td colspan="11" class="empty-row">暂无数据源</td></tr>
         </tbody>
       </table>
     </div>
@@ -431,6 +444,14 @@ function qualityHint(item: DataSourceQualityItem): string {
   if (item.consecutive_failed_count > 0) return `连续失败 ${item.consecutive_failed_count}`
   if (item.consecutive_empty_fetch_count > 0) return `连续空抓取 ${item.consecutive_empty_fetch_count}`
   return ''
+}
+
+function healthPill(status: string): string {
+  return ({ healthy: 'pill-green', degraded: 'pill-orange', unhealthy: 'pill-red', paused: 'pill-gray', unknown: 'pill-gray' } as Record<string, string>)[status] || 'pill-gray'
+}
+
+function healthText(status: string): string {
+  return ({ healthy: '正常', degraded: '降级', unhealthy: '异常', paused: '已停用', unknown: '未知' } as Record<string, string>)[status] || status
 }
 
 function keywordModeText(mode: Row['keyword_mode']): string {

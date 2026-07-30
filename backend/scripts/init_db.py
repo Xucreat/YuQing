@@ -140,6 +140,10 @@ EXISTING_SOURCES: list = [
 # enabled=True 的为「已验证可抓取」；enabled=False 为「已配置但当前网络/反爬不可达，
 # 灰度保留，后续网络通畅或找到列表页后翻转 enabled 即可激活，无需改代码」。
 CITY_CONFIGS: dict = {
+    "bazhou_gov": {"name": "\u9738\u5dde\u5e02\u653f\u5e9c\u7f51-\u9738\u5dde\u52a8\u6001", "scope": "131081", "priority": 175,
+        "config": {"list_urls": ["https://www.bazhou.gov.cn/xwzx/bzdt"],
+                   "keywords": "\u9738\u5dde,\u5eca\u574a,\u6cb3\u5317", "content_selectors": ["div.nr"],
+                   "link_rule": {"href_regex": r"(?i)^/?xwzx/bzdt/content_\d+(?:\.html)?(?:\?.*)?$"}}},
     # —— 已验证可抓取（7 个，满足 ≥5 市级源实际抓取）——
     "shijiazhuang_gov": {"name": "石家庄市政府网", "scope": "130100", "priority": 100,
         "config": {"list_urls": ["http://www.sjz.gov.cn/zfxxgk/columns/e7de71c2-8e82-4a75-8c37-02e1a3ae5a24/index.html"],

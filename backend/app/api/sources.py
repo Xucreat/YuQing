@@ -103,6 +103,7 @@ def sources_history(
             "end_time": r.end_time.isoformat() if r.end_time else None,
             "fetched_raw": r.fetched_raw,
             "created": r.created,
+            "duplicate": getattr(r, "duplicate", 0) or 0,
             "analyzed": r.analyzed,
             "failed": r.failed,
             "comments_seen": getattr(r, "comments_seen", 0) or 0,

@@ -10,6 +10,7 @@
         <h2 class="detail-title">{{ event.title }}</h2>
         <span class="pill" :class="riskPill(event.risk_level)"><span class="dot"></span>{{ riskText(event.risk_level) }}</span>
         <span v-if="isKeyEvent" class="focus-mark">重点关注</span>
+        <button class="btn btn-primary handle-open-btn" @click="handleDialogVisible = true">处置</button>
       </div>
       <div class="event-meta">
         <span>关联舆情：<b>{{ event.total_opinions }}</b> 条</span>
@@ -20,7 +21,8 @@
     </div>
 
     <div class="situation-strip">
-      <div class="situation-item">
+      <!-- 暂时隐藏影响区域展示，保留数据字段和组件结构，便于后续恢复。 -->
+      <div v-if="false" class="situation-item">
         <span class="situation-label">影响区域</span>
         <strong>{{ event.region_name || (event.region_id ? `地区 ${event.region_id}` : '未标注') }}</strong>
       </div>
@@ -46,66 +48,104 @@
       </div>
     </div>
 
-    <section class="card operation-card">
-      <div class="operation-header">
-        <div>
-          <h3 class="section-title">事件处置</h3>
-          <div class="operation-current">
-            当前处置状态
-            <span class="pill" :class="eventStatusPill(event.status)">{{ eventStatusLabel(event.status) }}</span>
-          </div>
-        </div>
+    <section v-if="situation" class="situation-panel">
+      <div class="situation-panel-head">
+        <h3 class="section-title">事件态势（只读研判）</h3>
+        <span class="pill pill-gray">数据充分性：{{ sufficiencyText(situation.data_sufficiency?.level) }}</span>
       </div>
-
-      <div v-if="canUpdateEvent" class="status-actions" aria-label="变更事件处置状态">
-        <button
-          v-for="option in EVENT_STATUS_OPTIONS"
-          :key="option.value"
-          class="status-button"
-          :class="{ current: event.status === option.value }"
-          :disabled="savingStatus || !canChangeStatus(option.value)"
-          @click="changeStatus(option.value)"
-        >
-          {{ option.label }}
-        </button>
+      <div class="situation-facts">
+        <span>来源 {{ situation.source_distribution?.length || 0 }} 个</span>
+        <span>时间范围 {{ formatTime(situation.data_window?.first_time) }} - {{ formatTime(situation.data_window?.last_time) }}</span>
+        <span>影子风险 {{ situation.risk_shadow?.score ?? '-' }} 分</span>
       </div>
-
-      <div v-if="canUpdateEvent" class="note-editor">
-        <textarea
-          v-model="noteContent"
-          maxlength="5000"
-          rows="3"
-          placeholder="填写核查、联络或处置进展"
-          :disabled="savingNote"
-        ></textarea>
-        <div class="note-submit-row">
-          <span>{{ noteContent.length }}/5000</span>
-          <button class="btn btn-primary" :disabled="savingNote || !noteContent.trim()" @click="addNote">
-            {{ savingNote ? '提交中' : '添加备注' }}
-          </button>
-        </div>
-      </div>
-
-      <div class="action-timeline">
-        <div v-for="action in event.actions" :key="action.id" class="timeline-item">
-          <span class="timeline-dot"></span>
-          <div class="timeline-body">
-            <div class="timeline-meta">
-              <time>{{ formatTime(action.created_at) }}</time>
-              <strong>{{ action.username || (action.user_id ? `用户 ${action.user_id}` : '系统') }}</strong>
-              <span>{{ actionTypeText(action.action_type) }}</span>
-            </div>
-            <div class="timeline-content">
-              <template v-if="action.action_type === 'status_change' && action.old_status && action.new_status">
-                {{ eventStatusLabel(action.old_status) }} → {{ eventStatusLabel(action.new_status) }}
-              </template>
-              <template v-else>{{ action.content }}</template>
-            </div>
-          </div>
-        </div>
-        <div v-if="event.actions.length === 0" class="timeline-empty">暂无处置记录</div>
+      <div class="risk-factor-list">
+        <span v-for="factor in (situation.risk_factors || [])" :key="factor.factor" class="risk-factor">
+          {{ factor.description }}
+        </span>
       </div>
     </section>
+
+    <el-dialog
+      v-model="handleDialogVisible"
+      title="事件处置"
+      width="820px"
+      top="6vh"
+      :close-on-click-modal="true"
+      class="op-dialog"
+    >
+      <div class="op-modal-body">
+        <div class="op-left">
+          <div class="operation-header">
+            <div>
+              <h3 class="section-title">事件处置</h3>
+              <div class="operation-current">
+                当前处置状态
+                <span class="pill" :class="eventStatusPill(event.status)">{{ eventStatusLabel(event.status) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="canUpdateEvent" class="status-actions" aria-label="变更事件处置状态">
+            <button
+              v-for="option in EVENT_STATUS_OPTIONS"
+              :key="option.value"
+              class="status-button"
+              :class="{ current: event.status === option.value }"
+              :disabled="savingStatus || !canChangeStatus(option.value)"
+              @click="changeStatus(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+
+          <div v-if="canUpdateEvent" class="note-editor">
+            <textarea
+              v-model="noteContent"
+              maxlength="5000"
+              rows="3"
+              placeholder="填写核查、联络或处置进展"
+              :disabled="savingNote"
+            ></textarea>
+            <div class="note-submit-row">
+              <span>{{ noteContent.length }}/5000</span>
+              <button class="btn btn-primary" :disabled="savingNote || !noteContent.trim()" @click="addNote">
+                {{ savingNote ? '提交中' : '添加备注' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="op-right">
+          <div class="op-right-title">
+            处置记录<span class="op-count">{{ event.actions.length }}</span>
+          </div>
+          <div class="op-right-scroll">
+            <div class="action-timeline">
+              <div v-for="action in event.actions" :key="action.id" class="timeline-item">
+                <span class="timeline-dot"></span>
+                <div class="timeline-body">
+                  <div class="timeline-meta">
+                    <time>{{ formatTime(action.created_at) }}</time>
+                    <strong>{{ action.username || (action.user_id ? `用户 ${action.user_id}` : '系统') }}</strong>
+                    <span>{{ actionTypeText(action.action_type) }}</span>
+                  </div>
+                  <div class="timeline-content">
+                    <template v-if="action.action_type === 'status_change' && action.old_status && action.new_status">
+                      {{ eventStatusLabel(action.old_status) }} → {{ eventStatusLabel(action.new_status) }}
+                    </template>
+                    <template v-else>{{ action.content }}</template>
+                  </div>
+                </div>
+              </div>
+              <div v-if="event.actions.length === 0" class="timeline-empty">暂无处置记录</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <button class="btn btn-ghost" @click="handleDialogVisible = false">关闭</button>
+      </template>
+    </el-dialog>
 
     <!-- Related opinions -->
     <div class="card table-card">
@@ -162,9 +202,11 @@ import type { EventActionItem } from '@/types'
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
+const situation = ref<any | null>(null)
 const savingStatus = ref(false)
 const savingNote = ref(false)
 const noteContent = ref('')
+const handleDialogVisible = ref(false)
 const { hasPermission } = usePermission()
 const canUpdateEvent = computed(() => hasPermission('events:write'))
 
@@ -191,6 +233,10 @@ interface EventDetail {
   status: string; first_time: string | null; last_time: string | null
   description: string; keyword: string; opinions: any[]; total_opinions: number
   actions: EventActionItem[]
+}
+
+function sufficiencyText(value: string | undefined): string {
+  return ({ sufficient: '充分', limited: '有限', insufficient: '不足' } as Record<string, string>)[value || ''] || '未知'
 }
 
 const event = ref<EventDetail>({
@@ -249,6 +295,12 @@ async function loadData() {
     const id = route.params.id
     const { data } = await api.get<EventDetail>('/events/' + id)
     event.value = { ...event.value, ...data }
+    try {
+      const situationResponse = await api.get(`/events/${id}/situation`)
+      situation.value = situationResponse.data
+    } catch (_) {
+      situation.value = null
+    }
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '加载事件详情失败') } finally { loading.value = false }
 }
 
@@ -310,6 +362,11 @@ onMounted(loadData)
 .situation-label { font-size: 12px; color: #86868b; }
 .situation-item strong { font-size: 16px; color: #1d1d1f; }
 .focus-mark { color: #c77700; font-size: 12px; font-weight: 600; }
+.situation-panel { margin-bottom: 20px; padding: 18px 20px; background: #fff; border: 1px solid #e8e8ed; border-radius: 12px; }
+.situation-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.situation-facts { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px; color: #6e6e73; font-size: 13px; }
+.risk-factor-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.risk-factor { padding: 5px 9px; border-radius: 6px; background: #f5f7fb; color: #3a3a3c; font-size: 12px; }
 
 .card {
   background: #ffffff;
@@ -317,7 +374,8 @@ onMounted(loadData)
   box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05);
 }
 .table-card { padding: 6px 6px 14px; overflow: hidden; }
-.operation-card { padding: 20px 24px; margin-bottom: 20px; }
+.op-modal-body { display: flex; gap: 24px; align-items: stretch; min-height: 0; height: 520px; }
+.handle-open-btn { margin-left: auto; }
 .operation-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .operation-current { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: #6e6e73; font-size: 13px; }
 .status-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
@@ -338,7 +396,31 @@ onMounted(loadData)
 .btn-primary { background: #0071e3; color: #fff; }
 .btn-primary:hover:not(:disabled) { background: #0066cc; }
 .btn:disabled { cursor: not-allowed; opacity: 0.5; }
-.action-timeline { margin-top: 22px; border-top: 1px solid #e8e8ed; padding-top: 18px; }
+.action-timeline { min-width: 0; }
+.op-left { flex: 1 1 0; min-width: 0; }
+.op-right {
+  flex: 0 0 440px; min-width: 0; position: relative; overflow: hidden;
+  border: 1px solid #e8e8ed; border-radius: 12px; background: #fff;
+}
+.op-right-title {
+  position: relative; z-index: 1; background: #fff;
+  display: flex; align-items: center; gap: 8px;
+  height: 48px; padding: 0 16px; box-sizing: border-box;
+  font-size: 14px; font-weight: 600; color: #1d1d1f;
+}
+.op-right-scroll {
+  position: absolute; top: 48px; left: 0; right: 0; bottom: 0;
+  overflow-y: auto; padding: 2px 16px 14px;
+}
+.op-count {
+  font-size: 12px; font-weight: 500; color: #86868b;
+  background: #f0f0f3; border-radius: 980px; padding: 1px 8px;
+}
+@media (max-width: 860px) {
+  .op-modal-body { flex-direction: column; height: auto; }
+  .op-right { flex: 1 1 auto; width: 100%; max-height: 340px; position: static; display: flex; flex-direction: column; }
+  .op-right-scroll { position: static; flex: 1 1 auto; min-height: 0; }
+}
 .timeline-item { position: relative; display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; padding-bottom: 18px; }
 .timeline-item:not(:last-child)::before { content: ''; position: absolute; left: 5px; top: 12px; bottom: 0; width: 1px; background: #d2d2d7; }
 .timeline-dot { width: 11px; height: 11px; margin-top: 4px; border-radius: 50%; background: #0071e3; z-index: 1; }

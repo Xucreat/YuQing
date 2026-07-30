@@ -15,6 +15,8 @@ import datetime as _dt
 import json
 import logging
 import re
+import shutil
+import subprocess
 import time as _time
 from typing import List, Optional
 
@@ -81,9 +83,54 @@ def http_get(
         resp.raise_for_status()
         resp.encoding = resp.apparent_encoding
         return resp.text
-    except Exception as exc:  # noqa: BLE001  防御：单个 URL 失败不影响整体流程
+    except requests.exceptions.SSLError as exc:
+        # Some government sites reject Python OpenSSL but accept the system TLS stack.
+        logger.warning("TLS 握手失败，尝试系统 curl 兼容抓取 url=%s err=%s", url, exc)
+        return _curl_get(session, url, timeout)
+    except Exception as exc:  # noqa: BLE001
         logger.warning("抓取失败 url=%s err=%s", url, exc)
         return None
+
+
+def _curl_get(
+    session: requests.Session, url: str, timeout: int
+) -> Optional[str]:
+    """Use the platform curl TLS stack as a narrow fallback for SSL failures."""
+    curl = shutil.which("curl.exe") or shutil.which("curl")
+    if not curl:
+        logger.warning("系统 curl 不可用，无法执行 TLS 兼容抓取 url=%s", url)
+        return None
+    user_agent = str(session.headers.get("User-Agent") or DEFAULT_UA)
+    timeout_value = str(max(1, int(timeout)))
+    command = [
+        curl,
+        "--silent",
+        "--show-error",
+        "--fail",
+        "--location",
+        "--max-time",
+        timeout_value,
+        "--connect-timeout",
+        timeout_value,
+        "--user-agent",
+        user_agent,
+        url,
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            timeout=max(1, int(timeout)) + 2,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("系统 curl 抓取失败 url=%s err=%s", url, exc)
+        return None
+    if result.returncode != 0:
+        detail = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+        logger.warning("系统 curl 返回失败 url=%s code=%s err=%s", url, result.returncode, detail)
+        return None
+    return (result.stdout or b"").decode("utf-8", errors="replace") or None
 
 
 def _join(base: str, href: str) -> str:

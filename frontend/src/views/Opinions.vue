@@ -143,6 +143,7 @@ import api from '@/api'
 import type { Opinion, OpinionListResponse } from '@/types'
 import OpinionDetailModal from '@/components/OpinionDetailModal.vue'
 import { riskColor, levelPill, levelText, sentimentPill, sentimentText, statusPill, statusText, formatTime } from '@/utils/opinion'
+import { formatAdmissionHits } from '@/utils/admission'
 
 const loading = ref(false)
 const rows = ref<Opinion[]>([])
@@ -233,8 +234,8 @@ function admissionSummary(reason?: Record<string, any> | null): string {
   }
   const parts: string[] = []
   const add = (label: string, value: any) => {
-    const arr = Array.isArray(value) ? value.filter(Boolean) : []
-    if (arr.length) parts.push(`${label}：${arr.slice(0, 3).join('、')}`)
+    const text = formatAdmissionHits(value, 3)
+    if (text) parts.push(`${label}：${text}`)
   }
   add('地域', reason.region_hits)
   add('公共事务', reason.public_hits)

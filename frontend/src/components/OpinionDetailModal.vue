@@ -189,6 +189,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 import type { Opinion } from '@/types'
+import { formatAdmissionHits } from '@/utils/admission'
 import {
   riskColor, levelPill, levelText, sentimentPill, sentimentText, statusPill, statusText, formatTime,
 } from '@/utils/opinion'
@@ -263,8 +264,8 @@ const admissionItems = computed(() => {
   if (!reason || typeof reason !== 'object' || reason.policy === 'default_allow_non_weibo') return []
   const items: { label: string; value: string }[] = []
   const add = (label: string, value: any) => {
-    const arr = Array.isArray(value) ? value.filter(Boolean) : []
-    if (arr.length) items.push({ label, value: arr.slice(0, 5).join('、') })
+    const text = formatAdmissionHits(value, 5)
+    if (text) items.push({ label, value: text })
   }
   add('地域命中', reason.region_hits)
   add('公共事务', reason.public_hits)

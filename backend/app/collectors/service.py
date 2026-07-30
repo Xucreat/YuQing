@@ -94,6 +94,7 @@ class CollectorRunResult:
     created: int = 0    # 本次实际新增 Opinion 数量
     analyzed: int = 0   # AI 分析成功（completed）数量
     fetched_raw: int = 0  # 采集器实际抓取的原始舆情条数（去重前，fetch() 返回量）
+    duplicate: int = 0    # 本批命中已有 Opinion、未重复创建的条数
     comments_seen: int = 0  # 采集阶段识别到的评论数量（评论不创建 Opinion）
     comments_skipped: int = 0  # 已跳过、未进入 Opinion 的评论数量
     admission_filtered: int = 0  # 微博正文因准入规则拒绝的数量
@@ -314,6 +315,7 @@ class CollectorService:
                 continue
             result.fetched_raw += sub.fetched_raw
             result.created += sub.created
+            result.duplicate += sub.duplicate
             result.analyzed += sub.analyzed
             result.failed += sub.failed
             result.comments_seen += sub.comments_seen
@@ -529,6 +531,7 @@ class CollectorService:
 
             # 写回本次采集器运行结果
             run.created = c_created
+            run.duplicate = duplicate_count
             run.analyzed = c_analyzed
             run.failed = c_failed
             run.comments_seen = comments_seen
@@ -549,7 +552,6 @@ class CollectorService:
             # 八爪鱼的导出确认必须晚于 Opinion 持久化。普通采集器没有该钩子，
             # 使用可选协议保持 BaseCollector 和其他数据源兼容。
             ack_pending_export = getattr(collector, "ack_pending_export", None)
-            can_ack_pending_export = getattr(collector, "can_ack_pending_export", None)
             if callable(ack_pending_export):
                 run.ack_status = "pending"
                 run.unconfirmed = upstream_returned
@@ -566,53 +568,64 @@ class CollectorService:
                         f"failed={c_failed}"
                     )[:2000]
                     db.commit()
-                # The provider ack is task-scoped. Never acknowledge a known
-                # partial response; leave it available for a later retry.
-                elif callable(can_ack_pending_export) and not can_ack_pending_export():
-                    run.ack_status = "deferred"
-                    run.unconfirmed = max(
-                        0, (upstream_total or upstream_returned) - upstream_returned
-                    )
-                    run.status = "warning"
-                    run.error_msg = (
-                        "八爪鱼未导出队列未完整拉取，已延迟确认；"
-                        f"total={upstream_total}, returned={upstream_returned}"
-                    )[:2000]
-                    db.commit()
                 else:
                     acknowledged = ack_pending_export()
                     if acknowledged:
-                        run.ack_status = "confirmed"
+                        run.ack_status = "success"
                         run.acknowledged = upstream_returned
                         run.unconfirmed = 0
                     else:
-                        run.ack_status = "not_needed"
+                        run.ack_status = "deferred"
                         run.unconfirmed = 0
+                    if (
+                        acknowledged
+                        and upstream_total is not None
+                        and upstream_total > upstream_returned
+                    ):
+                        run.status = "warning"
+                        warning = (
+                            "partial_queue_accepted: total=%s returned=%s; "
+                            "本次消费成功，不代表上游全部历史未导出数据已同步完成"
+                            % (upstream_total, upstream_returned)
+                        )
+                        run.error_msg = (
+                            f"{run.error_msg}; {warning}" if run.error_msg else warning
+                        )[:2000]
                     db.commit()
 
             if is_weibo_consumer:
                 if run.ack_status == "deferred" and c_failed:
                     ack_reason = "processing_failed"
                 elif run.ack_status == "deferred":
-                    ack_reason = "partial_queue"
+                    ack_reason = "ack_not_confirmed"
+                elif upstream_total is not None and upstream_total > upstream_returned:
+                    ack_reason = "partial_queue_accepted"
                 else:
                     ack_reason = "-"
+                task_id = getattr(collector, "task_id", "")
+                duration = (datetime.now(timezone.utc) - run_start).total_seconds()
                 logger.info(
-                    "Weibo consumer queue: upstream_total=%s upstream_returned=%d "
-                    "created=%d duplicate=%d failed=%d ack_status=%s reason=%s",
+                    "微博消费完成: task_id=%s upstream_total=%s upstream_returned=%d "
+                    "created=%d duplicate=%d failed=%d analyzed=%d ack=%s "
+                    "ack_status=%s warning_reason=%s duration=%.3fs",
+                    task_id,
                     upstream_total,
                     upstream_returned,
                     c_created,
                     duplicate_count,
                     c_failed,
+                    c_analyzed,
+                    run.acknowledged,
                     run.ack_status,
                     ack_reason,
+                    duration,
                 )
 
             return CollectorRunResult(
                 collector_type=self.collector_type,
                 fetched_raw=fetched_raw,
                 created=c_created,
+                duplicate=duplicate_count,
                 analyzed=c_analyzed,
                 failed=c_failed,
                 upstream_total=upstream_total,
@@ -637,6 +650,7 @@ class CollectorService:
                     0,
                 )
             run.failed = max(int(run.failed or 0), 1)
+            run.duplicate = duplicate_count
             run.error_msg = f"{type(exc).__name__}: {exc}"[:2000]
             run.end_time = datetime.now(timezone.utc)
             try:
@@ -645,15 +659,23 @@ class CollectorService:
             except Exception:
                 db.rollback()
             if is_weibo_consumer:
+                task_id = getattr(collector, "task_id", "")
+                duration = (datetime.now(timezone.utc) - run_start).total_seconds()
                 logger.error(
-                    "Weibo consumer queue failed: upstream_total=%s upstream_returned=%d "
-                    "created=%d duplicate=%d failed=%d ack_status=%s error=%s",
+                    "微博消费完成: task_id=%s upstream_total=%s upstream_returned=%d "
+                    "created=%d duplicate=%d failed=%d analyzed=%d ack=%d "
+                    "ack_status=%s warning_reason=%s duration=%.3fs error=%s",
+                    task_id,
                     upstream_total,
                     upstream_returned,
                     int(run.created or 0),
                     duplicate_count,
                     int(run.failed or 0),
+                    int(run.analyzed or 0),
+                    int(run.acknowledged or 0),
                     run.ack_status,
+                    "processing_failed" if run.ack_status == "deferred" else "-",
+                    duration,
                     run.error_msg,
                 )
             raise
@@ -744,6 +766,7 @@ class CollectorService:
                     merged.upstream_total = (merged.upstream_total or 0) + sub.upstream_total
                 merged.upstream_returned += sub.upstream_returned
                 merged.created += sub.created
+                merged.duplicate += sub.duplicate
                 merged.analyzed += sub.analyzed
                 merged.failed += sub.failed
                 merged.acknowledged += sub.acknowledged

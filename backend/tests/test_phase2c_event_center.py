@@ -4,6 +4,7 @@ import uuid
 from app.db.session import SessionLocal
 from app.models.event import Event
 from app.models.event_opinion import EventOpinion
+from app.models.opinion import Opinion
 
 
 def _event(region_id: int, *, title: str, risk: int, heat: int, trend: str, status: str, topic: str, offset: int) -> Event:
@@ -134,5 +135,102 @@ def test_event_detail_returns_phase2_fields(client, auth_headers, seeded_region_
         db = SessionLocal()
         db.query(EventOpinion).filter(EventOpinion.event_id == event_id).delete()
         db.query(Event).filter(Event.id == event_id).delete()
+        db.commit()
+        db.close()
+
+
+def test_event_risk_uses_current_linked_opinion_max(
+    client, auth_headers, seeded_region_id
+):
+    db = SessionLocal()
+    opinions = []
+    try:
+        opinions = [
+            Opinion(
+                title="关联高风险舆情",
+                content="风险内容",
+                source="phase2c风险一致性",
+                url=f"https://example.com/{uuid.uuid4().hex}",
+                region_id=seeded_region_id,
+                risk_score=85,
+                sentiment="negative",
+                summary="",
+                keywords="事故",
+            ),
+            Opinion(
+                title="关联低风险舆情",
+                content="普通内容",
+                source="phase2c风险一致性",
+                url=f"https://example.com/{uuid.uuid4().hex}",
+                region_id=seeded_region_id,
+                risk_score=35,
+                sentiment="neutral",
+                summary="",
+                keywords="",
+            ),
+        ]
+        db.add_all(opinions)
+        db.flush()
+        event = _event(
+            seeded_region_id,
+            title="Phase2C risk consistency",
+            risk=10,
+            heat=50,
+            trend="stable",
+            status="active",
+            topic="safety",
+            offset=0,
+        )
+        event.opinion_count = 2
+        db.add(event)
+        db.flush()
+        db.add_all(
+            [
+                EventOpinion(event_id=event.id, opinion_id=op.id)
+                for op in opinions
+            ]
+        )
+        db.commit()
+        event_id = event.id
+
+        response = client.get(
+            "/api/events",
+            params={"title": "Phase2C risk consistency"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        item = next(row for row in response.json()["items"] if row["id"] == event_id)
+        assert item["risk_score"] == 85
+        assert item["risk_level"] == "high"
+
+        response = client.get(f"/api/events/{event_id}", headers=auth_headers)
+        assert response.status_code == 200, response.text
+        assert response.json()["risk_score"] == 85
+        assert response.json()["risk_level"] == "high"
+
+        response = client.get(
+            "/api/events",
+            params={"title": "Phase2C risk consistency", "risk_level": "high"},
+            headers=auth_headers,
+        )
+        assert [row["id"] for row in response.json()["items"]] == [event_id]
+
+        # 不更新 Event 行，关联 Opinion 分数变化后 API 应立即反映新最高分。
+        opinions[0].risk_score = 45
+        db.commit()
+        response = client.get(f"/api/events/{event_id}", headers=auth_headers)
+        assert response.status_code == 200, response.text
+        assert response.json()["risk_score"] == 45
+        assert response.json()["risk_level"] == "medium"
+    finally:
+        db.query(EventOpinion).filter(
+            EventOpinion.event_id == locals().get("event_id", -1)
+        ).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id == locals().get("event_id", -1)).delete(
+            synchronize_session=False
+        )
+        db.query(Opinion).filter(
+            Opinion.id.in_([op.id for op in opinions if op.id])
+        ).delete(synchronize_session=False)
         db.commit()
         db.close()

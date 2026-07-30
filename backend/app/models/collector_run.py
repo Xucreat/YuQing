@@ -18,6 +18,7 @@ class CollectorRun(Base):
     upstream_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     upstream_returned: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duplicate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     analyzed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     acknowledged: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

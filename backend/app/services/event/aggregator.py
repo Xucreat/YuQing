@@ -55,6 +55,7 @@ from app.models.event_opinion import EventOpinion
 from app.models.opinion import Opinion
 from app.services.ai.fallback import DEFAULT_KEYWORDS
 from app.services.event.heat_service import EventHeatService
+from app.services.event.risk_service import EventRiskService
 from app.services.event.title_format import build_cluster_title, representative_title
 from app.services.event.topic_service import EventTopicService
 
@@ -87,20 +88,15 @@ def _keywords_set(keywords: str) -> set[str]:
 
 
 def _map_risk_level(max_score: int) -> str:
-    """Event.risk_level 映射：>=70 high / >=40 medium / else low。"""
-    if max_score >= 70:
-        return "high"
-    if max_score >= 40:
-        return "medium"
-    return "low"
+    return EventRiskService.level_from_score(max_score)
 
 
 def _clamp_risk_score(score: int | None) -> int:
-    return max(0, min(100, int(score or 0)))
+    return EventRiskService.clamp_score(score)
 
 
 def _event_risk_score(opinions: Iterable[Opinion]) -> int:
-    return max((_clamp_risk_score(op.risk_score) for op in opinions), default=0)
+    return EventRiskService.score_from_opinions(opinions)
 
 
 def _event_topic_category(opinions: Iterable[Opinion]) -> str:

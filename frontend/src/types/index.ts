@@ -397,6 +397,21 @@ export interface DataSourceItem {
   keyword_source: string
   effective_keywords: string[]
   keyword_description: string
+  health_summary?: DataSourceHealthSummary
+}
+
+export interface DataSourceHealthSummary {
+  datasource_id: number
+  health_status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown' | 'paused' | string
+  last_run_at: string | null
+  last_success_at: string | null
+  last_failure_at: string | null
+  consecutive_failures: number
+  last_error_code: string | null
+  last_error_message: string | null
+  last_valid_data_time: string | null
+  data_freshness: 'fresh' | 'stale' | 'unknown' | string
+  health_reason: string
 }
 
 export interface RegionOption {

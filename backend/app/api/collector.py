@@ -93,6 +93,7 @@ def _run_collect_task(task, session_factory, operator_id=None, operator_username
             "upstream_total": result.upstream_total,
             "upstream_returned": result.upstream_returned,
             "created": result.created,
+            "duplicate": result.duplicate,
             "analyzed": result.analyzed,
             "failed": result.failed,
             "acknowledged": result.acknowledged,

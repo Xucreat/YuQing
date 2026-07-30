@@ -34,6 +34,7 @@ from app.models.region import Region
 from app.models.user import User
 from app.services.audit_service import audit_write
 from app.services.keyword_service import get_monitoring_keywords_grouped
+from app.services.data_source_health import DataSourceHealthSummaryService
 
 logger = logging.getLogger(__name__)
 
@@ -241,11 +242,15 @@ def _serialize(
     latest: dict | None = None,
     *,
     region_keywords: list[str] | None = None,
+    runs_by_name: dict[str, list[CollectorRun]] | None = None,
 ) -> dict:
     codes = _scope_to_codes(ds.scope_region_codes)
     names = [region_map.get(c, c) for c in codes]
     run = latest.get(ds.name) if latest else None
     strategy = _keyword_strategy(ds, region_keywords or [])
+    health_summary = DataSourceHealthSummaryService().summarize(
+        ds, (runs_by_name or {}).get(ds.name, [])
+    )
     return {
         "id": ds.id,
         "key": ds.key,
@@ -266,6 +271,7 @@ def _serialize(
         "latest_run_status": run.status if run else None,
         "latest_run_at": run.start_time.isoformat() if run and run.start_time else None,
         "updated_at": ds.updated_at.isoformat() if ds.updated_at else None,
+        "health_summary": health_summary,
         **strategy,
     }
 
@@ -389,6 +395,7 @@ def list_data_sources(
     # 最近运行：按 collector_name 聚合最新一条
     names = [r.name for r in rows]
     latest: dict = {}
+    runs_by_name: dict[str, list[CollectorRun]] = {name: [] for name in names}
     if names:
         runs = db.scalars(
             select(CollectorRun)
@@ -397,10 +404,17 @@ def list_data_sources(
         ).all()
         for r in runs:
             latest.setdefault(r.collector_name, r)
+            runs_by_name.setdefault(r.collector_name, []).append(r)
 
     region_keywords = _enabled_region_keywords(db)
     items = [
-        _serialize(r, region_map, latest, region_keywords=region_keywords)
+        _serialize(
+            r,
+            region_map,
+            latest,
+            region_keywords=region_keywords,
+            runs_by_name=runs_by_name,
+        )
         for r in rows
     ]
 
@@ -685,6 +699,7 @@ def _run_to_dict(r: CollectorRun) -> dict:
         "upstream_total": getattr(r, "upstream_total", None),
         "upstream_returned": getattr(r, "upstream_returned", 0) or 0,
         "created": r.created,
+        "duplicate": getattr(r, "duplicate", 0) or 0,
         "analyzed": r.analyzed,
         "failed": r.failed,
         "acknowledged": getattr(r, "acknowledged", 0) or 0,
@@ -748,12 +763,14 @@ def collection_logs(
             func.sum(CollectorRun.upstream_total).label("upstream_total"),
             func.sum(CollectorRun.upstream_returned).label("upstream_returned"),
             func.sum(CollectorRun.created).label("created"),
+            func.sum(CollectorRun.duplicate).label("duplicate"),
             func.sum(CollectorRun.analyzed).label("analyzed"),
             func.sum(CollectorRun.acknowledged).label("acknowledged"),
             func.sum(CollectorRun.unconfirmed).label("unconfirmed"),
             func.sum(CollectorRun.comments_seen).label("comments_seen"),
             func.sum(CollectorRun.comments_skipped).label("comments_skipped"),
             func.sum(CollectorRun.admission_filtered).label("admission_filtered"),
+            func.max(CollectorRun.ack_status).label("ack_status"),
             func.sum(case((CollectorRun.status == "success", 1), else_=0)).label("success_count"),
             func.sum(case((CollectorRun.status == "partial", 1), else_=0)).label("partial_count"),
             func.sum(case((CollectorRun.status == "warning", 1), else_=0)).label("warning_count"),
@@ -809,12 +826,14 @@ def collection_logs(
             "upstream_total": int(r.upstream_total or 0),
             "upstream_returned": int(r.upstream_returned or 0),
             "created": int(r.created or 0),
+            "duplicate": int(r.duplicate or 0),
             "analyzed": int(r.analyzed or 0),
             "acknowledged": int(r.acknowledged or 0),
             "unconfirmed": int(r.unconfirmed or 0),
             "comments_seen": int(r.comments_seen or 0),
             "comments_skipped": int(r.comments_skipped or 0),
             "admission_filtered": int(r.admission_filtered or 0),
+            "ack_status": r.ack_status or "not_applicable",
             "status": _batch_status(r),
         }
 

@@ -254,16 +254,16 @@ def test_weibo_captures_upstream_queue_metadata(monkeypatch):
     assert c.last_not_exported_returned == 1
 
 
-def test_weibo_does_not_ack_partial_task_queue(monkeypatch):
+def test_weibo_acknowledges_partial_task_queue(monkeypatch):
     c, marked = _mock_collector(monkeypatch, rows=[])
     c.fetch(keywords=[])
     c.last_not_exported_total = 4034
     c.last_not_exported_returned = 1000
     c._pending_export_token = "test-token"
 
-    assert c.can_ack_pending_export() is False
-    assert c.ack_pending_export() is False
-    assert marked["called"] is False
+    assert c.can_ack_pending_export() is True
+    assert c.ack_pending_export() is True
+    assert marked["called"] is True
 
 
 def test_weibo_can_ack_when_response_covers_task_queue(monkeypatch):
@@ -335,6 +335,12 @@ class _AckingFakeWeiboCollector(_FakeWeiboCollector):
         return True
 
 
+class _PartialAckingFakeWeiboCollector(_AckingFakeWeiboCollector):
+    task_id = "partial-test-task"
+    last_not_exported_total = 1000
+    last_not_exported_returned = 1000
+
+
 class _FailingAckWeiboCollector(_AckingFakeWeiboCollector):
     def ack_pending_export(self):
         self.ack_calls += 1
@@ -392,6 +398,7 @@ def test_service_persists_weibo_fields_and_dedup(seeded_region_id):
         svc2 = CollectorService(collectors=[_FakeWeiboCollector(items2)], collector_type="mock")
         r2 = svc2.collect_and_analyze(db, trigger_type="manual")
         assert r2.created == 0
+        assert r2.duplicate == 1
 
         # 清理测试数据
         db.delete(op)
@@ -441,6 +448,53 @@ def test_service_ack_happens_after_opinion_commit(seeded_region_id):
         db.query(Opinion).filter(Opinion.external_id == ext_id).delete(
             synchronize_session=False
         )
+        db.commit()
+        db.close()
+
+
+def test_service_acknowledges_partial_upstream_queue_with_warning(seeded_region_id):
+    from app.collectors.service import CollectorService
+    from app.db.session import SessionLocal
+    from app.models.collector_run import CollectorRun
+    from app.models.opinion import Opinion
+
+    ext_id = f"partial-{uuid.uuid4().hex[:12]}"
+    item = {
+        "title": "微博部分队列确认测试",
+        "content": "八爪鱼返回本批数据，剩余历史数据留待后续批次。",
+        "source": "weibo",
+        "source_type": "weibo_post",
+        "url": f"https://weibo.com/partial/{uuid.uuid4().hex[:8]}",
+        "publish_time": None,
+        "external_id": ext_id,
+    }
+    db = SessionLocal()
+    collector = _PartialAckingFakeWeiboCollector([item])
+    collector.last_not_exported_total = 2000
+    collector.last_not_exported_returned = 1000
+    run = None
+    try:
+        result = CollectorService(
+            collectors=[collector], collector_type="mock"
+        ).collect_and_analyze(db, trigger_type="weibo_scheduled")
+        run = (
+            db.query(CollectorRun)
+            .filter(CollectorRun.collector_name == collector.source_name)
+            .order_by(CollectorRun.id.desc())
+            .first()
+        )
+        assert result.created == 1
+        assert collector.ack_calls == 1
+        assert run is not None
+        assert run.ack_status == "success"
+        assert run.status == "warning"
+        assert "partial_queue_accepted" in (run.error_msg or "")
+    finally:
+        db.query(Opinion).filter(Opinion.external_id == ext_id).delete(
+            synchronize_session=False
+        )
+        if run is not None:
+            db.delete(run)
         db.commit()
         db.close()
 
