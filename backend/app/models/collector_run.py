@@ -15,8 +15,18 @@ class CollectorRun(Base):
     start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     fetched_raw: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    upstream_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    upstream_returned: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     analyzed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    acknowledged: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unconfirmed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ack_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="not_applicable"
+    )
+    comments_seen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    comments_skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    admission_filtered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="running")
     error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)

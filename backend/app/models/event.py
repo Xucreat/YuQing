@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -17,11 +17,55 @@ class Event(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     keyword: Mapped[str] = mapped_column(String(256), nullable=False, default="")
     risk_level: Mapped[str] = mapped_column(String(32), nullable=False, default="low")
+    region_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("regions.id"), index=True, nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="active", server_default="active"
+    )
+    risk_score: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    topic_category: Mapped[Optional[str]] = mapped_column(
+        String(32), nullable=True, default="other"
+    )
+    heat_score: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    trend: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="unknown", server_default="unknown"
+    )
     opinion_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     first_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # 事件 <-> 舆情（多对多，经 event_opinions 关联表）
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active','verifying','processing','resolved','closed')",
+            name="ck_events_status",
+        ),
+        CheckConstraint(
+            "risk_score >= 0 AND risk_score <= 100",
+            name="ck_events_risk_score",
+        ),
+        CheckConstraint(
+            "topic_category IS NULL OR topic_category IN "
+            "('livelihood','traffic','education','healthcare','environment',"
+            "'safety','market','gov_service','social_security',"
+            "'public_emergency','other')",
+            name="ck_events_topic_category",
+        ),
+        CheckConstraint(
+            "heat_score >= 0 AND heat_score <= 100",
+            name="ck_events_heat_score",
+        ),
+        CheckConstraint(
+            "trend IN ('rising','stable','falling','unknown')",
+            name="ck_events_trend",
+        ),
+    )
+
     opinions: Mapped[List["Opinion"]] = relationship(
         "Opinion",
         secondary="event_opinions",

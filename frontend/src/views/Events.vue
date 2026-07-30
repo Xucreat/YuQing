@@ -58,6 +58,51 @@
         </transition>
       </div>
 
+      <input
+        v-model="regionFilter"
+        class="compact-input"
+        type="number"
+        min="1"
+        placeholder="地区 ID"
+        title="按地区 ID 筛选"
+        @change="applyFilters"
+      />
+      <select v-model="topicFilter" class="compact-select" title="按主题筛选" @change="applyFilters">
+        <option value="">全部主题</option>
+        <option v-for="option in topicOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+      </select>
+      <select v-model="statusFilter" class="compact-select" title="按处置状态筛选" @change="applyFilters">
+        <option value="">全部处置状态</option>
+        <option v-for="option in EVENT_STATUS_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+      </select>
+      <select v-model="trendFilter" class="compact-select" title="按趋势筛选" @change="applyFilters">
+        <option value="">全部趋势</option>
+        <option value="rising">↑ 升温</option>
+        <option value="stable">→ 平稳</option>
+        <option value="falling">↓ 下降</option>
+        <option value="unknown">未知</option>
+      </select>
+      <input
+        v-model="heatMin"
+        class="compact-input heat-input"
+        type="number"
+        min="0"
+        max="100"
+        placeholder="热度 ≥"
+        title="最低热度"
+        @change="applyFilters"
+      />
+      <input
+        v-model="heatMax"
+        class="compact-input heat-input"
+        type="number"
+        min="0"
+        max="100"
+        placeholder="热度 ≤"
+        title="最高热度"
+        @change="applyFilters"
+      />
+
       <button class="btn btn-ghost" :disabled="aggregating" @click="handleAggregate">{{ aggregating ? '聚合中...' : '手动聚合' }}</button>
       <button class="btn btn-ghost" @click="loadData">刷新</button>
       <span v-if="lastResult" class="agg-result">
@@ -71,31 +116,47 @@
           <tr>
             <th style="width:70px">ID</th>
             <th style="min-width:280px">事件标题</th>
+            <th class="col-center operation-col">操作</th>
+            <th style="width:120px">地区</th>
+            <th style="width:120px">主题</th>
             <th style="width:120px" class="col-center">风险等级</th>
+            <th style="width:90px" class="col-center">风险分</th>
+            <th style="width:90px" class="col-center">热度</th>
+            <th style="width:100px" class="col-center">趋势</th>
             <th style="width:120px" class="col-center">关联舆情</th>
-            <th style="width:100px" class="col-center">状态</th>
+            <th style="width:100px" class="col-center">处置状态</th>
             <th style="width:170px">首次发现</th>
             <th style="width:170px">最后更新</th>
-            <th style="width:80px" class="col-center">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(row, idx) in rows" :key="row.id" @click="$router.push('/event/' + row.id)" style="cursor:pointer">
             <td>{{ (page - 1) * size + idx + 1 }}</td>
             <td><span class="t-title">{{ row.title }}</span></td>
+            <td class="col-center operation-col" @click.stop>
+              <div class="row-actions">
+                <button class="btn-operate" title="查看事件并进行人工处置" @click="$router.push('/event/' + row.id)">处置</button>
+                <button class="btn-icon btn-delete" title="删除事件" @click="handleDelete(row)">🗑</button>
+              </div>
+            </td>
+            <td>{{ row.region_name || (row.region_id ? `地区 ${row.region_id}` : '-') }}</td>
+            <td>{{ topicText(row.topic_category) }}</td>
             <td class="col-center">
               <span class="pill" :class="riskPill(row.risk_level)"><span class="dot"></span>{{ riskText(row.risk_level) }}</span>
+              <span v-if="isKeyEvent(row)" class="focus-mark">重点关注</span>
+            </td>
+            <td class="col-center risk-num" :style="{ color: riskColor(row.risk_score) }">{{ row.risk_score }}</td>
+            <td class="col-center risk-num">{{ row.heat_score }}</td>
+            <td class="col-center">
+              <span class="pill" :class="trendPill(row.trend)">{{ trendText(row.trend) }}</span>
             </td>
             <td class="col-center risk-num">{{ row.opinion_count }}</td>
-            <td class="col-center"><span class="pill" :class="statusPill(row.status)"><span class="dot"></span>{{ statusText(row.status) }}</span></td>
+            <td class="col-center"><span class="pill" :class="eventStatusPill(row.status)"><span class="dot"></span>{{ eventStatusLabel(row.status) }}</span></td>
             <td>{{ formatTime(row.first_time) }}</td>
             <td>{{ formatTime(row.last_time) }}</td>
-            <td class="col-center" @click.stop>
-              <button class="btn-icon btn-delete" title="删除事件" @click="handleDelete(row)">🗑</button>
-            </td>
           </tr>
           <tr v-if="rows.length===0 && !loading">
-            <td colspan="8" class="empty-row">暂无事件数据</td>
+            <td colspan="13" class="empty-row">暂无事件数据</td>
           </tr>
         </tbody>
       </table>
@@ -115,6 +176,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api, { pollTask } from '@/api'
 import type { EventItem, EventListResponse, EventCreateResponse } from '@/types'
+import { EVENT_STATUS_OPTIONS, eventStatusLabel, eventStatusPill } from '@/utils/event'
 
 const loading = ref(false)
 const aggregating = ref(false)
@@ -125,6 +187,12 @@ const size = ref(20)
 const lastResult = ref<EventCreateResponse | null>(null)
 const title = ref('')          // 标题搜索关键字
 const riskFilter = ref('')     // 风险等级筛选：''=全部 / low / medium / high
+const regionFilter = ref('')
+const topicFilter = ref('')
+const statusFilter = ref('')
+const trendFilter = ref('')
+const heatMin = ref('')
+const heatMax = ref('')
 const searchFocused = ref(false) // 搜索框聚焦态（驱动苹果蓝聚焦环）
 const riskOpen = ref(false)      // 风险下拉浮层开合
 const riskOptions = [
@@ -132,6 +200,19 @@ const riskOptions = [
   { value: 'low', label: '低风险' },
   { value: 'medium', label: '中风险' },
   { value: 'high', label: '高风险' },
+]
+const topicOptions = [
+  { value: 'livelihood', label: '民生' },
+  { value: 'traffic', label: '交通' },
+  { value: 'education', label: '教育' },
+  { value: 'healthcare', label: '医疗卫生' },
+  { value: 'environment', label: '环境' },
+  { value: 'safety', label: '安全' },
+  { value: 'market', label: '市场' },
+  { value: 'gov_service', label: '政务服务' },
+  { value: 'social_security', label: '社会保障' },
+  { value: 'public_emergency', label: '公共突发事件' },
+  { value: 'other', label: '其他' },
 ]
 const riskLabel = computed(() => (riskOptions.find((o) => o.value === riskFilter.value) || riskOptions[0]).label)
 let searchTimer: number | undefined
@@ -150,11 +231,22 @@ function riskPill(level: string): string {
   return ({ high: 'pill-red', medium: 'pill-orange', low: 'pill-green' } as const)[level] || 'pill-gray'
 }
 function riskText(level: string): string { return { high: '高风险', medium: '中风险', low: '低风险' }[level] || level }
-function statusText(s: string): string {
-  return ({ active: '进行中', resolved: '已处置', monitoring: '监测中', closed: '已关闭' } as const)[s] || s
+function topicText(value: string | null | undefined): string {
+  return topicOptions.find((option) => option.value === value)?.label || '未分类'
 }
-function statusPill(s: string): string {
-  return ({ active: 'pill-green', resolved: 'pill-gray', monitoring: 'pill-orange', closed: 'pill-gray' } as const)[s] || 'pill-gray'
+function isKeyEvent(row: EventItem): boolean {
+  return row.risk_score >= 70 && row.heat_score >= 60
+}
+function riskColor(score: number): string {
+  if (score >= 70) return '#ff3b30'
+  if (score >= 40) return '#c77700'
+  return '#1a8e3c'
+}
+function trendText(value: string): string {
+  return ({ rising: '↑ 升温', stable: '→ 平稳', falling: '↓ 下降', unknown: '未知' } as const)[value] || value
+}
+function trendPill(value: string): string {
+  return ({ rising: 'pill-red', stable: 'pill-gray', falling: 'pill-green', unknown: 'pill-gray' } as const)[value] || 'pill-gray'
 }
 function formatTime(t: string | null): string { if (!t) return '-'; return t.replace('T', ' ').slice(0, 19) }
 
@@ -165,6 +257,12 @@ async function loadData() {
     const kw = title.value.trim()
     if (kw) params.title = kw
     if (riskFilter.value) params.risk_level = riskFilter.value
+    if (regionFilter.value) params.region_id = Number(regionFilter.value)
+    if (topicFilter.value) params.topic_category = topicFilter.value
+    if (statusFilter.value) params.status = statusFilter.value
+    if (trendFilter.value) params.trend = trendFilter.value
+    if (heatMin.value) params.heat_min = Number(heatMin.value)
+    if (heatMax.value) params.heat_max = Number(heatMax.value)
     const { data } = await api.get<EventListResponse>('/events', { params })
     rows.value = data.items; total.value = data.total
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '加载事件列表失败') } finally { loading.value = false }
@@ -190,6 +288,10 @@ function onSearchEnter() {
 function selectRisk(v: string) {
   riskFilter.value = v
   riskOpen.value = false
+  page.value = 1
+  loadData()
+}
+function applyFilters() {
   page.value = 1
   loadData()
 }
@@ -233,6 +335,11 @@ onMounted(loadData)
 
 <style scoped>
 .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; position: relative; z-index: 30; }
+.compact-select, .compact-input { height: 40px; padding: 0 11px; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; background: rgba(245,245,247,0.8); color: #1d1d1f; font: inherit; font-size: 13px; }
+.compact-select { min-width: 112px; }
+.compact-input { width: 92px; }
+.heat-input { width: 76px; }
+.focus-mark { display: block; width: fit-content; margin: 5px auto 0; color: #c77700; font-size: 11px; font-weight: 600; }
 .agg-result { font-size: 13px; color: #34c759; margin-left: 8px; }
 .btn { display: inline-flex; align-items: center; gap: 8px; border: none; border-radius: 980px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 0.18s ease; }
 .btn-ghost { background: #e8e8ed; color: #1d1d1f; }
@@ -327,7 +434,7 @@ onMounted(loadData)
 .pop-enter-from, .pop-leave-to { opacity: 0; transform: translateY(-8px) scale(0.97); }
 
 .card { background: #ffffff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05); }
-.table-card { padding: 6px 6px 14px; overflow: hidden; }
+.table-card { padding: 6px 6px 14px; overflow-x: auto; }
 
 table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.tbl thead th {
@@ -372,5 +479,18 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
   background: transparent; cursor: pointer; font-size: 16px;
   transition: background 0.15s ease;
 }
+.row-actions { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.operation-col {
+  position: sticky; right: 0; z-index: 2; min-width: 110px; width: 110px;
+  background: #fff; box-shadow: -10px 0 14px -14px rgba(0,0,0,0.38);
+}
+table.tbl thead .operation-col { z-index: 3; }
+table.tbl tbody tr:hover .operation-col { background: #fafafc; }
+.btn-operate {
+  height: 32px; padding: 0 12px; border: 1px solid #b9d5f2; border-radius: 6px;
+  background: #f2f7fd; color: #0066cc; cursor: pointer; font-size: 13px; font-weight: 500;
+  white-space: nowrap; transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-operate:hover { background: #e8f1fd; border-color: #7eb4e6; }
 .btn-delete:hover { background: rgba(255,59,48,0.1); }
 </style>

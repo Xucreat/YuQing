@@ -28,7 +28,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Callable, List, Optional
+from typing import Callable, Collection, List, Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -45,10 +45,13 @@ from app.models.collector_run import CollectorRun
 from app.services.ai.fallback import RuleFallbackProvider
 from app.services.keyword_service import (
     get_monitoring_keywords,
+    get_monitoring_keywords_grouped,
     get_severity_keywords,
     get_sensitive_keywords,
 )
 from app.services.risk_engine import RISK_MODEL_VERSION, RiskEngine
+from app.services.opinion_admission_service import OpinionAdmissionService
+from app.services.opinion_region_service import OpinionRegionService
 
 # ---------------------------------------------------------------------------
 # Phase 3A temporary implementation.
@@ -91,11 +94,22 @@ class CollectorRunResult:
     created: int = 0    # 本次实际新增 Opinion 数量
     analyzed: int = 0   # AI 分析成功（completed）数量
     fetched_raw: int = 0  # 采集器实际抓取的原始舆情条数（去重前，fetch() 返回量）
+    comments_seen: int = 0  # 采集阶段识别到的评论数量（评论不创建 Opinion）
+    comments_skipped: int = 0  # 已跳过、未进入 Opinion 的评论数量
+    admission_filtered: int = 0  # 微博正文因准入规则拒绝的数量
     collector_type: str = ""  # 本次采集方式（government/mock）
+
+    upstream_total: Optional[int] = None
+    upstream_returned: int = 0
+    acknowledged: int = 0
+    unconfirmed: int = 0
+    ack_status: str = "not_applicable"
 
     def finalize(self) -> "CollectorRunResult":
         # 失败 = 新增 - 分析成功；失败记录保留在数据库（status=failed）。
-        self.failed = max(0, self.created - self.analyzed)
+        # Keep collector-level exceptions in the batch result even when
+        # other collectors created and analyzed an equal number of opinions.
+        self.failed = max(self.failed, self.created - self.analyzed, 0)
         return self
 
     # failed 经 finalize 计算后存在；声明占位避免 mypy 报未定义。
@@ -143,6 +157,8 @@ class CollectorService:
         collectors: Optional[List[BaseCollector]] = None,
         region_id: Optional[int] = None,
         collector_type: Optional[str] = None,
+        include_data_source_keys: Optional[Collection[str]] = None,
+        exclude_data_source_keys: Optional[Collection[str]] = None,
     ) -> None:
         # 采集方式：显式传入 > Pydantic Settings（collector_type）。
         self.collector_type: str = (
@@ -151,8 +167,24 @@ class CollectorService:
         # 默认采集器：按 collector_type 选择（government / mock）。
         # 也可显式注入 collectors（测试用），此时 collector_type 仍用于返回标识。
         self._collectors_injected: bool = collectors is not None
+        self.include_data_source_keys = (
+            frozenset(include_data_source_keys)
+            if include_data_source_keys is not None
+            else None
+        )
+        self.exclude_data_source_keys = (
+            frozenset(exclude_data_source_keys)
+            if exclude_data_source_keys is not None
+            else None
+        )
         self.collectors: List[BaseCollector] = (
-            collectors if collectors is not None else resolve_collectors(collector_type=self.collector_type)
+            collectors
+            if collectors is not None
+            else resolve_collectors(
+                collector_type=self.collector_type,
+                include_data_source_keys=self.include_data_source_keys,
+                exclude_data_source_keys=self.exclude_data_source_keys,
+            )
         )
         self.region_id: Optional[int] = region_id
 
@@ -172,31 +204,37 @@ class CollectorService:
     # ------------------------------------------------------------------
     # 内部工具
     # ------------------------------------------------------------------
-    def _resolve_region_id(self, db: Session, collector: BaseCollector) -> int:
+    def _resolve_region_id(self, db: Session, collector: BaseCollector) -> Optional[int]:
         """按采集器声明的 scope_region_codes 绑定区域（省→市→县）。
 
         - 取 scope 中最具体的 code（最长 = 县>市>省）；
-        - scope 为空/None（国家级源，靠关键词过滤廊坊）→ 绑定廊坊市(131000)；
-        - 若目标区域不存在，回退 131000，再回退任意区域（避免种子缺失时整体失败）。
+        - scope 为空/None/ALL（国家级源）不再回退廊坊市；
+        - 若目标区域不存在，返回 None，由 item 级地区准入处理。
         """
         codes = getattr(collector, "scope_region_codes", None)
+        if not codes:
+            return None
         target_code = max(codes, key=len) if codes else None
         region = None
         if target_code:
             region = db.query(Region).filter(Region.code == target_code).first()
-        if region is None:
-            region = db.query(Region).filter(Region.code == "131000").first()
-        if region is None:
-            region = db.query(Region).first()
-        if region is None:
-            raise RuntimeError(
-                "未配置任何区域（region），Collector 无法绑定 region_id；"
-                "请先执行 init_db.py 初始化种子区域。"
-            )
-        return region.id
+        return region.id if region is not None else None
 
     def _already_exists(self, db: Session, item: dict) -> bool:
-        """去重判断（以 opinions.url 为准；url 为空时退回 title+publish_time）。"""
+        """去重判断（external_id 优先；其次 opinions.url；url 为空时退回 title+publish_time）。
+
+        Phase Weibo-1：社媒条目携带平台唯一 ID（如微博 mid）时以
+        (source_type, external_id) 为第一优先键——比 url 更稳定（同一条微博
+        可能出现短链/长链两种 url）。既有采集器不传 external_id，行为不变。
+        """
+        ext = (item.get("external_id") or "").strip() if item.get("external_id") else ""
+        if ext:
+            q = db.query(Opinion).filter(Opinion.external_id == ext)
+            stype = item.get("source_type")
+            if stype:
+                q = q.filter(Opinion.source_type == stype)
+            if q.first() is not None:
+                return True
         url = (item.get("url") or "").strip()
         if url:
             exists = db.query(Opinion).filter(Opinion.url == url).first()
@@ -234,14 +272,24 @@ class CollectorService:
         run_start = datetime.now(timezone.utc)
         batch_id = uuid.uuid4().hex
         if not self._collectors_injected:
-            resolved = resolve_collectors_verbose(db, self.collector_type)
+            resolved = resolve_collectors_verbose(
+                db,
+                self.collector_type,
+                include_data_source_keys=self.include_data_source_keys,
+                exclude_data_source_keys=self.exclude_data_source_keys,
+            )
             self.collectors = resolved.collectors
             for f in resolved.failures:
                 self._record_assembly_failure(db, f, run_start, batch_id, trigger_type)
 
         # 监测关键词（采集过滤唯一权威源 = keywords 表；表空回退配置）。
-        # 一次采集运行内只解析一次，注入到每个采集器的 fetch(keywords=...)。
+        # 一次采集运行内只解析一次：
+        #  - monitoring_kw：扁平列表，向下兼容 keywords= 旧链路；
+        #  - region_kw / topic_kw：按 category 分组，驱动「地域前置过滤 + 主题增强」新链路。
         monitoring_kw = get_monitoring_keywords(db)
+        grouped = get_monitoring_keywords_grouped(db)
+        region_kw: List[str] = grouped.get("地域", [])
+        topic_kw: List[str] = grouped.get("主题", [])
 
         # 5 秒防抖（仅政府网站采集）：距上次不足阈值 → 拒绝执行。
         if self._uses_government() and _GOV_LAST_RUN_AT is not None:
@@ -254,11 +302,23 @@ class CollectorService:
         # 不调用 DeepSeek（节省额度；DeepSeek 仅由用户手动「触发 AI 分析」时调用）。
 
         for collector in self.collectors:
-            sub = self._process_collector(db, collector, monitoring_kw, run_start, batch_id, trigger_type)
+            try:
+                sub = self._process_collector(
+                    db, collector, monitoring_kw, region_kw, topic_kw, run_start, batch_id, trigger_type
+                )
+            except Exception:
+                # A failed source has already been recorded by _process_collector;
+                # continue so one source cannot abort the scheduled batch.
+                logger.exception("采集器 %s 执行异常，继续处理后续数据源", collector.source_name)
+                result.failed += 1
+                continue
             result.fetched_raw += sub.fetched_raw
             result.created += sub.created
             result.analyzed += sub.analyzed
             result.failed += sub.failed
+            result.comments_seen += sub.comments_seen
+            result.comments_skipped += sub.comments_skipped
+            result.admission_filtered += sub.admission_filtered
 
         result.finalize()
 
@@ -304,6 +364,8 @@ class CollectorService:
         db: Session,
         collector: BaseCollector,
         monitoring_kw: List[str],
+        region_kw: List[str],
+        topic_kw: List[str],
         run_start: datetime,
         batch_id: str,
         trigger_type: str,
@@ -325,14 +387,34 @@ class CollectorService:
         db.add(run)
         db.commit()
 
+        is_weibo_consumer = getattr(collector, "data_source_key", None) == "weibo_octopus"
+        duplicate_count = 0
+        fetched_raw = 0
+        upstream_total = None
+        upstream_returned = 0
         try:
-            items = collector.fetch(keywords=monitoring_kw) or []
-            # 统计采集器实际抓取的原始条数（去重前），供前端提示真实抓取量。
-            fetched_raw = len(items)
+            # 向下兼容 keywords= 旧链路；region_kw/topic_kw 驱动地域前置过滤新链路。
+            # 采集器依据 region_kw 是否为 None 选择新旧逻辑。
+            items = collector.fetch(
+                keywords=monitoring_kw, region_kw=region_kw, topic_kw=topic_kw
+            ) or []
+            # 统计采集器实际抓取并完成基础解析的条数；微博展开评论行会在 Collector 内合并为主帖 item，
+            # 因此优先读取采集器暴露的 last_fetched_raw，普通采集器仍回退为 len(items)。
+            fetched_raw = int(getattr(collector, "last_fetched_raw", len(items)) or 0)
+            upstream_total = getattr(collector, "last_not_exported_total", None)
+            upstream_returned = int(
+                getattr(collector, "last_not_exported_returned", len(items)) or 0
+            )
+            comments_seen = int(getattr(collector, "last_comments_seen", 0) or 0)
+            comments_skipped = int(getattr(collector, "last_comments_skipped", 0) or 0)
             run.fetched_raw = fetched_raw
+            run.upstream_total = upstream_total
+            run.upstream_returned = upstream_returned
+            run.comments_seen = comments_seen
+            run.comments_skipped = comments_skipped
 
             # 按采集器声明的覆盖范围绑定区域（省/市/县）
-            region_id = self._resolve_region_id(db, collector)
+            region_resolver = OpinionRegionService()
 
             # 每条 Opinion 的 AI 分析独立（无共享可变状态），逐采集器新建 Provider。
             # 敏感/风险词由 keywords 表（type='sensitive'）注入；无启用敏感词时
@@ -341,12 +423,39 @@ class CollectorService:
             # Phase 2-A：独立风险精炼层（Severity/EventState/ResolutionFlag/final）。
             # 纯函数、不查库；severity 词典经注入，缺省用内置 DEFAULT_SEVERITY_KEYWORDS。
             risk_engine = RiskEngine(severity_keywords=get_severity_keywords(db))
+            admission = OpinionAdmissionService()
 
             c_created = c_analyzed = c_failed = 0
+            admission_filtered = 0
             for item in items:
+                # 微博评论是公众反馈数据，不是独立舆情主体；Phase 1-A 禁止评论创建 Opinion。
+                if item.get("source_type") == "weibo_comment":
+                    comments_seen += 1
+                    comments_skipped += 1
+                    continue
+                region_decision = region_resolver.decide(
+                    db,
+                    item,
+                    scope_region_codes=getattr(collector, "scope_region_codes", None),
+                )
+                admission_result = admission.evaluate(
+                    item,
+                    region_keywords=region_kw,
+                    topic_keywords=topic_kw,
+                    collector_name=collector.source_name,
+                    source_scope_codes=getattr(collector, "scope_region_codes", None),
+                    national_source=region_decision.national_source,
+                    region_hits=region_decision.region_hits,
+                )
+                if not admission_result.accepted or not region_decision.accepted:
+                    admission_filtered += 1
+                    continue
+                admission_reason = dict(admission_result.admission_reason or {})
+                admission_reason["region_decision"] = region_decision.as_reason()
                 # 1) 去重：已存在则跳过，不重复创建（临界区串行化）
                 with self._write_lock:
                     if self._already_exists(db, item):
+                        duplicate_count += 1
                         continue
 
                     # 2) 新建 Opinion（默认 pending，先落库保证失败也保留记录）
@@ -356,10 +465,18 @@ class CollectorService:
                         source=(item.get("source") or "").strip() or collector.source_name,
                         url=(item.get("url") or "").strip(),
                         publish_time=item.get("publish_time"),
-                        region_id=region_id,
+                        region_id=region_decision.region_id,
                         risk_score=0,
                         sentiment="neutral",
                         analysis_status="pending",
+                        # Phase Weibo-1：社媒扩展字段（既有采集器不传 -> NULL，零回归）
+                        source_type=item.get("source_type"),
+                        author=(item.get("author") or None),
+                        engagement=item.get("engagement"),
+                        external_id=(item.get("external_id") or None),
+                        relevance_score=admission_result.relevance_score,
+                        content_type=admission_result.content_type,
+                        admission_reason=admission_reason,
                     )
                     try:
                         db.add(opinion)
@@ -369,6 +486,7 @@ class CollectorService:
                         # 视为已存在，跳过，绝不把正常重复冲突当作系统级异常导致整批失败。
                         db.rollback()
                         if self._already_exists(db, item):
+                            duplicate_count += 1
                             continue
                         raise  # 非 url 唯一冲突的真实错误，按原样抛出
                 c_created += 1
@@ -413,9 +531,83 @@ class CollectorService:
             run.created = c_created
             run.analyzed = c_analyzed
             run.failed = c_failed
+            run.comments_seen = comments_seen
+            run.comments_skipped = comments_skipped
+            run.admission_filtered = admission_filtered
             run.status = "success" if c_failed == 0 else "partial"
+            # 配置异常标注：地域关键词为空 → fail-safe 已拦截全部数据，
+            # 在运行记录中显式标记，避免被误读为「普通零数据」。
+            if region_kw is not None and not region_kw:
+                run.status = "warning"
+                run.error_msg = (
+                    "配置异常：地域关键词(region_kw)为空，已启用 fail-safe "
+                    "拦截无地域数据（非普通零数据，请检查 keywords 表 category='地域' 是否启用）"
+                )
             run.end_time = datetime.now(timezone.utc)
             db.commit()
+
+            # 八爪鱼的导出确认必须晚于 Opinion 持久化。普通采集器没有该钩子，
+            # 使用可选协议保持 BaseCollector 和其他数据源兼容。
+            ack_pending_export = getattr(collector, "ack_pending_export", None)
+            can_ack_pending_export = getattr(collector, "can_ack_pending_export", None)
+            if callable(ack_pending_export):
+                run.ack_status = "pending"
+                run.unconfirmed = upstream_returned
+                db.commit()
+
+                # Analyzed failures mean the local processing chain is incomplete.
+                # Keep the provider queue intact so the batch can be retried.
+                if c_failed:
+                    run.ack_status = "deferred"
+                    run.unconfirmed = upstream_returned
+                    run.status = "partial"
+                    run.error_msg = (
+                        "微博本批分析处理存在失败，已延迟确认；"
+                        f"failed={c_failed}"
+                    )[:2000]
+                    db.commit()
+                # The provider ack is task-scoped. Never acknowledge a known
+                # partial response; leave it available for a later retry.
+                elif callable(can_ack_pending_export) and not can_ack_pending_export():
+                    run.ack_status = "deferred"
+                    run.unconfirmed = max(
+                        0, (upstream_total or upstream_returned) - upstream_returned
+                    )
+                    run.status = "warning"
+                    run.error_msg = (
+                        "八爪鱼未导出队列未完整拉取，已延迟确认；"
+                        f"total={upstream_total}, returned={upstream_returned}"
+                    )[:2000]
+                    db.commit()
+                else:
+                    acknowledged = ack_pending_export()
+                    if acknowledged:
+                        run.ack_status = "confirmed"
+                        run.acknowledged = upstream_returned
+                        run.unconfirmed = 0
+                    else:
+                        run.ack_status = "not_needed"
+                        run.unconfirmed = 0
+                    db.commit()
+
+            if is_weibo_consumer:
+                if run.ack_status == "deferred" and c_failed:
+                    ack_reason = "processing_failed"
+                elif run.ack_status == "deferred":
+                    ack_reason = "partial_queue"
+                else:
+                    ack_reason = "-"
+                logger.info(
+                    "Weibo consumer queue: upstream_total=%s upstream_returned=%d "
+                    "created=%d duplicate=%d failed=%d ack_status=%s reason=%s",
+                    upstream_total,
+                    upstream_returned,
+                    c_created,
+                    duplicate_count,
+                    c_failed,
+                    run.ack_status,
+                    ack_reason,
+                )
 
             return CollectorRunResult(
                 collector_type=self.collector_type,
@@ -423,18 +615,47 @@ class CollectorService:
                 created=c_created,
                 analyzed=c_analyzed,
                 failed=c_failed,
+                upstream_total=upstream_total,
+                upstream_returned=upstream_returned,
+                acknowledged=run.acknowledged,
+                unconfirmed=run.unconfirmed,
+                ack_status=run.ack_status,
+                comments_seen=comments_seen,
+                comments_skipped=comments_skipped,
+                admission_filtered=admission_filtered,
             )
         except Exception as exc:
             # P1-1：采集器级异常（fetch / 区域解析 / 循环内未捕获异常）必须最终落为 failed，
             # 不得让对应 CollectorRun 永久停留 running；error_msg 保留足够定位信息；
             # 不吞掉异常伪装成功——标记失败后重新抛出，原有调用方行为（异常上抛）不变。
+            db.rollback()
             run.status = "failed"
+            if run.ack_status == "pending":
+                run.ack_status = "failed"
+                run.unconfirmed = max(
+                    int(run.upstream_returned or 0) - int(run.acknowledged or 0),
+                    0,
+                )
+            run.failed = max(int(run.failed or 0), 1)
             run.error_msg = f"{type(exc).__name__}: {exc}"[:2000]
             run.end_time = datetime.now(timezone.utc)
             try:
+                db.add(run)
                 db.commit()
             except Exception:
                 db.rollback()
+            if is_weibo_consumer:
+                logger.error(
+                    "Weibo consumer queue failed: upstream_total=%s upstream_returned=%d "
+                    "created=%d duplicate=%d failed=%d ack_status=%s error=%s",
+                    upstream_total,
+                    upstream_returned,
+                    int(run.created or 0),
+                    duplicate_count,
+                    int(run.failed or 0),
+                    run.ack_status,
+                    run.error_msg,
+                )
             raise
 
     # ------------------------------------------------------------------
@@ -472,11 +693,15 @@ class CollectorService:
                 resolve_db.close()
 
         # 监测关键词（采集过滤唯一权威源 = keywords 表；表空回退配置）。
+        # 与顺序路径一致：扁平 monitoring_kw 向下兼容 + 分组 region_kw/topic_kw 新链路。
         kw_db = session_factory()
         try:
             monitoring_kw = get_monitoring_keywords(kw_db)
+            grouped = get_monitoring_keywords_grouped(kw_db)
         finally:
             kw_db.close()
+        region_kw: List[str] = grouped.get("地域", [])
+        topic_kw: List[str] = grouped.get("主题", [])
 
         # 5 秒防抖（仅政府网站采集）：距上次不足阈值 → 拒绝执行。
         if self._uses_government() and _GOV_LAST_RUN_AT is not None:
@@ -494,7 +719,9 @@ class CollectorService:
         def _work(collector: BaseCollector) -> "CollectorRunResult":
             cdb = session_factory()
             try:
-                return self._process_collector(cdb, collector, monitoring_kw, run_start, batch_id, trigger_type)
+                return self._process_collector(
+                    cdb, collector, monitoring_kw, region_kw, topic_kw, run_start, batch_id, trigger_type
+                )
             finally:
                 cdb.close()
 
@@ -508,11 +735,24 @@ class CollectorService:
                     sub = fut.result()
                 except Exception:
                     logger.exception("采集器 %s 执行异常", collector.source_name)
-                    sub = CollectorRunResult(collector_type=self.collector_type)
+                    sub = CollectorRunResult(
+                        collector_type=self.collector_type,
+                        failed=1,
+                    )
                 merged.fetched_raw += sub.fetched_raw
+                if sub.upstream_total is not None:
+                    merged.upstream_total = (merged.upstream_total or 0) + sub.upstream_total
+                merged.upstream_returned += sub.upstream_returned
                 merged.created += sub.created
                 merged.analyzed += sub.analyzed
                 merged.failed += sub.failed
+                merged.acknowledged += sub.acknowledged
+                merged.unconfirmed += sub.unconfirmed
+                if sub.ack_status != "not_applicable":
+                    merged.ack_status = sub.ack_status
+                merged.comments_seen += sub.comments_seen
+                merged.comments_skipped += sub.comments_skipped
+                merged.admission_filtered += sub.admission_filtered
                 done += 1
                 if on_progress is not None:
                     on_progress(done, total, getattr(collector, "source_name", ""))

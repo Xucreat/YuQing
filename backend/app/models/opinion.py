@@ -91,6 +91,23 @@ class Opinion(Base):
         String(32), nullable=True
     )
 
+    # ===== Phase Weibo-1：社媒来源扩展字段（迁移头 p13_weibo_fields）=====
+    # 全部可空：既有采集器不传即为 NULL，零回归。
+    # source_type：细分来源类型（如 weibo_post / weibo_comment）；新闻/政府源为 NULL。
+    source_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    # author：发布者昵称/账号显示名（社媒来源专用）。
+    author: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    # engagement：互动数据 JSONB，如 {"likes":10,"comments":3,"reposts":5}。
+    engagement: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    # external_id：外部平台唯一 ID（如微博 mid），与 source_type 联合用于幂等去重；
+    # url 部分唯一索引仍是数据库级兜底，此字段是服务层查重的第一优先键。
+    external_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+
+    # ===== Phase 1-B：舆情准入治理 =====
+    relevance_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    content_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    admission_reason: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
     __table_args__ = (
         CheckConstraint(
             "analysis_status IN ('pending','processing','completed','failed')",
@@ -103,6 +120,10 @@ class Opinion(Base):
         CheckConstraint(
             "event_state IN ('occurred','notice','deploy','prevent','resolved')",
             name="ck_opinions_event_state",
+        ),
+        CheckConstraint(
+            "relevance_score IS NULL OR (relevance_score >= 0 AND relevance_score <= 100)",
+            name="ck_opinions_relevance_score",
         ),
         # 部分唯一索引：仅对有效（非 NULL 且非空串）url 强制唯一，防止重复采集。
         # 与迁移 p6urluniq01 (ix_opinions_url_unique) 保持一致；空 url 允许多条，

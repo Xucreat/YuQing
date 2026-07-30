@@ -7,6 +7,15 @@
           <option value="">来源（全部）</option>
           <option v-for="s in sourceOptions" :key="s" :value="s">{{ s }}</option>
         </select>
+        <select v-model="filters.content_type" class="select" @change="handleSearch">
+          <option value="">类型（全部）</option>
+          <option v-for="o in contentTypeOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+        </select>
+        <select v-model="filters.relevance" class="select" @change="handleSearch">
+          <option value="">相关性（全部）</option>
+          <option value="high">高相关（≥60）</option>
+          <option value="low">低相关（40-59）</option>
+        </select>
         <select v-model="filters.risk_level" class="select" @change="handleSearch">
           <option value="">情感（全部）</option>
           <option value="negative">负面</option>
@@ -53,12 +62,16 @@
 
     <!-- Table -->
     <div class="card table-card">
+      <div class="tbl-scroll">
       <table class="tbl">
         <thead>
           <tr>
             <th style="width:70px">ID</th>
-            <th style="min-width:260px">标题</th>
+            <th style="width:300px">标题</th>
             <th style="width:150px">来源</th>
+            <th style="width:110px" class="col-center">类型</th>
+            <th style="width:110px" class="col-center">相关性</th>
+            <th style="width:200px">准入原因</th>
             <th style="width:100px" class="col-center">情感</th>
             <th style="width:110px" class="col-center">级别</th>
             <th style="width:110px" class="col-center">风险评分</th>
@@ -71,6 +84,15 @@
             <td>{{ (page - 1) * size + idx + 1 }}</td>
             <td><span class="t-title">{{ row.title }}</span></td>
             <td>{{ row.source }}</td>
+            <td class="col-center">
+              <span class="pill pill-blue">{{ contentTypeText(row.content_type) }}</span>
+            </td>
+            <td class="col-center">
+              <span class="score-chip" :class="relevanceClass(row.relevance_score)">{{ formatRelevance(row.relevance_score) }}</span>
+            </td>
+            <td>
+              <span class="admission-summary">{{ admissionSummary(row.admission_reason) }}</span>
+            </td>
             <td class="col-center">
               <span class="pill" :class="sentimentPill(row.sentiment)">
                 <span class="dot"></span>{{ sentimentText(row.sentiment) }}
@@ -88,10 +110,12 @@
             <td>{{ formatTime(row.publish_time) }}</td>
           </tr>
           <tr v-if="rows.length===0 && !loading">
-            <td colspan="8" class="empty-row">暂无舆情数据</td>
+            <td colspan="11" class="empty-row">暂无舆情数据</td>
           </tr>
         </tbody>
       </table>
+
+      </div>
 
       <!-- Pager -->
       <div class="pager" v-if="total > 0">
@@ -127,10 +151,33 @@ const page = ref(1)
 const size = ref(20)
 const sourceOptions = ref<string[]>([])
 
+const contentTypeOptions = [
+  { value: 'complaint', label: '投诉举报' },
+  { value: 'consultation', label: '咨询求助' },
+  { value: 'risk_event', label: '风险事件' },
+  { value: 'public_affairs', label: '公共事务' },
+  { value: 'news', label: '新闻' },
+  { value: 'policy', label: '政策政务' },
+]
+
+const CONTENT_TYPE_TEXT: Record<string, string> = {
+  complaint: '投诉举报',
+  consultation: '咨询求助',
+  risk_event: '风险事件',
+  public_affairs: '公共事务',
+  news: '新闻',
+  policy: '政策政务',
+  advertising: '广告',
+  entertainment: '娱乐',
+  irrelevant: '无关',
+}
+
 const filters = reactive({
   source: '',
   risk_level: '',
   level: '',
+  content_type: '',
+  relevance: '',
   date_from: '',
   date_to: '',
   keyword: '',
@@ -156,6 +203,46 @@ function levelRange(level: string): [number | null, number | null] {
   return [null, null]
 }
 
+function relevanceRange(level: string): [number | null, number | null] {
+  if (level === 'high') return [60, null]
+  if (level === 'low') return [40, 59]
+  return [null, null]
+}
+
+function contentTypeText(type?: string | null): string {
+  return type ? (CONTENT_TYPE_TEXT[type] || type) : '未标注'
+}
+
+function formatRelevance(score?: number | null): string {
+  return score == null ? '-' : `${score} 分`
+}
+
+function relevanceClass(score?: number | null): string {
+  if (score == null) return 'score-empty'
+  if (score >= 60) return 'score-high'
+  if (score >= 40) return 'score-low'
+  return 'score-filtered'
+}
+
+function admissionSummary(reason?: Record<string, any> | null): string {
+  if (!reason || typeof reason !== 'object') return '系统默认准入'
+  const policy = String(reason.policy || '')
+  if (policy === 'default_allow_non_weibo') {
+    const source = String(reason.source || '')
+    return source.includes('政府') || source.includes('政务') ? '政府来源默认准入' : '新闻来源默认准入'
+  }
+  const parts: string[] = []
+  const add = (label: string, value: any) => {
+    const arr = Array.isArray(value) ? value.filter(Boolean) : []
+    if (arr.length) parts.push(`${label}：${arr.slice(0, 3).join('、')}`)
+  }
+  add('地域', reason.region_hits)
+  add('公共事务', reason.public_hits)
+  add('诉求', reason.demand_hits)
+  add('风险', reason.risk_hits)
+  return parts.length ? parts.join('；') : '系统默认准入'
+}
+
 async function loadSources() {
   try {
     const { data } = await api.get<string[]>('/opinions/sources')
@@ -171,10 +258,14 @@ async function loadData() {
     const params: Record<string, any> = { page: page.value, size: size.value }
     if (filters.source) params.source = filters.source
     if (filters.risk_level) params.risk_level = filters.risk_level
+    if (filters.content_type) params.content_type = filters.content_type
     if (filters.keyword) params.keyword = filters.keyword
     const [rmin, rmax] = levelRange(filters.level)
     if (rmin != null) params.risk_min = rmin
     if (rmax != null) params.risk_max = rmax
+    const [relMin, relMax] = relevanceRange(filters.relevance)
+    if (relMin != null) params.relevance_min = relMin
+    if (relMax != null) params.relevance_max = relMax
     if (filters.date_from) params.date_from = filters.date_from
     if (filters.date_to) params.date_to = filters.date_to
     const { data } = await api.get<OpinionListResponse>('/opinions', { params })
@@ -188,6 +279,7 @@ async function loadData() {
 function handleSearch() { page.value = 1; loadData() }
 function handleRefresh() {
   filters.source = ''; filters.risk_level = ''; filters.level = ''
+  filters.content_type = ''; filters.relevance = ''
   filters.date_from = ''; filters.date_to = ''; filters.keyword = ''
   page.value = 1; loadData()
 }
@@ -251,7 +343,7 @@ onMounted(() => {
 .table-card { padding: 6px 6px 14px; overflow: hidden; }
 .card-pad { padding: 24px 26px; }
 
-table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.tbl { width: 100%; min-width: 1540px; table-layout: fixed; border-collapse: collapse; font-size: 14px; }
 table.tbl thead th {
   text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b;
   padding: 14px 18px; border-bottom: 1px solid #e8e8ed; white-space: nowrap;
@@ -263,7 +355,16 @@ table.tbl tbody tr { transition: background-color 0.12s ease; }
 table.tbl tbody tr:hover { background: #fafafc; }
 table.tbl tbody tr:last-child td { border-bottom: none; }
 .col-center { text-align: center; }
-.t-title { font-weight: 500; color: #1d1d1f; }
+.tbl-scroll { overflow-x: auto; }
+.t-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  font-weight: 500; color: #1d1d1f;
+}
 .risk-num { font-weight: 600; font-variant-numeric: tabular-nums; }
 .empty-row td { text-align: center; color: #86868b; padding: 40px 0; }
 
@@ -276,6 +377,20 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .pill-orange { background: rgba(255,159,10,0.12); color: #c77700; }
 .pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
 .pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
+.pill-blue { background: #e8f1fd; color: #0071e3; }
+.score-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 58px; height: 26px; padding: 0 10px; border-radius: 980px;
+  font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.score-high { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.score-low { background: rgba(255,159,10,0.12); color: #c77700; }
+.score-filtered { background: rgba(255,59,48,0.10); color: #ff3b30; }
+.score-empty { background: rgba(110,110,115,0.12); color: #6e6e73; }
+.admission-summary {
+  display: inline-block; max-width: 260px; color: #515154; font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+}
 
 .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 18px 0; }
 .pager .p-info { color: #86868b; font-size: 13px; margin-right: auto; }

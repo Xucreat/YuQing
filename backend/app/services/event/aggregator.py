@@ -54,7 +54,9 @@ from app.models.event import Event
 from app.models.event_opinion import EventOpinion
 from app.models.opinion import Opinion
 from app.services.ai.fallback import DEFAULT_KEYWORDS
+from app.services.event.heat_service import EventHeatService
 from app.services.event.title_format import build_cluster_title, representative_title
+from app.services.event.topic_service import EventTopicService
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +93,18 @@ def _map_risk_level(max_score: int) -> str:
     if max_score >= 40:
         return "medium"
     return "low"
+
+
+def _clamp_risk_score(score: int | None) -> int:
+    return max(0, min(100, int(score or 0)))
+
+
+def _event_risk_score(opinions: Iterable[Opinion]) -> int:
+    return max((_clamp_risk_score(op.risk_score) for op in opinions), default=0)
+
+
+def _event_topic_category(opinions: Iterable[Opinion]) -> str:
+    return EventTopicService().classify_event(opinions).topic
 
 
 # ---------------------------------------------------------------------------
@@ -349,12 +363,14 @@ class EventAggregator:
                     updated_ids.add(existing.id)
                     linked += n
                 self._recompute_event(db, existing, cluster)
+                self._refresh_event_heat(db, existing)
             elif materialize:
                 event = self._create_event(db, cluster)
                 db.flush()
                 created += 1
                 created_ids.add(event.id)
                 linked += self._link_all(db, event.id, cluster)
+                self._refresh_event_heat(db, event)
             else:
                 # 低信号单条 Opinion：不单独建事件，但已可能经延续挂载到既有事件；
                 # 若仍未挂载则保持「未关联」状态（避免噪声撑爆事件中心）。
@@ -496,6 +512,7 @@ class EventAggregator:
                 updated_ids.add(ev.id)
                 linked += n
             self._recompute_event(db, ev, [cand])
+            self._refresh_event_heat(db, ev)
 
         # 未挂载候选彼此聚类，物化为新事件。
         clusters = cluster_opinions(unattached)
@@ -515,6 +532,7 @@ class EventAggregator:
                 created += 1
                 created_ids.add(event.id)
                 linked += self._link_all(db, event.id, cluster)
+                self._refresh_event_heat(db, event)
             # 否则保持未关联（低信号单条），与全量行为一致。
 
         if dry_run:
@@ -635,6 +653,7 @@ class EventAggregator:
     def _create_event(self, db: Session, cluster: list[Opinion]) -> Event:
         top = self._pick_top_risk(cluster)
         merged_kw = sorted(self._merge_keywords(cluster))
+        risk_score = _event_risk_score(cluster)
         times = [
             _effective_time(op) for op in cluster if _effective_time(op) is not None
         ]
@@ -655,13 +674,20 @@ class EventAggregator:
             title=event_title,
             description=(top.content or "")[:200],
             keyword=",".join(merged_kw),
-            risk_level=_map_risk_level(max(op.risk_score for op in cluster)),
+            region_id=top.region_id,
+            risk_score=risk_score,
+            risk_level=_map_risk_level(risk_score),
+            topic_category=_event_topic_category(cluster),
             opinion_count=len(cluster),
             first_time=min(times) if times else None,
             last_time=max(times) if times else None,
         )
         db.add(event)
         return event
+
+    @staticmethod
+    def _refresh_event_heat(db: Session, event: Event) -> None:
+        EventHeatService().refresh(db, event)
 
     def _link_all(
         self, db: Session, event_id: int, cluster: list[Opinion]
@@ -699,8 +725,13 @@ class EventAggregator:
         event.opinion_count = len(opinions)
         times = [_effective_time(o) for o in opinions if _effective_time(o) is not None]
         if times:
+            event.first_time = min(times)
             event.last_time = max(times)
-        event.risk_level = _map_risk_level(max(o.risk_score for o in opinions))
+        risk_score = _event_risk_score(opinions)
+        event.risk_score = risk_score
+        event.risk_level = _map_risk_level(risk_score)
+        event.topic_category = _event_topic_category(opinions)
+        event.region_id = _representative(opinions).region_id
         merged = self._merge_keywords(opinions)
         if merged:
             event.keyword = ",".join(sorted(merged))

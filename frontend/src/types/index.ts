@@ -7,6 +7,16 @@ export type Sentiment = 'positive' | 'negative' | 'neutral'
 
 // 鍒嗘瀽鐘舵€侊紙鍚庣 analysis_status锛?
 export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed'
+export type OpinionContentType =
+  | 'complaint'
+  | 'consultation'
+  | 'risk_event'
+  | 'public_affairs'
+  | 'news'
+  | 'policy'
+  | 'irrelevant'
+  | 'advertising'
+  | 'entertainment'
 
 // 涓庡悗绔?OpinionOut 瀹屽叏瀵归綈
 export interface Opinion {
@@ -41,6 +51,13 @@ export interface Opinion {
   risk_factors?: Record<string, any> | null
   risk_model_version?: string | null
   risk_category?: string | null
+  source_type?: string | null
+  author?: string | null
+  engagement?: Record<string, any> | null
+  external_id?: string | null
+  relevance_score?: number | null
+  content_type?: OpinionContentType | string | null
+  admission_reason?: Record<string, any> | null
 }
 
 // GET /api/opinions 鍒嗛〉鍝嶅簲
@@ -51,18 +68,36 @@ export interface OpinionListResponse {
   size: number
 }
 
-// 涓庡悗绔?EventOut 瀵归綈锛坰tatus 鍚庣鍥哄畾杩斿洖 "active"锛?
+// 与后端 EventOut 对齐；status 为持久化的人工处置状态。
 export interface EventItem {
   id: number
   title: string
+  region_id?: number | null
+  region_name?: string | null
   risk_level: string
+  risk_score: number
+  topic_category?: string | null
+  heat_score: number
+  trend: 'rising' | 'stable' | 'falling' | 'unknown' | string
   opinion_count: number
-  status: string // 鍚庣鍥哄畾 "active"锛堜粎搴忓垪鍖栧眰锛?
+  status: string
   first_time: string | null
   last_time: string | null
   // 鈫?鏃у瓧娈碉細鍚庣 EventOut 鏈繑鍥烇紝淇濈暀 optional 鍏煎鍘嗗彶寮曠敤
   description?: string
   keyword?: string
+}
+
+export interface EventActionItem {
+  id: number
+  event_id: number
+  user_id: number | null
+  username: string | null
+  action_type: 'status_change' | 'note' | 'assign' | 'resolve' | string
+  content: string
+  old_status: string | null
+  new_status: string | null
+  created_at: string
 }
 
 // GET /api/events 鍒嗛〉鍝嶅簲
@@ -168,6 +203,9 @@ export interface CollectorRunResponse {
   created: number
   analyzed: number
   failed: number
+  comments_seen?: number
+  comments_skipped?: number
+  admission_filtered?: number
   message: string
   collector_type?: string
 }
@@ -355,6 +393,10 @@ export interface DataSourceItem {
   latest_run_status: string | null
   latest_run_at: string | null
   updated_at: string | null
+  keyword_mode: 'global_region' | 'source_keywords' | 'no_filter' | 'full_collection' | 'unknown'
+  keyword_source: string
+  effective_keywords: string[]
+  keyword_description: string
 }
 
 export interface RegionOption {
@@ -368,6 +410,30 @@ export interface DataSourceListResponse {
   page: number
   size: number
   region_options: RegionOption[]
+}
+
+export interface DataSourceQualityItem {
+  data_source_id: number
+  collector_name: string
+  latest_run_at: string | null
+  run_count: number
+  success_rate: number | null
+  fetched_nonzero_rate: number | null
+  fetched_zero_rate: number | null
+  created_nonzero_rate: number | null
+  fetched_raw_total: number
+  created_total: number
+  latest_status: string | null
+  latest_fetched_raw: number | null
+  latest_created: number | null
+  consecutive_failed_count: number
+  consecutive_empty_fetch_count: number
+  empty_fetch_risk: 'normal' | 'warning' | 'high' | 'unknown'
+}
+
+export interface DataSourceQualityResponse {
+  days: number
+  items: DataSourceQualityItem[]
 }
 
 export interface DataSourceCreateRequest {
@@ -398,12 +464,16 @@ export interface DataSourceTestResult {
 
 export interface CollectorRunItem {
   id: number
-  collector_name: string  start_time: string | null
+  collector_name: string
+  start_time: string | null
   end_time: string | null
   fetched_raw: number
   created: number
   analyzed: number
   failed: number
+  comments_seen?: number
+  comments_skipped?: number
+  admission_filtered?: number
   status: string
   error_msg: string | null
 }
@@ -429,6 +499,9 @@ export interface CollectionLogItem {
   fetched_raw: number
   created: number
   analyzed: number
+  comments_seen?: number
+  comments_skipped?: number
+  admission_filtered?: number
   status: string
 }
 

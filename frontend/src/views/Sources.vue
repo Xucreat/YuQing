@@ -20,15 +20,18 @@
     </div>
 
     <!-- 管理表格 -->
-    <div class="card">
+    <div class="card source-table-card">
       <table class="tbl">
         <thead>
           <tr>
             <th>名称</th>
-            <th>区域</th>
+            <th style="width:180px">区域</th>
+            <th style="width:240px">关键词策略</th>
             <th style="width:96px">启用</th>
             <th style="width:120px">优先级</th>
             <th style="width:110px">最近状态</th>
+            <th style="width:130px">最近抓取 / 新增</th>
+            <th style="width:132px">采集质量</th>
             <th style="width:170px">最近运行时间</th>
             <th style="width:120px">操作</th>
           </tr>
@@ -44,9 +47,20 @@
               </div>
               <div class="ds-key">{{ s.key }} · {{ s.type }}</div>
             </td>
+            <td class="region-cell">
+              <span v-if="s.scope_display === '全国'" class="pill pill-gray region-pill">全国</span>
+              <span v-else class="pill pill-blue region-pill">{{ s.scope_display }}</span>
+            </td>
             <td>
-              <span v-if="s.scope_display === '全国'" class="pill pill-gray">全国</span>
-              <span v-else class="pill pill-blue">{{ s.scope_display }}</span>
+              <div class="keyword-policy">
+                <span class="pill" :class="keywordModePill(s.keyword_mode)">
+                  {{ keywordModeText(s.keyword_mode) }}
+                </span>
+                <div class="keyword-policy-desc">{{ s.keyword_description }}</div>
+                <div class="keyword-policy-list" :title="(s.effective_keywords || []).join('、')">
+                  {{ effectiveKeywordsText(s) }}
+                </div>
+              </div>
             </td>
             <td>
               <el-switch
@@ -70,6 +84,23 @@
               <span v-else class="muted">—</span>
             </td>
             <td>
+              <template v-if="qualityFor(s)">
+                <span class="metric-number">{{ qualityFor(s)?.latest_fetched_raw ?? '—' }}</span>
+                <span class="metric-divider">/</span>
+                <span class="metric-number">{{ qualityFor(s)?.latest_created ?? '—' }}</span>
+              </template>
+              <span v-else class="muted">—</span>
+            </td>
+            <td>
+              <template v-if="qualityFor(s)">
+                <span class="pill" :class="qualityPill(qualityFor(s)!.empty_fetch_risk)">
+                  {{ qualityText(qualityFor(s)!.empty_fetch_risk) }}
+                </span>
+                <div v-if="qualityHint(qualityFor(s)!)" class="quality-hint">{{ qualityHint(qualityFor(s)!) }}</div>
+              </template>
+              <span v-else class="muted">暂无运行</span>
+            </td>
+            <td>
               <span v-if="s.latest_run_at">{{ formatTime(s.latest_run_at) }}</span>
               <span v-else class="muted">从未运行</span>
             </td>
@@ -78,7 +109,7 @@
               <button class="btn btn-mini" @click="openConfig(s)">配置</button>
             </td>
           </tr>
-          <tr v-if="!sources.length"><td colspan="7" class="empty-row">暂无数据源</td></tr>
+          <tr v-if="!sources.length"><td colspan="10" class="empty-row">暂无数据源</td></tr>
         </tbody>
       </table>
     </div>
@@ -104,6 +135,24 @@
       modal-class="apple-modal"
     >
       <div v-loading="historyLoading">
+        <div class="run-summary" v-if="history.length">
+          <div class="run-stat">
+            <span>原始候选</span>
+            <b>{{ historySummary.fetched }}</b>
+          </div>
+          <div class="run-stat">
+            <span>{{ commentStatsLabel }}</span>
+            <b>{{ commentStatsValue(historySummary.commentsSkipped) }}</b>
+          </div>
+          <div class="run-stat">
+            <span>准入过滤</span>
+            <b>{{ historySummary.admissionFiltered }}</b>
+          </div>
+          <div class="run-stat">
+            <span>最终形成舆情</span>
+            <b>{{ historySummary.created }}</b>
+          </div>
+        </div>
         <div class="card table-card">
           <table class="tbl hist-tbl">
             <thead>
@@ -111,6 +160,8 @@
                 <th style="width:170px">时间</th>
                 <th>采集器</th>
                 <th style="width:70px">抓取</th>
+                <th style="width:92px">{{ commentStatsLabel }}</th>
+                <th style="width:92px">准入过滤</th>
                 <th style="width:70px">新增</th>
                 <th style="width:70px">分析</th>
                 <th style="width:80px">状态</th>
@@ -121,11 +172,13 @@
                 <td>{{ formatTime(r.start_time) }}</td>
                 <td>{{ r.collector_name }}</td>
                 <td>{{ r.fetched_raw }}</td>
+                <td>{{ commentStatsValue(r.comments_skipped) }}</td>
+                <td>{{ r.admission_filtered ?? 0 }}</td>
                 <td>{{ r.created }}</td>
                 <td>{{ r.analyzed }}</td>
                 <td><span class="pill" :class="runPill(r.status)">{{ runText(r.status) }}</span></td>
               </tr>
-              <tr v-if="!history.length"><td colspan="6" class="empty-row">暂无采集记录</td></tr>
+              <tr v-if="!history.length"><td colspan="8" class="empty-row">暂无采集记录</td></tr>
             </tbody>
           </table>
         </div>
@@ -240,10 +293,19 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
-import type { CollectorRunItem, DataSourceCreateRequest, DataSourceItem, DataSourceTestResult, RegionOption } from '@/types'
+import type {
+  CollectorRunItem,
+  DataSourceCreateRequest,
+  DataSourceItem,
+  DataSourceListResponse,
+  DataSourceQualityItem,
+  DataSourceQualityResponse,
+  DataSourceTestResult,
+  RegionOption,
+} from '@/types'
 
 interface Row extends DataSourceItem {
   _saving?: boolean
@@ -273,6 +335,7 @@ const regionOptions = ref<RegionOption[]>([])
 const filterRegion = ref<string>('')
 const filterEnabled = ref<boolean | ''>('')
 const filterQ = ref('')
+const qualityBySourceId = ref<Record<number, DataSourceQualityItem>>({})
 
 const historyVisible = ref(false)
 const configVisible = ref(false)
@@ -282,6 +345,33 @@ const historyLoading = ref(false)
 const configDraft = ref('')
 const configError = ref('')
 const savingConfig = ref(false)
+
+function supportsCommentStats(source: Row | null): boolean {
+  if (!source) return false
+  const identity = [source.key, source.type, source.name]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return source.key === 'weibo_octopus' || identity.includes('weibo') || identity.includes('微博')
+}
+
+const commentStatsApplicable = computed(() => supportsCommentStats(currentSource.value))
+const commentStatsLabel = computed(() => commentStatsApplicable.value ? '评论跳过' : '评论处理')
+
+function commentStatsValue(value?: number | null): number | string {
+  return commentStatsApplicable.value ? (value ?? 0) : '不适用'
+}
+
+const historySummary = computed(() => history.value.reduce(
+  (acc, r) => {
+    acc.fetched += r.fetched_raw || 0
+    acc.commentsSkipped += r.comments_skipped || 0
+    acc.admissionFiltered += r.admission_filtered || 0
+    acc.created += r.created || 0
+    return acc
+  },
+  { fetched: 0, commentsSkipped: 0, admissionFiltered: 0, created: 0 },
+))
 
 // —— 新建采集源 ——
 const createVisible = ref(false)
@@ -319,6 +409,60 @@ function formatTime(t: string | null): string {
   return t.replace('T', ' ').slice(0, 19)
 }
 
+function qualityFor(source: Row): DataSourceQualityItem | undefined {
+  return qualityBySourceId.value[source.id]
+}
+
+function qualityPill(risk: DataSourceQualityItem['empty_fetch_risk']): string {
+  const m: Record<DataSourceQualityItem['empty_fetch_risk'], string> = {
+    normal: 'pill-green', warning: 'pill-orange', high: 'pill-red', unknown: 'pill-gray',
+  }
+  return m[risk]
+}
+
+function qualityText(risk: DataSourceQualityItem['empty_fetch_risk']): string {
+  const m: Record<DataSourceQualityItem['empty_fetch_risk'], string> = {
+    normal: '正常', warning: '空抓取', high: '高风险', unknown: '未运行',
+  }
+  return m[risk]
+}
+
+function qualityHint(item: DataSourceQualityItem): string {
+  if (item.consecutive_failed_count > 0) return `连续失败 ${item.consecutive_failed_count}`
+  if (item.consecutive_empty_fetch_count > 0) return `连续空抓取 ${item.consecutive_empty_fetch_count}`
+  return ''
+}
+
+function keywordModeText(mode: Row['keyword_mode']): string {
+  const map: Record<Row['keyword_mode'], string> = {
+    global_region: '全局地域词',
+    source_keywords: '数据源独立词',
+    no_filter: '全量放行',
+    full_collection: '全量采集',
+    unknown: '待确认',
+  }
+  return map[mode] || '待确认'
+}
+
+function keywordModePill(mode: Row['keyword_mode']): string {
+  const map: Record<Row['keyword_mode'], string> = {
+    global_region: 'pill-blue',
+    source_keywords: 'pill-green',
+    no_filter: 'pill-orange',
+    full_collection: 'pill-gray',
+    unknown: 'pill-orange',
+  }
+  return map[mode] || 'pill-gray'
+}
+
+function effectiveKeywordsText(source: Row): string {
+  const keywords = source.effective_keywords || []
+  if (keywords.length) return keywords.join('、')
+  return source.keyword_mode === 'no_filter' || source.keyword_mode === 'full_collection'
+    ? '不适用'
+    : '当前无有效关键词'
+}
+
 async function reload() {
   loading.value = true
   try {
@@ -326,13 +470,17 @@ async function reload() {
     if (filterRegion.value) params.region_code = filterRegion.value
     if (filterEnabled.value !== '') params.enabled = filterEnabled.value
     if (filterQ.value) params.q = filterQ.value
-    const { data } = await api.get<{ items: Row[]; total: number; region_options: RegionOption[] }>(
-      '/admin/data-sources',
-      { params },
-    )
+    const [sourceResponse, qualityResponse] = await Promise.all([
+      api.get<DataSourceListResponse>('/admin/data-sources', { params }),
+      api.get<DataSourceQualityResponse>('/admin/data-sources/quality', { params: { days: 7 } }),
+    ])
+    const data = sourceResponse.data
     sources.value = data.items || []
     total.value = data.total || 0
     if (data.region_options) regionOptions.value = data.region_options
+    qualityBySourceId.value = Object.fromEntries(
+      (qualityResponse.data.items || []).map(item => [item.data_source_id, item]),
+    )
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载数据源失败')
   } finally {
@@ -531,6 +679,8 @@ async function submitCreate() {
   padding: 6px 6px 14px; overflow: hidden;
 }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.source-table-card { overflow-x: auto; overflow-y: hidden; }
+.source-table-card .tbl { min-width: 1430px; }
 table.tbl thead th {
   text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b;
   padding: 14px 18px; border-bottom: 1px solid #e8e8ed;
@@ -551,7 +701,15 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .pill-red { background: rgba(255,59,48,0.1); color: #ff3b30; }
 .pill-orange { background: rgba(255,159,10,0.12); color: #c77700; }
 .pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
+.region-cell { white-space: nowrap; }
+.region-pill { white-space: nowrap; }
 .muted { color: #b0b0b5; }
+.metric-number { font-variant-numeric: tabular-nums; font-weight: 600; }
+.metric-divider { color: #86868b; margin: 0 4px; }
+.quality-hint { font-size: 12px; color: #86868b; margin-top: 4px; white-space: nowrap; }
+.keyword-policy { min-width: 180px; max-width: 240px; }
+.keyword-policy-desc { color: #6e6e73; font-size: 12px; line-height: 1.45; margin-top: 4px; }
+.keyword-policy-list { color: #1d1d1f; font-size: 12px; line-height: 1.45; margin-top: 2px; overflow-wrap: anywhere; }
 
 .pager { display: flex; justify-content: flex-end; margin-top: 16px; }
 
@@ -569,6 +727,22 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .btn-mini:hover { background: #e8f1fd; }
 
 .dlg-sub { font-size: 15px; font-weight: 600; margin: 0 0 10px; color: #1d1d1f; }
+.run-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.run-stat {
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid #e8e8ed;
+  border-radius: 12px;
+  background: #fafafc;
+  box-sizing: border-box;
+}
+.run-stat span { display: block; font-size: 12px; color: #86868b; margin-bottom: 4px; }
+.run-stat b { font-size: 20px; color: #1d1d1f; font-variant-numeric: tabular-nums; }
 .table-card {
   padding: 0 6px 14px;     /* 去掉顶部内边距，避免吸顶表头与窗口顶之间出现空隙 */
   max-height: 56vh;        /* 内容过长时弹窗内出现纵向滚动窗 */

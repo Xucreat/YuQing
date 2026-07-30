@@ -31,8 +31,8 @@ _scheduler_lock_conn = None
 def _run_collector_job():
     db = SessionLocal()
     try:
-        service = CollectorService()
-        result = service.collect_and_analyze(db)
+        service = CollectorService(exclude_data_source_keys={"weibo_octopus"})
+        result = service.collect_and_analyze(db, trigger_type="scheduled")
         logger.info("Scheduled collect: type=%s fetched=%d created=%d analyzed=%d failed=%d", result.collector_type, result.fetched_raw, result.created, result.analyzed, result.failed)
         # 采集后自动增量聚合（异常安全，不阻断采集主流程）。
         agg = auto_aggregate_after_collect(SessionLocal)
@@ -41,6 +41,34 @@ def _run_collector_job():
         logger.info("Scheduled collect skipped: throttled")
     except Exception:
         logger.exception("Scheduled collect failed")
+    finally:
+        db.close()
+
+
+def _run_weibo_consumer_job():
+    """Consume only the completed 八爪鱼 export from the independent hourly job."""
+    db = SessionLocal()
+    try:
+        service = CollectorService(include_data_source_keys={"weibo_octopus"})
+        result = service.collect_and_analyze(db, trigger_type="weibo_scheduled")
+        logger.info(
+            "Scheduled Weibo collect: fetched=%d created=%d analyzed=%d failed=%d",
+            result.fetched_raw,
+            result.created,
+            result.analyzed,
+            result.failed,
+        )
+        agg = auto_aggregate_after_collect(SessionLocal)
+        logger.info(
+            "Scheduled Weibo auto-aggregate: created=%d updated=%d linked=%d",
+            agg.get("created", 0),
+            agg.get("updated", 0),
+            agg.get("linked", 0),
+        )
+    except CollectorThrottled:
+        logger.info("Scheduled Weibo collect skipped: throttled")
+    except Exception:
+        logger.exception("Scheduled Weibo collect failed")
     finally:
         db.close()
 
@@ -120,6 +148,7 @@ def start_scheduler():
     scheduler = AsyncIOScheduler()
     if settings.collector_schedule_enabled:
         scheduler.add_job(_run_collector_job, trigger=CronTrigger.from_crontab(settings.collector_schedule_cron), id="collector_main", name="Main collector cycle", replace_existing=True)
+        scheduler.add_job(_run_weibo_consumer_job, trigger=CronTrigger.from_crontab(settings.weibo_consumer_schedule_cron), id="weibo_consumer", name="Weibo hourly consumer", replace_existing=True)
     if settings.alert_eval_enabled:
         scheduler.add_job(_run_alert_eval_job, trigger=IntervalTrigger(minutes=settings.alert_eval_interval_minutes), id="alert_eval", name="Alert auto-evaluation", replace_existing=True)
     scheduler.start()

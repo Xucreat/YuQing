@@ -1,7 +1,41 @@
 ﻿from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+EventStatus = Literal["active", "verifying", "processing", "resolved", "closed"]
+
+
+class EventStatusUpdate(BaseModel):
+    status: EventStatus
+
+
+class EventActionCreate(BaseModel):
+    action_type: Literal["note"]
+    content: str = Field(min_length=1, max_length=5000)
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        content = value.strip()
+        if not content:
+            raise ValueError("content must not be blank")
+        return content
+
+
+class EventActionOut(BaseModel):
+    id: int
+    event_id: int
+    user_id: Optional[int] = None
+    username: Optional[str] = None
+    action_type: str
+    content: str
+    old_status: Optional[str] = None
+    new_status: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EventCreateResponse(BaseModel):
@@ -27,7 +61,13 @@ class EventTaskResponse(BaseModel):
 class EventOut(BaseModel):
     id: int
     title: str
+    region_id: Optional[int] = None
+    region_name: Optional[str] = None
     risk_level: str
+    risk_score: int = 0
+    topic_category: Optional[str] = None
+    heat_score: int = 0
+    trend: str = "unknown"
     opinion_count: int
     status: str = "active"
     first_time: Optional[datetime] = None
@@ -46,3 +86,4 @@ class EventDetailResponse(EventOut):
     keyword: str = ""
     opinions: List = []
     total_opinions: int = 0
+    actions: List[EventActionOut] = Field(default_factory=list)

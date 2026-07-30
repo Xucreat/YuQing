@@ -66,11 +66,18 @@ class GovernmentCollector(BaseCollector):
             href_regex=_ARTICLE_PATH_RE,
         )
 
-    def fetch(self, keywords=None) -> list[dict[str, Any]]:
+    def fetch(
+        self,
+        keywords=None,
+        region_kw=None,
+        topic_kw=None,
+    ) -> list[dict[str, Any]]:
         """采集栏目页文章 → 抓详情正文 → 返回标准化 dict 列表。
 
         - 单次最多 MAX_ARTICLES 篇；详情页请求间隔 REQUEST_INTERVAL。
         - 任何网络异常均隔离：整站不可用返回 []，单篇失败跳过。
+        - region_kw / topic_kw 仅为与统一 collector 接口（service.py 注入）兼容而保留，
+          不参与任何过滤逻辑；government 维持 Option B 全量采集策略。
         """
         if not self.urls:
             return []

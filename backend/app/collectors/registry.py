@@ -26,7 +26,7 @@ import importlib
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Collection, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -168,7 +168,10 @@ class ResolvedCollectors:
 
 
 def _resolve_core(
-    db: Optional[Session], collector_type: Optional[str]
+    db: Optional[Session],
+    collector_type: Optional[str],
+    include_data_source_keys: Optional[Collection[str]] = None,
+    exclude_data_source_keys: Optional[Collection[str]] = None,
 ) -> ResolvedCollectors:
     """核心装配逻辑（供 resolve_collectors / resolve_collectors_verbose 复用）。
 
@@ -202,6 +205,23 @@ def _resolve_core(
         # 灰度回退：内置默认源定义
         logger.info("data_sources 为空/不可用，使用内置默认源定义（%d 个）", len(DEFAULT_SOURCES))
         rows = DEFAULT_SOURCES
+
+    include_keys = set(include_data_source_keys or ())
+    exclude_keys = set(exclude_data_source_keys or ())
+    if include_data_source_keys is not None or exclude_data_source_keys is not None:
+        rows = [
+            row for row in rows
+            if (
+                (row.get("key") if isinstance(row, dict) else row.key) in include_keys
+                if include_data_source_keys is not None
+                else True
+            )
+            and (
+                (row.get("key") if isinstance(row, dict) else row.key) not in exclude_keys
+                if exclude_data_source_keys is not None
+                else True
+            )
+        ]
 
     for row in rows:
         # row 可能是 ORM 对象（来自表）或 dict（来自 DEFAULT_SOURCES 回退）
@@ -247,7 +267,10 @@ def _resolve_core(
 
 
 def resolve_collectors(
-    db: Optional[Session] = None, collector_type: Optional[str] = None
+    db: Optional[Session] = None,
+    collector_type: Optional[str] = None,
+    include_data_source_keys: Optional[Collection[str]] = None,
+    exclude_data_source_keys: Optional[Collection[str]] = None,
 ) -> List[BaseCollector]:
     """表驱动装配采集器（向后兼容旧契约）。
 
@@ -255,11 +278,19 @@ def resolve_collectors(
     不暴露（保持与历史测试 / 脚本一致的行为）。需要失败明细时
     请改用 resolve_collectors_verbose。
     """
-    return _resolve_core(db, collector_type).collectors
+    return _resolve_core(
+        db,
+        collector_type,
+        include_data_source_keys,
+        exclude_data_source_keys,
+    ).collectors
 
 
 def resolve_collectors_verbose(
-    db: Optional[Session] = None, collector_type: Optional[str] = None
+    db: Optional[Session] = None,
+    collector_type: Optional[str] = None,
+    include_data_source_keys: Optional[Collection[str]] = None,
+    exclude_data_source_keys: Optional[Collection[str]] = None,
 ) -> ResolvedCollectors:
     """返回 (成功装配的采集器, 装配失败明细)。
 
@@ -267,4 +298,9 @@ def resolve_collectors_verbose(
     CollectorRun(status=failed)，使"该源完全没采集"的异常在采集日志中可见，
     而不是静默消失。
     """
-    return _resolve_core(db, collector_type)
+    return _resolve_core(
+        db,
+        collector_type,
+        include_data_source_keys,
+        exclude_data_source_keys,
+    )

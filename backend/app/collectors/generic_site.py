@@ -34,7 +34,7 @@ from typing import Any, List, Optional
 from bs4 import BeautifulSoup
 
 from app.collectors.base_http import BaseHttpCollector
-from app.collectors.common import extract_links, extract_publish_time
+from app.collectors.common import extract_links, extract_publish_time, matches_region_topic
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,9 @@ class GenericSiteCollector(BaseHttpCollector):
                 links.append(a)
         return links
 
-    def fetch(self, keywords: Optional[List[str]] = None) -> List[dict[str, Any]]:
+    def fetch(
+        self, keywords: Optional[List[str]] = None, region_kw=None, topic_kw=None
+    ) -> List[dict[str, Any]]:
         """列表 → 详情正文 → 标准化 dict（关键词过滤 + 防御式跳过）。
 
         keywords：来自 keywords 表的全局监测词；仅在未通过
@@ -105,8 +107,9 @@ class GenericSiteCollector(BaseHttpCollector):
         """
         results: List[dict[str, Any]] = []
         seen: set = set()
-        # 逐源显式配置过 keywords（含空串=放行全部）→ 用 self.keywords；
+        # 逐源显式配置过 keywords（含空串=放行全部）→ 用 self.keywords（保持原 OR，不接地域前置）；
         # 否则用全局监测词（来自 keywords 表）。
+        use_region = region_kw is not None
         effective_kw = (
             self.keywords
             if self.keywords_explicit
@@ -127,8 +130,16 @@ class GenericSiteCollector(BaseHttpCollector):
             if not content:
                 continue
             # 关键词过滤（national 源靠关键词命中本省舆情；空关键词放行全部）
-            if not self.match(art["title"] + " " + content[:800], effective_kw):
-                continue
+            if (not self.keywords_explicit) and use_region:
+                # 回退源（未显式配置 keywords）：地域前置过滤（新链路）
+                if not matches_region_topic(
+                    art["title"] + " " + content[:800], region_kw or [], topic_kw or []
+                ):
+                    continue
+            else:
+                # 显式配置源 / 旧式调用：保持原 OR 行为不变
+                if not self.match(art["title"] + " " + content[:800], effective_kw):
+                    continue
             results.append(
                 {
                     "title": art["title"],

@@ -90,9 +90,17 @@ def _run_collect_task(task, session_factory, operator_id=None, operator_username
         collect_result = {
             "collector_type": result.collector_type,
             "fetched_raw": result.fetched_raw,
+            "upstream_total": result.upstream_total,
+            "upstream_returned": result.upstream_returned,
             "created": result.created,
             "analyzed": result.analyzed,
             "failed": result.failed,
+            "acknowledged": result.acknowledged,
+            "unconfirmed": result.unconfirmed,
+            "ack_status": result.ack_status,
+            "comments_seen": result.comments_seen,
+            "comments_skipped": result.comments_skipped,
+            "admission_filtered": result.admission_filtered,
         }
 
         # 采集完成后自动增量聚合：新入库舆情立即聚成事件，无需再手动触发。

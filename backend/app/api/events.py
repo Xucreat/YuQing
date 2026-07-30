@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
@@ -18,20 +18,26 @@ from app.core.permissions import require_permission
 from app.core.task_manager import start_task
 from app.db.session import SessionLocal, get_db
 from app.models.event import Event
+from app.models.event_action import EventAction
 from app.models.event_opinion import EventOpinion
 from app.models.opinion import Opinion
+from app.models.region import Region
 from app.models.user import User
 from app.models.propagation import PropagationNode
 from app.models.alert import AlertRecord
 from app.schemas.event import (
+    EventActionCreate,
+    EventActionOut,
     EventCreateResponse,
     EventDetailResponse,
     EventListResponse,
     EventOut,
+    EventStatusUpdate,
     EventTaskResponse,
 )
 from app.schemas.opinion import OpinionListResponse, OpinionOut
 from app.services.event.aggregator import EventAggregator
+from app.services.audit_service import audit_write
 
 events_router = APIRouter(
     tags=["events"],
@@ -39,6 +45,53 @@ events_router = APIRouter(
 )
 
 MAX_SIZE = 100
+
+EVENT_STATUS_LABELS = {
+    "active": "关注中",
+    "verifying": "核查中",
+    "processing": "处理中",
+    "resolved": "已解决",
+    "closed": "已关闭",
+}
+NEXT_EVENT_STATUS = {
+    "active": "verifying",
+    "verifying": "processing",
+    "processing": "resolved",
+    "resolved": "closed",
+}
+
+
+def _event_out(db: Session, event: Event) -> EventOut:
+    region = db.get(Region, event.region_id) if event.region_id else None
+    return EventOut(
+        id=event.id,
+        title=event.title,
+        region_id=event.region_id,
+        region_name=region.name if region else None,
+        risk_level=event.risk_level,
+        risk_score=event.risk_score,
+        topic_category=event.topic_category,
+        heat_score=event.heat_score,
+        trend=event.trend,
+        opinion_count=event.opinion_count,
+        status=event.status,
+        first_time=event.first_time,
+        last_time=event.last_time,
+    )
+
+
+def _event_action_out(action: EventAction, username: Optional[str]) -> EventActionOut:
+    return EventActionOut(
+        id=action.id,
+        event_id=action.event_id,
+        user_id=action.user_id,
+        username=username,
+        action_type=action.action_type,
+        content=action.content,
+        old_status=action.old_status,
+        new_status=action.new_status,
+        created_at=action.created_at,
+    )
 
 
 def _run_aggregate_task(task, session_factory, rebuild: bool) -> dict:
@@ -115,6 +168,7 @@ def get_event(
     event = db.get(Event, event_id)
     if event is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+    region = db.get(Region, event.region_id) if event.region_id else None
     opinions = (
         db.query(Opinion)
         .join(EventOpinion, EventOpinion.opinion_id == Opinion.id)
@@ -123,18 +177,127 @@ def get_event(
         .all()
     )
     opinion_outs = [OpinionOut.model_validate(o) for o in opinions]
+    action_rows = (
+        db.query(EventAction, User.username)
+        .outerjoin(User, User.id == EventAction.user_id)
+        .filter(EventAction.event_id == event_id)
+        .order_by(EventAction.created_at.desc(), EventAction.id.desc())
+        .all()
+    )
     return EventDetailResponse(
         id=event.id,
         title=event.title,
+        region_id=event.region_id,
+        region_name=region.name if region else None,
         risk_level=event.risk_level,
+        risk_score=event.risk_score,
+        topic_category=event.topic_category,
+        heat_score=event.heat_score,
+        trend=event.trend,
         opinion_count=event.opinion_count,
+        status=event.status,
         first_time=event.first_time,
         last_time=event.last_time,
         description=event.description,
         keyword=event.keyword,
         opinions=opinion_outs,
         total_opinions=len(opinion_outs),
+        actions=[_event_action_out(action, username) for action, username in action_rows],
     )
+
+
+@events_router.patch(
+    "/{event_id}/status",
+    response_model=EventOut,
+    status_code=status.HTTP_200_OK,
+)
+def update_event_status(
+    event_id: int,
+    body: EventStatusUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("events:write")),
+) -> EventOut:
+    """Advance an event's manual handling state or return it to active."""
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    old_status = event.status
+    new_status = body.status
+    if new_status == old_status:
+        return _event_out(db, event)
+    if new_status != "active" and NEXT_EVENT_STATUS.get(old_status) != new_status:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Invalid event status transition: {old_status} -> {new_status}",
+        )
+
+    content = (
+        f"事件状态由{EVENT_STATUS_LABELS[old_status]}"
+        f"变更为{EVENT_STATUS_LABELS[new_status]}"
+    )
+    with audit_write(
+        db,
+        action="EVENT_STATUS_CHANGE",
+        operator=current_user,
+        request=request,
+        resource_type="event",
+        resource_id=str(event_id),
+        details={"old_status": old_status, "new_status": new_status},
+    ):
+        event.status = new_status
+        db.add(
+            EventAction(
+                event_id=event.id,
+                user_id=current_user.id,
+                action_type="status_change",
+                content=content,
+                old_status=old_status,
+                new_status=new_status,
+            )
+        )
+        db.commit()
+        db.refresh(event)
+    return _event_out(db, event)
+
+
+@events_router.post(
+    "/{event_id}/actions",
+    response_model=EventActionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_event_action(
+    event_id: int,
+    body: EventActionCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("events:write")),
+) -> EventActionOut:
+    """Add a manual note without changing event risk or handling state."""
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    action = EventAction(
+        event_id=event.id,
+        user_id=current_user.id,
+        action_type="note",
+        content=body.content,
+    )
+    with audit_write(
+        db,
+        action="EVENT_NOTE_CREATE",
+        operator=current_user,
+        request=request,
+        resource_type="event",
+        resource_id=str(event_id),
+        details={"action_type": "note"},
+    ):
+        db.add(action)
+        db.commit()
+        db.refresh(action)
+    return _event_action_out(action, current_user.username)
 
 
 @events_router.delete(
@@ -178,33 +341,76 @@ def list_events(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=MAX_SIZE),
     title: Optional[str] = Query(None, description="按事件标题模糊搜索（不区分大小写）"),
+    region_id: Optional[int] = Query(None, ge=1, description="按影响地区 ID 筛选"),
     risk_level: Optional[Literal["low", "medium", "high"]] = Query(
         None, description="风险等级筛选：low=低 / medium=中 / high=高"
     ),
+    topic_category: Optional[
+        Literal[
+            "livelihood", "traffic", "education", "healthcare", "environment",
+            "safety", "market", "gov_service", "social_security",
+            "public_emergency", "other",
+        ]
+    ] = Query(None, description="按事件主题筛选"),
+    event_status: Optional[
+        Literal["active", "verifying", "processing", "resolved", "closed"]
+    ] = Query(None, alias="status", description="按事件处置状态筛选"),
+    trend: Optional[Literal["rising", "stable", "falling", "unknown"]] = Query(
+        None, description="趋势筛选：rising=升温 / stable=稳定 / falling=降温 / unknown=数据不足"
+    ),
+    heat_min: Optional[int] = Query(None, ge=0, le=100),
+    heat_max: Optional[int] = Query(None, ge=0, le=100),
     db: Session = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> EventListResponse:
-    """Event 列表（分页，按 id DESC，支持标题模糊搜索 + 风险等级筛选）。"""
+    """Event 列表，支持事件属性筛选并按风险、热度、更新时间降序排列。"""
     q = db.query(Event)
     if title:
         # ilike 使用绑定参数，模式字符串经占位符传递，无注入风险
         q = q.filter(Event.title.ilike(f"%{title.strip()}%"))
+    if region_id is not None:
+        q = q.filter(Event.region_id == region_id)
     if risk_level:
         q = q.filter(Event.risk_level == risk_level)
+    if topic_category:
+        q = q.filter(Event.topic_category == topic_category)
+    if event_status:
+        q = q.filter(Event.status == event_status)
+    if trend:
+        q = q.filter(Event.trend == trend)
+    if heat_min is not None:
+        q = q.filter(Event.heat_score >= heat_min)
+    if heat_max is not None:
+        q = q.filter(Event.heat_score <= heat_max)
     total = q.count()
     rows = (
-        q.order_by(Event.id.desc())
+        q.order_by(
+            Event.risk_score.desc(),
+            Event.heat_score.desc(),
+            Event.last_time.desc().nullslast(),
+        )
         .offset((page - 1) * size)
         .limit(size)
         .all()
     )
+    region_ids = {event.region_id for event in rows if event.region_id is not None}
+    region_names = {
+        region.id: region.name
+        for region in db.query(Region).filter(Region.id.in_(region_ids)).all()
+    } if region_ids else {}
     items = [
         EventOut(
             id=e.id,
             title=e.title,
+            region_id=e.region_id,
+            region_name=region_names.get(e.region_id),
             risk_level=e.risk_level,
+            risk_score=e.risk_score,
+            topic_category=e.topic_category,
+            heat_score=e.heat_score,
+            trend=e.trend,
             opinion_count=e.opinion_count,
-            status="active",
+            status=e.status,
             first_time=e.first_time,
             last_time=e.last_time,
         )

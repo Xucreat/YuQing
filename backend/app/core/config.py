@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     # P0: scheduled collection
     collector_schedule_enabled: bool = True
     collector_schedule_cron: str = "*/30 * * * *"
+    # 八爪鱼任务按小时生产，消费端在每小时 15 分执行，避开任务完成窗口。
+    weibo_consumer_schedule_cron: str = "15 * * * *"
     # P0: 预警自动评估（每 N 分钟执行一次，生成新预警记录供前端推送）
     alert_eval_enabled: bool = True
     alert_eval_interval_minutes: int = 30
@@ -76,10 +78,28 @@ class Settings(BaseSettings):
     hebei_daily_enabled: bool = True
     changcheng_enabled: bool = True
     hebei_gov_enabled: bool = True
-    # 微博采集：维护成本高、稳定性差，已从运行流程移除（保留 WeiboCollector 类以兼容）。
-    # 该开关不再被装配逻辑读取；保留字段仅为向后兼容，建议保持 False。
+    # 微博采集（Phase Weibo-1 重新启用）：
+    # 旧 Playwright 直爬方案已弃用（WeiboCollector 类保留仅为兼容，weibo_cookie 同）。
+    # weibo_enabled 现在是 WeiboOctopusCollector（八爪鱼 API）的运行总开关：
+    # False 时即使 data_sources 行启用，fetch 也直接跳过（双保险），默认 False。
     weibo_enabled: bool = False
     weibo_cookie: str = ""
+
+    # ===== 八爪鱼开放 API（Phase Weibo-1；仅数据获取，不控制云采集启停）=====
+    # 凭据只允许来自环境变量（.env），禁止写入 data_sources.config_json 或硬编码。
+    # 方式一（推荐）：BAZHU_USERNAME/BAZHU_PASSWORD -> POST /token 换取 access_token（自动缓存续期）。
+    # 方式二：BAZHU_API_KEY 直接作为 Bearer access_token（适合外部代为管理令牌的场景）。
+    bazhu_api_key: str = ""
+    bazhu_username: str = ""
+    bazhu_password: str = ""
+    bazhu_base_url: str = "https://openapi.bazhuayu.com"
+    # 微博短文采集任务 ID（八爪鱼云端任务）；评论任务后续扩展可复用 config_json 覆盖。
+    bazhu_task_id: str = ""
+    # 单次拉取「未导出数据」条数上限（八爪鱼单次最大 1000）。
+    bazhu_fetch_size: int = 1000
+    # 拉取成功后是否回调「确认数据已导出」（幂等由 external_id/url 去重兜底；
+    # 置 False 时依赖去重、便于排障重放）。
+    bazhu_mark_exported: bool = True
     # 政府网站栏目页地址（.env 用逗号分隔字符串亦可，见下方 validator）。
     #   今日大厂 /jrdc.jhtml，公告公示 /gggs.jhtml
     gov_news_urls: List[str] = [
@@ -129,6 +149,25 @@ class Settings(BaseSettings):
                 file=sys.stderr,
             )
         return v
+
+    # ===== Grok 实时搜索辅助采集源（Phase Grok-2；仅采集，非 AI 分析）=====
+    # API Key 仅来自环境变量（.env 的 GROK_API_KEY），禁止写入 data_sources.config_json 或硬编码。
+    grok_api_key: str = ""
+    grok_base_url: str = "https://api.x.ai/v1"
+    # 模型版本配置化（不写死业务逻辑）；运营方按 xAI 当前可用模型调整（如 grok-4.20 / grok-4.3）。
+    grok_model: str = "grok-4.20"
+    # 可选显式代理；为空时复用 openai 默认 httpx 客户端（继承 HTTPS_PROXY）。
+    grok_proxy: str = ""
+    # 单个关键词最多保留的 citation 条数（仅裁剪，不影响 API 调用本身）。
+    grok_search_count: int = 5
+
+    # ===== Bocha auxiliary search leads (Phase Bocha-1A; not a Collector) =====
+    # API Key is environment-only. Never store it in the database, data_sources.config_json,
+    # logs, or frontend responses. Bocha leads do not auto-create Opinion/Event/Alert rows.
+    bocha_api_key: str = ""
+    bocha_base_url: str = "https://api.bochaai.com/v1"
+    bocha_timeout: float = 10.0
+    bocha_search_count: int = 8
 
     # ===== Event 聚合配置（Phase 3C-0）=====
     # 聚合窗口：仅归并最近 N 天内、analysis_status=completed 的 Opinion。

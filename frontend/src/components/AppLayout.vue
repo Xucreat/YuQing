@@ -17,6 +17,9 @@
         <router-link to="/opinions" class="nav-item" :class="{ active: activeMenu === '/opinions' }">
           <span class="ico">☰</span><span>舆情列表</span>
         </router-link>
+        <router-link to="/ai-search" class="nav-item" :class="{ active: activeMenu === '/ai-search' }">
+          <span class="ico">AI</span><span>AI检索</span>
+        </router-link>
         <router-link to="/events" class="nav-item" :class="{ active: activeMenu === '/events' }">
           <span class="ico">⚠</span><span>事件中心</span>
         </router-link>
@@ -49,9 +52,9 @@
           <div class="u-name">{{ authStore.username || 'admin' }}</div>
           <div class="u-role">{{ roleLabel }}</div>
         </div>
-        <button class="nav-bell" :class="{ active: redDot }" title="预警通知" @click="openNotifications">
+        <button class="nav-bell" :class="{ active: messageRedDot }" title="消息提醒" @click="openMessages">
           <span class="bell-ico">🔔</span>
-          <span v-if="redDot" class="bell-dot">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+          <span v-if="messageRedDot" class="bell-dot">{{ messageCount > 99 ? '99+' : messageCount }}</span>
         </button>
         <button class="u-out" title="退出登录" @click="handleLogout">↩</button>
       </div>
@@ -79,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, h } from 'vue'
+import { computed, ref, onMounted, onUnmounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores'
@@ -95,6 +98,11 @@ const authStore = useAuthStore()
 const collectStore = useCollectStore()
 const { role, isSuperuser, hasPermission } = usePermission()
 const { redDot, unreadCount, openNotifications, start } = useAlertNotifier()
+const bochaPendingCount = ref(0)
+let bochaPendingTimer: number | null = null
+
+const messageRedDot = computed(() => redDot.value || bochaPendingCount.value > 0)
+const messageCount = computed(() => unreadCount.value + bochaPendingCount.value)
 const roleLabel = computed(() => {
   const map: Record<string, string> = { admin: '管理员', analyst: '分析员', viewer: '观察员' }
   return map[role.value] || role.value || '未登录'
@@ -117,6 +125,7 @@ const pageTitle = computed(() => {
   const m: Record<string, string> = {
     '/dashboard': '驾驶舱',
     '/opinions': '舆情列表',
+    '/ai-search': 'AI检索',
     '/events': '事件中心',
     '/alerts': '预警中心',
     '/data': '数据管理',
@@ -141,6 +150,7 @@ const pageSub = computed(() => {
   const m: Record<string, string> = {
     '/dashboard': '互联网舆情监测总览',
     '/opinions': '查看和管理所有舆情信息',
+    '/ai-search': '主动搜索外部舆情线索',
     '/events': '跟踪和管理舆情事件',
     '/alerts': '预警规则配置与预警记录',
     '/data': '管理舆情监测关键词与采集数据源',
@@ -186,12 +196,17 @@ async function handleCollect() {
       const fetchedRaw = r.fetched_raw ?? 0
       const created = r.created ?? 0
       const analyzed = r.analyzed ?? 0
+      const commentsSkipped = r.comments_skipped ?? 0
+      const admissionFiltered = r.admission_filtered ?? 0
+      const governanceText = (commentsSkipped || admissionFiltered)
+        ? '，评论跳过 ' + commentsSkipped + ' 条，准入过滤 ' + admissionFiltered + ' 条'
+        : ''
       if (fetchedRaw === 0) {
         ElMessage.warning('采集完成：未抓取到新内容，数据源暂无可读数据')
       } else if (created === 0) {
-        ElMessage.warning('采集完成：抓取 ' + fetchedRaw + ' 条，均为已存在数据')
+        ElMessage.warning('采集完成：抓取 ' + fetchedRaw + ' 条，未形成新舆情' + governanceText)
       } else {
-        ElMessage.success('采集完成：新增 ' + created + ' 条，分析 ' + analyzed + ' 条')
+        ElMessage.success('采集完成：新增 ' + created + ' 条，分析 ' + analyzed + ' 条' + governanceText)
       }
       // trigger a page reload for active view
       window.dispatchEvent(new CustomEvent('data-refresh'))
@@ -218,8 +233,48 @@ function handleLogout() {
   }).then(() => { authStore.logout(); router.push('/login') }).catch(() => {})
 }
 
+async function refreshBochaPendingCount() {
+  if (!localStorage.getItem('token') || !isSuperuser.value) {
+    bochaPendingCount.value = 0
+    return
+  }
+  try {
+    const { data } = await api.get<{ total: number }>('/admin/bocha/leads', {
+      params: { status: 'new', page: 1, size: 1 },
+    })
+    bochaPendingCount.value = data.total || 0
+  } catch {
+    bochaPendingCount.value = 0
+  }
+}
+
+function openMessages() {
+  if (bochaPendingCount.value > 0) {
+    router.push({ path: '/data', query: { tab: 'bocha-leads' } })
+    return
+  }
+  openNotifications()
+}
+
+function handleBochaLeadsRefresh() {
+  refreshBochaPendingCount()
+}
+
 // 启动预警通知轮询（单例，仅首次挂载生效）。
-onMounted(() => start())
+onMounted(() => {
+  start()
+  refreshBochaPendingCount()
+  bochaPendingTimer = window.setInterval(refreshBochaPendingCount, 20_000)
+  window.addEventListener('bocha-leads-refresh', handleBochaLeadsRefresh)
+})
+
+onUnmounted(() => {
+  if (bochaPendingTimer) {
+    window.clearInterval(bochaPendingTimer)
+    bochaPendingTimer = null
+  }
+  window.removeEventListener('bocha-leads-refresh', handleBochaLeadsRefresh)
+})
 </script>
 
 <style scoped>

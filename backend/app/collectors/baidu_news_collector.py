@@ -47,9 +47,19 @@ class BaiduNewsCollector(BaseCollector):
         kw = keywords if keywords is not None else settings.collector_keywords
         self.keywords: list[str] = [k.strip() for k in kw.split(",") if k.strip()]
 
-    def fetch(self, keywords=None) -> list[dict[str, Any]]:
-        kws = keywords if keywords is not None else self.keywords
+    def fetch(self, keywords=None, region_kw=None, topic_kw=None) -> list[dict[str, Any]]:
+        # 新链路：region_kw 驱动搜索（暂不组合 topic_kw）。
+        # region_kw 为 None 时退回旧 keywords 行为（向后兼容）。
+        if region_kw is not None:
+            kws = region_kw
+        else:
+            kws = keywords if keywords is not None else self.keywords
         if not kws:
+            if region_kw is not None:
+                # 配置异常：地域关键词为空 → fail-safe 跳过搜索，避免产出无地域数据。
+                logger.error(
+                    "baidu_news: region_kw 为空（配置异常），跳过搜索以避免产出无地域数据"
+                )
             return []
 
         results: list[dict[str, Any]] = []

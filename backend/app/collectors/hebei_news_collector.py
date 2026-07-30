@@ -25,6 +25,7 @@ from app.collectors.common import (
     http_get,
     make_session,
     matches_keywords,
+    matches_region_topic,
 )
 from app.core.config import settings
 
@@ -58,9 +59,13 @@ class HebeiNewsCollector(BaseCollector):
         kw = settings.collector_keywords
         self.keywords = [k.strip() for k in kw.split(",") if k.strip()]
 
-    def fetch(self, keywords=None) -> list[dict[str, Any]]:
+    def fetch(self, keywords=None, region_kw=None, topic_kw=None) -> list[dict[str, Any]]:
+        # region_kw 非空 → 走地域前置过滤；否则退回旧 OR（向后兼容）。
+        use_region = region_kw is not None
         effective_kw = keywords if keywords is not None else self.keywords
-        if not self.urls or not effective_kw:
+        if not self.urls:
+            return []
+        if not use_region and not effective_kw:
             return []
 
         # 1) collect article links from listing pages
@@ -102,8 +107,12 @@ class HebeiNewsCollector(BaseCollector):
 
             # Keyword filter
             text = title + " " + content[:800]
-            if not matches_keywords(text, effective_kw):
-                continue
+            if use_region:
+                if not matches_region_topic(text, region_kw or [], topic_kw or []):
+                    continue
+            else:
+                if not matches_keywords(text, effective_kw):
+                    continue
 
             results.append(
                 {

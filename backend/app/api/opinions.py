@@ -48,6 +48,9 @@ def list_opinions(
     risk_level: str | None = None,
     risk_min: int | None = None,
     risk_max: int | None = None,
+    content_type: str | None = None,
+    relevance_min: int | None = None,
+    relevance_max: int | None = None,
     keyword: str | None = None,
     sentiment: str | None = None,
     date_from: str | None = None,
@@ -77,6 +80,12 @@ def list_opinions(
         stmt = stmt.where(Opinion.risk_score >= risk_min)
     if risk_max is not None:
         stmt = stmt.where(Opinion.risk_score <= risk_max)
+    if content_type:
+        stmt = stmt.where(Opinion.content_type == content_type)
+    if relevance_min is not None:
+        stmt = stmt.where(Opinion.relevance_score >= relevance_min)
+    if relevance_max is not None:
+        stmt = stmt.where(Opinion.relevance_score <= relevance_max)
     if sentiment:
         stmt = stmt.where(Opinion.sentiment == sentiment)
     if keyword:

@@ -34,6 +34,23 @@ PORT = os.environ.get("PGPORT", "5432")
 LOG = os.path.join(os.path.dirname(DATA_DIR), "pg_start_safe.log")
 
 
+def _server_is_running(env) -> bool:
+    """Return whether pg_ctl sees this exact data directory as running."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [PG_CTL, "status", "-D", DATA_DIR],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
 def main() -> int:
     import argparse
     import subprocess
@@ -53,29 +70,30 @@ def main() -> int:
     # 干净 PATH，避免 MSYS / 其他 DLL 干扰 pg 子进程
     env["PATH"] = PG_BIN + os.pathsep + r"C:\Windows\System32" + os.pathsep + r"C:\Windows\System32\wbem"
 
-    cmd = [PG_CTL, "-D", DATA_DIR, "-W", "-o", f"-p {port}", "-l", LOG, "start"]
-    print("[PG START] 执行:", " ".join(cmd))
-    try:
-        # 注意：pg_ctl 会 fork 出常驻 postgres 守护进程并继承 stdout/stderr 管道，
-        # 若 capture_output 会一直等待管道 EOF 而挂起。因此重定向到 DEVNULL，
-        # pg_ctl 自身的启动日志写到 -l 指定的文件。
-        proc = subprocess.run(
-            cmd,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=60,
-        )
-    except Exception as e:
-        print(f"[ERROR] 启动失败: {e!r}")
-        return 2
-    if proc.stdout:
-        print(proc.stdout)
-    if proc.stderr:
-        print(proc.stderr)
-    if proc.returncode != 0:
-        print(f"[ERROR] pg_ctl 退出码 {proc.returncode}")
-        return 2
+    if _server_is_running(env):
+        print("[PG START] PostgreSQL 已在运行，跳过重复启动")
+    else:
+        cmd = [PG_CTL, "-D", DATA_DIR, "-W", "-o", f"-p {port}", "-l", LOG, "start"]
+        print("[PG START] 执行:", " ".join(cmd))
+        try:
+            # pg_ctl 会 fork 出常驻 postgres 守护进程，因此不要捕获其输出管道。
+            proc = subprocess.run(
+                cmd,
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=60,
+            )
+        except Exception as e:
+            print(f"[ERROR] 启动失败: {e!r}")
+            return 2
+        if proc.returncode != 0:
+            # 另一个启动流程可能刚好已经成功拉起同一实例。
+            if _server_is_running(env):
+                print("[PG START] PostgreSQL 已由其他启动流程启动，继续执行")
+            else:
+                print(f"[ERROR] pg_ctl 退出码 {proc.returncode}")
+                return 2
 
     # 启动后再次校验身份（断言不匹配会以非零码退出）
     time.sleep(3)

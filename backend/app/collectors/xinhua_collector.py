@@ -26,6 +26,7 @@ from app.collectors.common import (
     http_get,
     make_session,
     matches_keywords,
+    matches_region_topic,
 )
 from app.core.config import settings
 
@@ -50,7 +51,9 @@ class XinhuaCollector(BaseCollector):
         kw = keywords if keywords is not None else settings.collector_keywords
         self.keywords: list[str] = [k.strip() for k in kw.split(",") if k.strip()]
 
-    def fetch(self, keywords=None) -> list[dict[str, Any]]:
+    def fetch(self, keywords=None, region_kw=None, topic_kw=None) -> list[dict[str, Any]]:
+        # 与百度新闻一致：新链路只使用地域词；topic_kw 仅保留接口兼容。
+        use_region = region_kw is not None
         effective_kw = keywords if keywords is not None else self.keywords
         results: list[dict[str, Any]] = []
         seen: set[str] = set()
@@ -83,8 +86,15 @@ class XinhuaCollector(BaseCollector):
                 content = extract_article_text(dsoup, CONTENT_SELECTORS, use_paragraphs=False)
                 if not content:
                     continue
-                if not matches_keywords(title + " " + content[:800], effective_kw):
-                    continue
+                if use_region:
+                    if not matches_region_topic(
+                        title + " " + content[:800],
+                        region_kw or [],
+                    ):
+                        continue
+                else:
+                    if not matches_keywords(title + " " + content[:800], effective_kw):
+                        continue
                 results.append(
                     {
                         "title": title,

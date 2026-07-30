@@ -9,11 +9,14 @@ from app.models.region import Region
 from app.models.opinion import Opinion
 from app.models.keyword import Keyword
 from app.models.event import Event
+from app.models.event_action import EventAction
 from app.models.event_opinion import EventOpinion
 from app.models.alert import AlertRule, AlertRecord
 from app.models.propagation import PropagationNode
 from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
+from app.models.bocha_search_session import BochaSearchSession
+from app.models.bocha_lead import BochaLead
 from app.models.role import Role
 from app.models.permission import Permission
 from app.models.audit import LoginLog, OperationLog
@@ -25,12 +28,15 @@ __all__ = [
     "Opinion",
     "Keyword",
     "Event",
+    "EventAction",
     "EventOpinion",
     "AlertRule",
     "AlertRecord",
     "PropagationNode",
     "CollectorRun",
     "DataSource",
+    "BochaSearchSession",
+    "BochaLead",
     "Role",
     "Permission",
     "LoginLog",

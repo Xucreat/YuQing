@@ -208,6 +208,8 @@ def test_viewer_denied_writes(client: TestClient, viewer_user):
         ("PUT", "/api/keywords/999999", {"word": "vkw"}),
         ("DELETE", "/api/keywords/999999", None),
         ("POST", "/api/events/aggregate", None),
+        ("PATCH", "/api/events/999999/status", {"status": "verifying"}),
+        ("POST", "/api/events/999999/actions", {"action_type": "note", "content": "test"}),
         ("POST", "/api/opinions", {"title": "t", "content": "c", "source": "s", "url": "http://x", "region_id": 130000}),
         ("PUT", "/api/users/999999", {"display_name": "x"}),
         ("POST", "/api/users", {"username": "v_x", "password": "Passw0rd1", "role": "viewer"}),
@@ -223,6 +225,8 @@ def test_viewer_denied_writes(client: TestClient, viewer_user):
             r = client.post(path, json=body, headers=headers)
         elif method == "PUT":
             r = client.put(path, json=body, headers=headers)
+        elif method == "PATCH":
+            r = client.patch(path, json=body, headers=headers)
         elif method == "DELETE":
             r = client.delete(path, headers=headers)
         assert r.status_code == 403, f"viewer {method} {path} -> {r.status_code} {r.text[:200]} (expected 403)"
@@ -242,6 +246,17 @@ def test_analyst_allowed_writes(client: TestClient, analyst_user):
     # events:write
     r = client.post("/api/events/aggregate", headers=headers)
     assert r.status_code == 200, r.text
+    # Phase 2-E 事件运营写接口复用 events:write；不存在资源应到达业务层 404，而非权限层 403。
+    r = client.patch(
+        "/api/events/999999/status", json={"status": "verifying"}, headers=headers
+    )
+    assert r.status_code == 404, r.text
+    r = client.post(
+        "/api/events/999999/actions",
+        json={"action_type": "note", "content": "test"},
+        headers=headers,
+    )
+    assert r.status_code == 404, r.text
     # opinions:write（region_id 必须是 Region 真实主键 id，而非 code）
     assert _REGION_ID is not None, "ensure_test_env 未填充 _REGION_ID"
     r = client.post(

@@ -15,7 +15,9 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, or_, select, case, String
@@ -31,6 +33,9 @@ from app.models.data_source import DataSource
 from app.models.region import Region
 from app.models.user import User
 from app.services.audit_service import audit_write
+from app.services.keyword_service import get_monitoring_keywords_grouped
+
+logger = logging.getLogger(__name__)
 
 admin_ds_router = APIRouter(
     prefix="/admin/data-sources",
@@ -66,6 +71,16 @@ GENERIC_LINK_RULE_KEYS = {
 }
 
 DEDICATED_EMPTY_HINT = "当前采集器为专用型采集器，无需填写自定义配置。请保持配置为空（{}）。"
+
+_FULL_COLLECTION_CLASS_PATHS = {
+    "app.collectors.government_collector.GovernmentCollector",
+}
+_GLOBAL_REGION_CLASS_PATHS = {
+    "app.collectors.baidu_news_collector.BaiduNewsCollector",
+    "app.collectors.xinhua_collector.XinhuaCollector",
+    "app.collectors.people_collector.PeopleCollector",
+    "app.collectors.chinanews_collector.ChinanewsCollector",
+}
 
 
 def _is_config_empty(raw) -> bool:
@@ -125,10 +140,112 @@ def _scope_to_codes(csv: str | None) -> list:
     return [c.strip() for c in csv.split(",") if c.strip()]
 
 
-def _serialize(ds: DataSource, region_map: dict, latest: dict | None = None) -> dict:
+def _split_source_keywords(raw: Any) -> list[str] | None:
+    """镜像 GenericSiteCollector 对字符串/列表关键词的解析，仅用于只读解释。"""
+    if isinstance(raw, str):
+        return [word.strip() for word in raw.split(",") if word and word.strip()]
+    if isinstance(raw, list):
+        return [str(word).strip() for word in raw if str(word).strip()]
+    return None
+
+
+def _generic_keyword_strategy(raw_config: Any, region_keywords: list[str]) -> dict:
+    try:
+        if raw_config is None or (isinstance(raw_config, str) and not raw_config.strip()):
+            config: dict = {}
+        elif isinstance(raw_config, str):
+            config = json.loads(raw_config)
+        elif isinstance(raw_config, dict):
+            config = raw_config
+        else:
+            raise ValueError("config_json 格式不支持")
+        if not isinstance(config, dict):
+            raise ValueError("config_json 不是对象")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {
+            "keyword_mode": "unknown",
+            "keyword_source": "无法判定",
+            "effective_keywords": [],
+            "keyword_description": "数据源关键词配置无法解析",
+        }
+
+    if "keywords" not in config:
+        return {
+            "keyword_mode": "global_region",
+            "keyword_source": "关键词管理-地域分类",
+            "effective_keywords": list(region_keywords),
+            "keyword_description": "使用全局启用地域词进行过滤",
+        }
+
+    source_keywords = _split_source_keywords(config["keywords"])
+    if source_keywords is None:
+        return {
+            "keyword_mode": "unknown",
+            "keyword_source": "无法判定",
+            "effective_keywords": [],
+            "keyword_description": "数据源 keywords 配置格式不支持",
+        }
+    if not source_keywords:
+        return {
+            "keyword_mode": "no_filter",
+            "keyword_source": "数据源配置-config_json.keywords",
+            "effective_keywords": [],
+            "keyword_description": "未配置有效关键词，全量放行",
+        }
+    return {
+        "keyword_mode": "source_keywords",
+        "keyword_source": "数据源配置-config_json.keywords",
+        "effective_keywords": source_keywords,
+        "keyword_description": "使用数据源独立关键词进行过滤",
+    }
+
+
+def _keyword_strategy(ds: DataSource, region_keywords: list[str]) -> dict:
+    if _is_generic(ds.class_path):
+        return _generic_keyword_strategy(ds.config_json, region_keywords)
+    if ds.class_path in _FULL_COLLECTION_CLASS_PATHS:
+        return {
+            "keyword_mode": "full_collection",
+            "keyword_source": "采集器固定策略",
+            "effective_keywords": [],
+            "keyword_description": "全量采集，不受关键词管理影响",
+        }
+    if ds.class_path in _GLOBAL_REGION_CLASS_PATHS:
+        return {
+            "keyword_mode": "global_region",
+            "keyword_source": "关键词管理-地域分类",
+            "effective_keywords": list(region_keywords),
+            "keyword_description": "使用全局启用地域词进行过滤",
+        }
+    return {
+        "keyword_mode": "unknown",
+        "keyword_source": "无法判定",
+        "effective_keywords": [],
+        "keyword_description": "当前专用采集器的关键词策略未纳入解释映射",
+    }
+
+
+def _enabled_region_keywords(db: Session) -> list[str]:
+    """读取当前有效地域词；解释失败不得影响原数据源列表接口。"""
+    try:
+        grouped = get_monitoring_keywords_grouped(db)
+        return list(grouped.get("地域", []))
+    except Exception:  # noqa: BLE001 - 解释字段必须降级而非中断原接口
+        logger.exception("读取数据源关键词策略的全局地域词失败")
+        return []
+
+
+def _serialize(
+    ds: DataSource,
+    region_map: dict,
+    latest: dict | None = None,
+    *,
+    region_keywords: list[str] | None = None,
+) -> dict:
     codes = _scope_to_codes(ds.scope_region_codes)
     names = [region_map.get(c, c) for c in codes]
     run = latest.get(ds.name) if latest else None
+    strategy = _keyword_strategy(ds, region_keywords or [])
     return {
         "id": ds.id,
         "key": ds.key,
@@ -149,6 +266,7 @@ def _serialize(ds: DataSource, region_map: dict, latest: dict | None = None) -> 
         "latest_run_status": run.status if run else None,
         "latest_run_at": run.start_time.isoformat() if run and run.start_time else None,
         "updated_at": ds.updated_at.isoformat() if ds.updated_at else None,
+        **strategy,
     }
 
 
@@ -280,7 +398,11 @@ def list_data_sources(
         for r in runs:
             latest.setdefault(r.collector_name, r)
 
-    items = [_serialize(r, region_map, latest) for r in rows]
+    region_keywords = _enabled_region_keywords(db)
+    items = [
+        _serialize(r, region_map, latest, region_keywords=region_keywords)
+        for r in rows
+    ]
 
     # 区域筛选项（基于全量去重 code + Region 名称）
     all_codes = set()
@@ -296,6 +418,91 @@ def list_data_sources(
         "size": size,
         "region_options": region_options,
     }
+
+
+@admin_ds_router.get("/quality")
+def data_source_quality(
+    days: int = Query(7, ge=1, le=90),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("sources:read")),
+):
+    """Return read-only collection quality indicators from ``collector_runs``.
+
+    ``success`` only describes collector execution. Zero-fetch streaks are
+    exposed separately, so successful runs without collected content remain
+    visible to operators.
+    """
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    sources = db.execute(
+        select(DataSource.id, DataSource.name)
+        .order_by(DataSource.priority.asc(), DataSource.id.asc())
+    ).all()
+    names = [source.name for source in sources]
+    runs_by_name: dict[str, list[CollectorRun]] = {name: [] for name in names}
+    if names:
+        runs = db.execute(
+            select(
+                CollectorRun.id,
+                CollectorRun.collector_name,
+                CollectorRun.start_time,
+                CollectorRun.fetched_raw,
+                CollectorRun.created,
+                CollectorRun.failed,
+                CollectorRun.status,
+            )
+            .where(CollectorRun.collector_name.in_(names))
+            .order_by(CollectorRun.start_time.desc(), CollectorRun.id.desc())
+        ).all()
+        for run in runs:
+            runs_by_name.setdefault(run.collector_name, []).append(run)
+
+    items = []
+    for source in sources:
+        all_source_runs = runs_by_name.get(source.name, [])
+        source_runs = [run for run in all_source_runs if run.start_time >= cutoff]
+        run_count = len(source_runs)
+        latest = all_source_runs[0] if all_source_runs else None
+        consecutive_failed_count = 0
+        consecutive_empty_fetch_count = 0
+        for run in all_source_runs:
+            if run.status in {"failed", "error", "partial"} or run.failed > 0:
+                consecutive_failed_count += 1
+            else:
+                break
+        for run in all_source_runs:
+            if run.fetched_raw == 0:
+                consecutive_empty_fetch_count += 1
+            else:
+                break
+
+        if latest is None:
+            empty_fetch_risk = "unknown"
+        elif consecutive_empty_fetch_count >= 3:
+            empty_fetch_risk = "high"
+        elif latest.fetched_raw == 0:
+            empty_fetch_risk = "warning"
+        else:
+            empty_fetch_risk = "normal"
+
+        items.append({
+            "data_source_id": source.id,
+            "collector_name": source.name,
+            "latest_run_at": latest.start_time.isoformat() if latest else None,
+            "run_count": run_count,
+            "success_rate": round(sum(run.status == "success" for run in source_runs) / run_count, 4) if run_count else None,
+            "fetched_nonzero_rate": round(sum(run.fetched_raw > 0 for run in source_runs) / run_count, 4) if run_count else None,
+            "fetched_zero_rate": round(sum(run.fetched_raw == 0 for run in source_runs) / run_count, 4) if run_count else None,
+            "created_nonzero_rate": round(sum(run.created > 0 for run in source_runs) / run_count, 4) if run_count else None,
+            "fetched_raw_total": sum(run.fetched_raw for run in source_runs),
+            "created_total": sum(run.created for run in source_runs),
+            "latest_status": latest.status if latest else None,
+            "latest_fetched_raw": latest.fetched_raw if latest else None,
+            "latest_created": latest.created if latest else None,
+            "consecutive_failed_count": consecutive_failed_count,
+            "consecutive_empty_fetch_count": consecutive_empty_fetch_count,
+            "empty_fetch_risk": empty_fetch_risk,
+        })
+    return {"days": days, "items": items}
 
 
 @admin_ds_router.post("/test")
@@ -365,7 +572,14 @@ def create_data_source(
         db.commit()
         ctx["resource_id"] = str(ds.id)
     db.refresh(ds)
-    return {**_serialize(ds, _region_map(db)), "test": test}
+    return {
+        **_serialize(
+            ds,
+            _region_map(db),
+            region_keywords=_enabled_region_keywords(db),
+        ),
+        "test": test,
+    }
 
 
 @admin_ds_router.patch("/{ds_id}")
@@ -451,7 +665,11 @@ def update_data_source(
         db.commit()
     db.refresh(ds)
     region_map = _region_map(db)
-    return _serialize(ds, region_map)
+    return _serialize(
+        ds,
+        region_map,
+        region_keywords=_enabled_region_keywords(db),
+    )
 
 
 def _run_to_dict(r: CollectorRun) -> dict:
@@ -464,9 +682,17 @@ def _run_to_dict(r: CollectorRun) -> dict:
         "start_time": r.start_time.isoformat() if r.start_time else None,
         "end_time": r.end_time.isoformat() if r.end_time else None,
         "fetched_raw": r.fetched_raw,
+        "upstream_total": getattr(r, "upstream_total", None),
+        "upstream_returned": getattr(r, "upstream_returned", 0) or 0,
         "created": r.created,
         "analyzed": r.analyzed,
         "failed": r.failed,
+        "acknowledged": getattr(r, "acknowledged", 0) or 0,
+        "unconfirmed": getattr(r, "unconfirmed", 0) or 0,
+        "ack_status": getattr(r, "ack_status", "not_applicable"),
+        "comments_seen": getattr(r, "comments_seen", 0) or 0,
+        "comments_skipped": getattr(r, "comments_skipped", 0) or 0,
+        "admission_filtered": getattr(r, "admission_filtered", 0) or 0,
         "status": r.status,
         "error_msg": r.error_msg,
     }
@@ -519,10 +745,18 @@ def collection_logs(
             func.max(CollectorRun.end_time).label("finished_at"),
             func.count().label("source_count"),
             func.sum(CollectorRun.fetched_raw).label("fetched_raw"),
+            func.sum(CollectorRun.upstream_total).label("upstream_total"),
+            func.sum(CollectorRun.upstream_returned).label("upstream_returned"),
             func.sum(CollectorRun.created).label("created"),
             func.sum(CollectorRun.analyzed).label("analyzed"),
+            func.sum(CollectorRun.acknowledged).label("acknowledged"),
+            func.sum(CollectorRun.unconfirmed).label("unconfirmed"),
+            func.sum(CollectorRun.comments_seen).label("comments_seen"),
+            func.sum(CollectorRun.comments_skipped).label("comments_skipped"),
+            func.sum(CollectorRun.admission_filtered).label("admission_filtered"),
             func.sum(case((CollectorRun.status == "success", 1), else_=0)).label("success_count"),
             func.sum(case((CollectorRun.status == "partial", 1), else_=0)).label("partial_count"),
+            func.sum(case((CollectorRun.status == "warning", 1), else_=0)).label("warning_count"),
             func.sum(case((CollectorRun.status.in_(["failed", "error"]), 1), else_=0)).label("failed_count"),
             func.sum(case((CollectorRun.status == "running", 1), else_=0)).label("running_count"),
             func.max(CollectorRun.trigger_type).label("trigger_type"),
@@ -548,6 +782,8 @@ def collection_logs(
             return "failed"
         if r.partial_count and r.partial_count > 0:
             return "partial"
+        if r.warning_count and r.warning_count > 0:
+            return "warning"
         return "success"
 
     def _to_item(r):
@@ -566,11 +802,19 @@ def collection_logs(
             "source_count": r.source_count or 0,
             "success_count": r.success_count or 0,
             "partial_count": r.partial_count or 0,
+            "warning_count": r.warning_count or 0,
             "failed_count": r.failed_count or 0,
             "running_count": r.running_count or 0,
             "fetched_raw": int(r.fetched_raw or 0),
+            "upstream_total": int(r.upstream_total or 0),
+            "upstream_returned": int(r.upstream_returned or 0),
             "created": int(r.created or 0),
             "analyzed": int(r.analyzed or 0),
+            "acknowledged": int(r.acknowledged or 0),
+            "unconfirmed": int(r.unconfirmed or 0),
+            "comments_seen": int(r.comments_seen or 0),
+            "comments_skipped": int(r.comments_skipped or 0),
+            "admission_filtered": int(r.admission_filtered or 0),
             "status": _batch_status(r),
         }
 

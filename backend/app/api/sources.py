@@ -105,6 +105,9 @@ def sources_history(
             "created": r.created,
             "analyzed": r.analyzed,
             "failed": r.failed,
+            "comments_seen": getattr(r, "comments_seen", 0) or 0,
+            "comments_skipped": getattr(r, "comments_skipped", 0) or 0,
+            "admission_filtered": getattr(r, "admission_filtered", 0) or 0,
             "status": r.status,
             "error_msg": r.error_msg,
         })

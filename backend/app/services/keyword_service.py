@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import time
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -30,33 +30,87 @@ from app.services.risk_engine import DEFAULT_SEVERITY_KEYWORDS
 # 进程内缓存（dict 形式保存引用，便于原子替换）
 _MON_CACHE: dict = {"words": None, "ts": 0.0}
 _SENS_CACHE: dict = {"words": None, "ts": 0.0}
+# 分组缓存（与扁平缓存分离，避免互相污染）：{category: [word, ...]}
+_MON_GROUPED_CACHE: dict = {"words": None, "ts": 0.0}
 _TTL_SECONDS: float = 60.0
+
+
+def _monitoring_record_count(db: Session) -> int:
+    """返回 monitoring 记录总数，用于区分未初始化与全部停用。"""
+    return (
+        db.query(Keyword.id)
+        .filter(Keyword.type == "monitoring")
+        .count()
+    )
 
 
 def get_monitoring_keywords(db: Session) -> List[str]:
     """返回监测关键词列表（type='monitoring' 且已启用，作为采集/预警唯一权威源）。
 
     - 优先返回未过期的缓存；
-    - 表非空 → 取全部已启用监测词 word；
-    - 表空 → 回退 settings.collector_keywords（保证系统至少有兜底关键词）。
+    - 存在 monitoring 记录 → 只取全部已启用监测词 word，全部停用时返回空列表；
+    - 不存在任何 monitoring 记录 → 回退 settings.collector_keywords（初始化/应急兜底）。
     """
     global _MON_CACHE
     now = time.time()
     if _MON_CACHE["words"] is not None and (now - _MON_CACHE["ts"]) < _TTL_SECONDS:
         return _MON_CACHE["words"]
 
+    monitoring_count = _monitoring_record_count(db)
     rows = (
         db.query(Keyword.word)
         .filter(Keyword.type == "monitoring", Keyword.is_enabled == True)  # noqa: E712
         .all()
     )
     words = [r[0].strip() for r in rows if r[0] and r[0].strip()]
-    if not words:
+    if monitoring_count == 0:
         words = [k.strip() for k in settings.collector_keywords.split(",") if k.strip()]
 
     _MON_CACHE["words"] = words
     _MON_CACHE["ts"] = now
     return words
+
+
+def get_monitoring_keywords_grouped(db: Session) -> Dict[str, List[str]]:
+    """返回按 ``category`` 分组的监测关键词 ``{category: [word, ...]}``。
+
+    用途：支持「地域前置过滤 + 主题增强」——采集服务按 category 取出
+    ``region_kw`` / ``topic_kw`` 分别注入采集器，避免扁平注入时丢失分类信息。
+
+    - 优先返回未过期的缓存；
+    - 存在 monitoring 记录时，仅取 ``is_enabled=True`` 的词，按 ``category`` 分组；
+    - monitoring 全部停用 → 显式返回 ``{"地域": [], "主题": []}``；
+    - 不存在任何 monitoring 记录 → 回退 ``settings.collector_keywords``，整体归入 ``"general"`` 分组；
+    - 与 ``get_monitoring_keywords``（扁平列表）互不影响：预警/看板仍用扁平接口。
+    """
+    global _MON_GROUPED_CACHE
+    now = time.time()
+    if _MON_GROUPED_CACHE["words"] is not None and (now - _MON_GROUPED_CACHE["ts"]) < _TTL_SECONDS:
+        return _MON_GROUPED_CACHE["words"]
+
+    monitoring_count = _monitoring_record_count(db)
+    rows = (
+        db.query(Keyword.word, Keyword.category)
+        .filter(Keyword.type == "monitoring", Keyword.is_enabled == True)  # noqa: E712
+        .all()
+    )
+    grouped: Dict[str, List[str]] = {}
+    for word, cat in rows:
+        w = (word or "").strip()
+        if not w:
+            continue
+        grouped.setdefault(cat or "general", []).append(w)
+    if monitoring_count == 0:
+        # 初始化/应急兜底：未初始化的词库不阻塞既有配置链路。
+        fallback = [k.strip() for k in settings.collector_keywords.split(",") if k.strip()]
+        grouped = {"general": fallback}
+    elif not grouped:
+        # 管理员明确停用全部 monitoring 词时，不回退 .env。
+        grouped = {"地域": [], "主题": []}
+
+    _MON_GROUPED_CACHE["words"] = grouped
+    _MON_GROUPED_CACHE["ts"] = now
+    return grouped
 
 
 def get_sensitive_keywords(db: Session) -> List[Tuple[str, int]]:
@@ -115,9 +169,10 @@ def get_severity_keywords(db: Session) -> Dict[str, int]:
 
 def clear_keyword_cache() -> None:
     """显式失效全部关键词缓存（关键词 CRUD 后调用，保证立即生效）。"""
-    global _MON_CACHE, _SENS_CACHE
+    global _MON_CACHE, _SENS_CACHE, _MON_GROUPED_CACHE
     _MON_CACHE = {"words": None, "ts": 0.0}
     _SENS_CACHE = {"words": None, "ts": 0.0}
+    _MON_GROUPED_CACHE = {"words": None, "ts": 0.0}
 
 
 # 向后兼容别名（既有调用方可能仍引用此名称）。

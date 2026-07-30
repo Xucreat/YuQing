@@ -67,6 +67,15 @@ class OpinionOut(OpinionBase):
     # ===== Phase 2-B.2：风险分类（纯解释性标签；历史数据为 NULL）=====
     risk_category: Optional[str] = None
 
+    # ===== Phase Weibo-1：社媒来源扩展字段（非社媒来源为 NULL）=====
+    source_type: Optional[str] = None
+    author: Optional[str] = None
+    engagement: Optional[Dict[str, Any]] = None
+    external_id: Optional[str] = None
+    relevance_score: Optional[int] = None
+    content_type: Optional[str] = None
+    admission_reason: Optional[Dict[str, Any]] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 

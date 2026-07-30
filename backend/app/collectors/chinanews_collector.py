@@ -17,6 +17,7 @@ from app.collectors.common import (
     http_get,
     make_session,
     matches_keywords,
+    matches_region_topic,
     parse_publish_date_from_url,
     parse_rss,
 )
@@ -38,7 +39,7 @@ class ChinanewsCollector(BaseCollector):
         kw = keywords if keywords is not None else settings.collector_keywords
         self.keywords: list[str] = [k.strip() for k in kw.split(",") if k.strip()]
 
-    def fetch(self, keywords=None) -> list[dict[str, Any]]:
+    def fetch(self, keywords=None, region_kw=None, topic_kw=None) -> list[dict[str, Any]]:
         xml = http_get(self.session, RSS_URL, TIMEOUT)
         if not xml:
             return []
@@ -46,9 +47,14 @@ class ChinanewsCollector(BaseCollector):
         results: list[dict[str, Any]] = []
         for it in items:
             text = (it["title"] or "") + " " + (it["content"] or "")
-            effective_kw = keywords if keywords is not None else self.keywords
-            if not matches_keywords(text, effective_kw):
-                continue
+            if region_kw is not None:
+                # 与百度新闻一致：新链路只使用地域词；topic_kw 仅保留接口兼容。
+                if not matches_region_topic(text, region_kw or []):
+                    continue
+            else:
+                effective_kw = keywords if keywords is not None else self.keywords
+                if not matches_keywords(text, effective_kw):
+                    continue
             results.append(
                 {
                     "title": it["title"],

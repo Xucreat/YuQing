@@ -26,6 +26,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/ai-search',
+      name: 'ai-search',
+      component: () => import('@/views/AiSearch.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/opinion/:id',
       name: 'opinion-detail',
       component: () => import('@/views/OpinionDetail.vue'),

@@ -185,6 +185,43 @@ def matches_keywords(text: str, keywords: List[str]) -> bool:
     return any(bool(kw) and kw in text for kw in keywords)
 
 
+def matches_region_topic(
+    text: str,
+    region_kws: List[str],
+    topic_kws: Optional[List[str]] = None,
+    match_mode: str = "region_only",
+) -> bool:
+    """地域前置过滤（采集阶段）。
+
+    match_mode 控制过滤策略：
+      - "region_only"（默认）：严格地域前置。命中任一地域词 → True；否则 → False。
+        适用于本地/区县/通用回退源——内容应明确关联廊坊地域。
+      - "region_or_topic"：国家级源独立策略。命中任一地域词 → True；
+        否则命中任一主题词（topic_kws）→ True；否则 → False。
+        适用于 xinhua / people / chinanews 等全国性媒体：其本质是「全国主题雷达」，
+        不应因严格地域前置而丢失全国范围内的廊坊相关主题召回。
+
+    设计边界（明确，避免后续误用）：
+      - region_kws 为空（配置异常，如地域词全部被禁用/未分类）：
+        fail-safe 返回 False，**不降级**、不靠 topic 兜底，避免产出无地域数据。
+        此行为在两种 mode 下一致；调用方应记录该异常（见 service.py 运行记录标注）。
+      - topic_kws 仅在 match_mode="region_or_topic" 时参与判定；
+        region_only 下忽略（保持不扩大范围）。
+    """
+    if not region_kws:
+        # 配置异常：地域关键词为空。fail-safe —— 拦截一切，交由调用方记录，
+        # 避免表现为「普通零数据」。与 match_mode 无关。
+        logger.warning(
+            "matches_region_topic: region_kws 为空（配置异常），拦截全部以避免无地域数据"
+        )
+        return False
+    if any(bool(r) and r in text for r in region_kws):
+        return True
+    if match_mode == "region_or_topic" and topic_kws:
+        return any(bool(t) and t in text for t in topic_kws)
+    return False
+
+
 def parse_rss(content: str) -> List[dict]:
     """解析 RSS/Atom XML 内容为标准化 dict 列表（复用 RSSCollector 既有逻辑）。
 

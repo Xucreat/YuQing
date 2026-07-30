@@ -20,6 +20,26 @@
       </div>
 
       <!-- Right: AI analysis -->
+      <div class="detail-right">
+      <div class="card card-pad-lg admission-card">
+        <div class="ai-header">
+          <span class="section-title">准入分析</span>
+          <span class="pill pill-blue">{{ contentTypeText(opinion.content_type) }}</span>
+        </div>
+        <div class="detail-divider"></div>
+        <div class="admission-score">
+          <span class="admission-score-label">相关性</span>
+          <b :class="relevanceClass(opinion.relevance_score)">{{ formatRelevance(opinion.relevance_score) }}</b>
+        </div>
+        <div v-if="admissionItems.length" class="admission-list">
+          <div v-for="item in admissionItems" :key="item.label" class="admission-row">
+            <span>{{ item.label }}</span>
+            <b>{{ item.value }}</b>
+          </div>
+        </div>
+        <div v-else class="ai-text muted-admission">{{ defaultAdmissionText }}</div>
+      </div>
+
       <div class="card card-pad-lg ai-card">
         <div class="ai-header">
           <span class="section-title">AI 分析</span>
@@ -78,6 +98,7 @@
           </div>
         </div>
       </div>
+      </div>
     </div>
 
     <el-empty v-else-if="!loading" description="未找到该舆情" />
@@ -102,6 +123,57 @@ const opinionId = computed(() => Number(route.params.id))
 const keywordList = computed(() =>
   (opinion.value?.keywords || '').split(',').map(k => k.trim()).filter(Boolean)
 )
+
+const CONTENT_TYPE_TEXT: Record<string, string> = {
+  complaint: '投诉举报',
+  consultation: '咨询求助',
+  risk_event: '风险事件',
+  public_affairs: '公共事务',
+  news: '新闻',
+  policy: '政策政务',
+  advertising: '广告',
+  entertainment: '娱乐',
+  irrelevant: '无关',
+}
+
+function contentTypeText(type?: string | null): string {
+  return type ? (CONTENT_TYPE_TEXT[type] || type) : '未标注'
+}
+
+function formatRelevance(score?: number | null): string {
+  return score == null ? '-' : `${score} 分`
+}
+
+function relevanceClass(score?: number | null): string {
+  if (score == null) return 'score-empty'
+  if (score >= 60) return 'score-high'
+  if (score >= 40) return 'score-low'
+  return 'score-filtered'
+}
+
+const admissionItems = computed(() => {
+  const reason = opinion.value?.admission_reason
+  if (!reason || typeof reason !== 'object' || reason.policy === 'default_allow_non_weibo') return []
+  const items: { label: string; value: string }[] = []
+  const add = (label: string, value: any) => {
+    const arr = Array.isArray(value) ? value.filter(Boolean) : []
+    if (arr.length) items.push({ label, value: arr.slice(0, 5).join('、') })
+  }
+  add('地域命中', reason.region_hits)
+  add('公共事务', reason.public_hits)
+  add('诉求词', reason.demand_hits)
+  add('风险词', reason.risk_hits)
+  return items
+})
+
+const defaultAdmissionText = computed(() => {
+  const reason = opinion.value?.admission_reason
+  const source = String(reason?.source || opinion.value?.source || '')
+  if (reason?.policy === 'default_allow_non_weibo') {
+    return source.includes('政府') || source.includes('政务') ? '政府来源默认准入' : '新闻来源默认准入'
+  }
+  return '系统默认准入'
+})
 
 function riskColor(score: number): string {
   if (score >= 70) return '#ff3b30'
@@ -163,6 +235,7 @@ onMounted(loadData)
   gap: 18px;
   align-items: start;
 }
+.detail-right { display: flex; flex-direction: column; gap: 18px; }
 
 .card {
   background: #ffffff;
@@ -195,12 +268,32 @@ onMounted(loadData)
 .pill-orange { background: rgba(255,159,10,0.12); color: #c77700; }
 .pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
 .pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
+.pill-blue { background: #e8f1fd; color: #0071e3; }
 
 .kw-tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .kw-tag { background: #e8f1fd; color: #0071e3; padding: 5px 12px; border-radius: 980px; font-size: 13px; font-weight: 500; }
 
 .ai-actions { margin-top: 6px; }
 .ai-status-line { display: flex; align-items: center; gap: 10px; }
+.admission-card {
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 78%);
+  border: 1px solid #e3eefb;
+}
+.admission-score { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.admission-score-label { font-size: 13px; color: #86868b; font-weight: 600; }
+.admission-score b { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.score-high { color: #1a8e3c; }
+.score-low { color: #c77700; }
+.score-filtered { color: #ff3b30; }
+.score-empty { color: #6e6e73; }
+.admission-list { display: grid; gap: 8px; }
+.admission-row {
+  display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px;
+  font-size: 13.5px; line-height: 1.5;
+}
+.admission-row span { color: #86868b; }
+.admission-row b { color: #1d1d1f; font-weight: 600; word-break: break-word; }
+.muted-admission { color: #86868b; }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: none; border-radius: 980px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 0.18s ease, opacity 0.18s ease; }
 .btn:active { transform: scale(0.98); }
