@@ -59,7 +59,8 @@
         <div class="sit-kpi"><span class="k">{{ negativeRate }}%</span><span class="l">负面率</span></div>
         <div class="sit-kpi"><span class="k">{{ (stats.event_count || 0).toLocaleString() }}</span><span class="l">事件</span></div>
       </div>
-      <div class="sit-action">
+      <!-- SEC3-05：无 reports:read 或 reports:export 时隐藏报告操作区，避免空白误导 -->
+      <div v-if="can('reports:read') || can('reports:export')" class="sit-action">
         <el-button v-if="can('reports:export')" type="primary" @click="openReportDrawer">
           <span style="margin-right:4px;">⎙</span>导出舆情报告
         </el-button>
@@ -149,6 +150,41 @@
 
     <!-- ===== 导出舆情报告：右侧抽屉（Phase Report-1.1，逻辑抽到 ReportExportDrawer） ===== -->
     <ReportExportDrawer v-model="reportDrawer" />
+
+    <!-- ===== Phase 2-E-4：热点主题 → 相关事件抽屉（点击词云主题词懒加载） ===== -->
+    <el-drawer
+      v-model="hotTopicDrawer"
+      :title="`${hotTopicLabel} 相关事件`"
+      direction="rtl"
+      size="480px"
+      class="hot-topic-drawer"
+    >
+      <div v-loading="hotTopicLoading" class="ht-body">
+        <div v-if="hotTopicError" class="ht-error">{{ hotTopicError }}</div>
+        <template v-else>
+          <div
+            v-for="ev in hotTopicEvents"
+            :key="ev.id"
+            class="ht-event"
+            @click="goEventDetail(ev.id)"
+          >
+            <div class="ht-event-head">
+              <span class="ht-event-title">{{ ev.title }}</span>
+              <span class="pill" :class="riskPill(ev.risk_level)"><span class="dot"></span>{{ riskText(ev.risk_level) }}</span>
+            </div>
+            <div class="ht-event-meta">
+              <span class="pill" :class="eventStatusPill(ev.status)">{{ eventStatusLabel(ev.status) }}</span>
+              <span>热度 {{ ev.heat_score }}</span>
+              <span>{{ ev.source_count ?? '-' }} 个来源</span>
+              <span>{{ fmtTime(ev.last_time || '') }}</span>
+            </div>
+          </div>
+          <div v-if="!hotTopicLoading && hotTopicEvents.length === 0" class="ht-empty">
+            暂无相关事件
+          </div>
+        </template>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -157,16 +193,20 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import * as echarts from "echarts"
 import "echarts-wordcloud"
 import { ElMessage } from "element-plus"
+import { useRouter } from "vue-router"
 import api from "@/api"
-import type { DashboardStats, TrendPoint, KeywordCount, RegionItem, RecentOpinionItem, DashboardAlertItem } from "@/types"
+import { getEventsByHotTopic } from "@/api/events"
+import type { DashboardStats, TrendPoint, KeywordCount, RegionItem, RecentOpinionItem, DashboardAlertItem, EventItem } from "@/types"
 import type { HotKeyword, HotKeywordsResponse } from "@/types/command-screen"
 import { usePermission } from "@/composables/usePermission"
+import { topicValueFromLabel, eventStatusLabel, eventStatusPill } from "@/utils/event"
 import SegmentedControl from "@/components/SegmentedControl.vue"
 import SentimentDonut from "@/components/SentimentDonut.vue"
 import OpinionDetailModal from "@/components/OpinionDetailModal.vue"
 import ReportExportDrawer from "@/components/report/ReportExportDrawer.vue"
 
 const { can } = usePermission()
+const router = useRouter()
 
 // 点击实时快讯 / 预警滚动条目 -> 打开舆情详情弹窗（与「舆情列表」一致）
 const detailVisible = ref(false)
@@ -228,6 +268,37 @@ function loadTopicKeywords(force = false): Promise<void> {
     .finally(() => {
       topicLoading.value = false
     })
+}
+
+// Phase 2-E-4：热点主题 → 相关事件联动（点击词云主题词懒加载，抽屉展示）
+const hotTopicDrawer = ref(false)
+const hotTopicLabel = ref("")          // 抽屉标题展示用中文词
+const hotTopicEvents = ref<EventItem[]>([])
+const hotTopicLoading = ref(false)
+const hotTopicError = ref("")
+
+async function openHotTopic(keyword: string) {
+  if (!keyword) return
+  hotTopicLabel.value = keyword
+  hotTopicDrawer.value = true
+  hotTopicLoading.value = true
+  hotTopicError.value = ""
+  hotTopicEvents.value = []
+  // 中文标签 → 枚举值（如「教育」→「education」）；未命中则原样传，后端 ILIKE 兜底
+  const kw = topicValueFromLabel(keyword)
+  try {
+    const data = await getEventsByHotTopic(kw)
+    hotTopicEvents.value = data.items || []
+  } catch {
+    hotTopicError.value = "加载失败，请稍后重试"
+  } finally {
+    hotTopicLoading.value = false
+  }
+}
+function goEventDetail(id: number) {
+  if (!id) return
+  hotTopicDrawer.value = false
+  router.push(`/event/${id}`)
 }
 
 // Collector status
@@ -460,6 +531,9 @@ function riskClass(l: string): string {
 function riskText(l: string): string {
   return ({ critical: "严重", high: "高", medium: "中", low: "低" } as any)[l] || l
 }
+function riskPill(l: string): string {
+  return ({ critical: "pill-red", high: "pill-red", medium: "pill-orange", low: "pill-green" } as Record<string, string>)[l] || "pill-gray"
+}
 
 let feedTimer: number | undefined
 onMounted(async () => {
@@ -468,6 +542,12 @@ onMounted(async () => {
   if (sourceRef.value) sourceChart = echarts.init(sourceRef.value)
   if (wordcloudRef.value) wordcloudChart = echarts.init(wordcloudRef.value)
   if (regionRef.value) regionChart = echarts.init(regionRef.value)
+  // Phase 2-E-4：词云点击 → 热点主题相关事件抽屉（仅 hot 模式生效；risk 模式忽略）
+  wordcloudChart?.on("click", (params: any) => {
+    if (wordMode.value !== "hot") return
+    const name = params?.name
+    if (name) openHotTopic(name)
+  })
   window.addEventListener("resize", handleResize)
   window.addEventListener("data-refresh", loadData)
   await loadData()
@@ -668,6 +748,31 @@ onBeforeUnmount(() => {
 .live-dot { font-size: 11px; color: #ff3b30; font-weight: 600; animation: pulse 1.4s infinite; }
 .live-dot.warn { color: #ff9f0a; }
 .feed-empty { text-align: center; color: #a0a0a5; font-size: 13px; padding: 40px 0; }
+
+/* ============ Phase 2-E-4：热点主题相关事件抽屉 ============ */
+.hot-topic-drawer :deep(.el-drawer__body) { padding: 0; }
+.ht-body { padding: 8px 16px 16px; min-height: 100%; box-sizing: border-box; }
+.ht-error { color: #ff3b30; font-size: 13px; padding: 24px 0; text-align: center; }
+.ht-empty { color: #a0a0a5; font-size: 13px; padding: 40px 0; text-align: center; }
+.ht-event {
+  padding: 14px 12px; border: 1px solid #ececf0; border-radius: 10px; margin-bottom: 10px;
+  cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.ht-event:hover { border-color: #0071e3; background: #f5f9ff; }
+.ht-event-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.ht-event-title { font-size: 14px; font-weight: 600; color: #1d1d1f; line-height: 1.4; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ht-event-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: #6e6e73; align-items: center; }
+
+/* pill（抽屉内自包含，避免依赖全局样式） */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px;
+  border-radius: 980px; font-size: 12px; font-weight: 500; line-height: 1.5; white-space: nowrap;
+}
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill-red { background: rgba(255,59,48,0.1); color: #ff3b30; }
+.pill-orange { background: rgba(255,159,10,0.12); color: #c77700; }
+.pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
 
 /* ============ 响应式 ============ */
 /* 平板：单栏竖向堆叠，feed 加高，KPI 转 3 列 */

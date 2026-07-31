@@ -55,4 +55,7 @@ pgdata.archive-early-clone/
 frontend/dist.old*/
 frontend/dist.old_*/
 backend/app/static/assets.old*/
+
+# Local archives and generated runtime artifacts
+/.local/
 backend/app/static/assets.old_*/

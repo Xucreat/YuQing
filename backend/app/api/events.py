@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
@@ -28,10 +29,12 @@ from app.models.alert import AlertRecord
 from app.schemas.event import (
     EventActionCreate,
     EventActionOut,
+    EventAlertOut,
     EventCreateResponse,
     EventDetailResponse,
     EventListResponse,
     EventOut,
+    EventStatistics,
     EventStatusUpdate,
     EventTaskResponse,
 )
@@ -64,6 +67,9 @@ NEXT_EVENT_STATUS = {
     "resolved": "closed",
     "deprecated": "active",  # 软废弃可恢复为 active（Phase X-History-1B）
 }
+# Phase 2-E-2：允许直接「忽略」(deprecated) 的源状态。
+# deprecated→active 恢复沿用 NEXT_EVENT_STATUS；其余流转不变。
+DEPRECATE_ALLOWED_FROM = {"active", "verifying", "processing"}
 
 
 def _event_out(db: Session, event: Event) -> EventOut:
@@ -132,6 +138,72 @@ def aggregate_events(
     """
     task_id = start_task("aggregate", _run_aggregate_task, SessionLocal, rebuild)
     return EventTaskResponse(success=True, task_id=task_id, message="聚合中")
+
+
+@events_router.get(
+    "/hot-topic/{keyword}",
+    response_model=EventListResponse,
+    status_code=status.HTTP_200_OK,
+)
+def hot_topic_events(
+    keyword: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> EventListResponse:
+    """热点主题 → 相关事件（只读聚合，配合 Phase HotWord-1B 热点主题模式）。
+
+    匹配策略：
+      1. 第一优先 ``Event.topic_category == keyword``（大小写不敏感精确匹配，
+         命中枚举值场景，如 education）。
+      2. 第二优先 经 ``event_opinions`` 关联 ``Opinion``，
+         ``title ILIKE '%kw%' OR content ILIKE '%kw%'``（命中中文词场景，如 教育）。
+    合并去重；topic_category 命中的事件排在前面，其后追加仅 ILIKE 命中的事件；
+    组内均按 ``heat_score DESC, last_time DESC`` 排序。
+    未知关键词返回空列表，不 500。
+
+    注意：本路由必须注册在 ``/{event_id}`` 之前，否则 ``hot-topic`` 会被路径参数误捕。
+    """
+    kw = keyword.strip()
+    if not kw:
+        return EventListResponse(items=[], total=0, page=1, size=0)
+    # 第一优先：topic_category 精确匹配（大小写不敏感）
+    topic_ids = {
+        row[0]
+        for row in db.query(Event.id)
+        .filter(func.lower(Event.topic_category) == func.lower(kw))
+        .all()
+    }
+    # 第二优先：关联舆情文本匹配（ILIKE，经占位符绑定，无注入风险）
+    ilike_ids = {
+        row[0]
+        for row in (
+            db.query(EventOpinion.event_id)
+            .join(Opinion, Opinion.id == EventOpinion.opinion_id)
+            .filter(
+                or_(
+                    Opinion.title.ilike(f"%{kw}%"),
+                    Opinion.content.ilike(f"%{kw}%"),
+                )
+            )
+            .distinct()
+            .all()
+        )
+    }
+    matched_ids = topic_ids | ilike_ids
+    if not matched_ids:
+        return EventListResponse(items=[], total=0, page=1, size=0)
+    events = (
+        db.query(Event)
+        .filter(Event.id.in_(matched_ids))
+        .order_by(Event.heat_score.desc(), Event.last_time.desc().nullslast())
+        .all()
+    )
+    # topic_category 命中优先：保持组内 heat/last_time 降序
+    ordered = [e for e in events if e.id in topic_ids] + [
+        e for e in events if e.id not in topic_ids
+    ]
+    items = [_event_out(db, e) for e in ordered]
+    return EventListResponse(items=items, total=len(items), page=1, size=len(items))
 
 
 @events_router.get(
@@ -207,6 +279,38 @@ def get_event(
         .all()
     )
     risk_score = EventRiskService.get_score(db, event.id)
+    # Phase 2-E-2：运营统计（只读派生，复用已加载的关联 opinions，无额外查询）
+    risk_dist = {"high": 0, "medium": 0, "low": 0}
+    sources: set[str] = set()
+    latest_time: Optional[object] = None
+    for o in opinions:
+        sources.add(o.source)
+        risk_dist[EventRiskService.level_from_score(o.risk_score)] += 1
+        if latest_time is None or (o.created_at is not None and o.created_at > latest_time):
+            latest_time = o.created_at
+    statistics = EventStatistics(
+        opinion_count=len(opinions),
+        source_count=len(sources),
+        latest_time=latest_time,
+        risk_distribution=risk_dist,
+    )
+    # Phase 2-E-2：关联告警反查（alert_records.event_id；title 映射 opinion_title）
+    alert_rows = (
+        db.query(AlertRecord)
+        .filter(AlertRecord.event_id == event_id)
+        .order_by(AlertRecord.created_at.desc())
+        .all()
+    )
+    alerts = [
+        EventAlertOut(
+            id=a.id,
+            title=a.opinion_title,
+            risk_level=a.risk_level,
+            status=a.status,
+            created_at=a.created_at,
+        )
+        for a in alert_rows
+    ]
     return EventDetailResponse(
         id=event.id,
         title=event.title,
@@ -226,6 +330,8 @@ def get_event(
         opinions=opinion_outs,
         total_opinions=len(opinion_outs),
         actions=[_event_action_out(action, username) for action, username in action_rows],
+        statistics=statistics,
+        alerts=alerts,
     )
 
 
@@ -250,7 +356,16 @@ def update_event_status(
     new_status = body.status
     if new_status == old_status:
         return _event_out(db, event)
-    if new_status != "active" and NEXT_EVENT_STATUS.get(old_status) != new_status:
+    # Phase 2-E-2：允许各活跃态直接置 deprecated（「忽略事件」）；
+    # deprecated→active 恢复沿用既有逻辑（new_status == "active" 直通）。
+    # 其余非活跃态 → deprecated、以及任意非法跳转（如 active→resolved）仍 409。
+    if new_status == "deprecated":
+        if old_status not in DEPRECATE_ALLOWED_FROM:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Invalid event status transition: {old_status} -> {new_status}",
+            )
+    elif new_status != "active" and NEXT_EVENT_STATUS.get(old_status) != new_status:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Invalid event status transition: {old_status} -> {new_status}",
@@ -453,6 +568,10 @@ def list_events(
         region.id: region.name
         for region in db.query(Region).filter(Region.id.in_(region_ids)).all()
     } if region_ids else {}
+    # Phase 2-E-2：source_count 批量派生（复用已加载的 event_opinions，禁止 N+1）
+    source_count_by_event = {
+        eid: len({o.source for o in ops}) for eid, ops in event_opinions.items()
+    }
     items = [
         EventOut(
             id=e.id,
@@ -468,6 +587,7 @@ def list_events(
             heat_score=e.heat_score,
             trend=e.trend,
             opinion_count=e.opinion_count,
+            source_count=source_count_by_event.get(e.id, 0),
             status=e.status,
             first_time=e.first_time,
             last_time=e.last_time,

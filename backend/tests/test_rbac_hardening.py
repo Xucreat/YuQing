@@ -544,3 +544,107 @@ def test_role_permission_change_audited_with_diff(client: TestClient, admin_head
         assert details["permissions_removed"] == []
     finally:
         client.delete(f"/api/roles/{role_id}", headers=admin_headers)
+
+
+# ═══════════════════════════════════════════════════════════════
+# Phase Security-3-B：权限语义收口验证
+# ═══════════════════════════════════════════════════════════════
+
+def _db_perms():
+    """从测试库实时读取 permissions 表所有 code（SEC-3-B 删除后应不含孤儿码）。"""
+    import psycopg as _psycopg
+    url = os.environ.get("DATABASE_URL", "")
+    # psycopg URL 格式: postgresql://... → 用 psycopg 直连
+    pg_url = url.replace("+psycopg", "") if "+psycopg" in url else url
+    conn = _psycopg.connect(pg_url)
+    cur = conn.cursor()
+    cur.execute("SELECT code FROM permissions ORDER BY code")
+    rows = cur.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def _db_query(sql, params=None):
+    """通用只读查询辅助（用 psycopg 直连测试库）。"""
+    import psycopg as _psycopg
+    url = os.environ.get("DATABASE_URL", "")
+    pg_url = url.replace("+psycopg", "") if "+psycopg" in url else url
+    conn = _psycopg.connect(pg_url)
+    cur = conn.cursor()
+    cur.execute(sql, params or ())
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def test_sec3b_orphan_perms_removed():
+    """SEC3-03/04/06/07: 5 个孤儿权限码已从 permissions 表删除。"""
+    perms = _db_perms()
+    for orphan in ["keywords:delete", "reports:write",
+                   "collectors:read", "collectors:write", "dashboard:read"]:
+        assert orphan not in perms, f"孤儿权限 {orphan} 仍存在于 permissions 表"
+
+
+def test_sec3b_analyst_no_sources_write():
+    """SEC3-02: analyst 不再持有 sources:write（前端/后端都不承认此权限码）。"""
+    rows = _db_query(
+        "SELECT p.code FROM role_permissions rp "
+        "JOIN permissions p ON rp.permission_id=p.id "
+        "JOIN roles r ON rp.role_id=r.id "
+        "WHERE r.name='analyst'"
+    )
+    analyst_codes = [r[0] for r in rows]
+    assert "sources:write" not in analyst_codes, "analyst 仍持有 sources:write"
+
+
+def test_sec3b_analyst_no_dashboard_read():
+    """SEC3-07: analyst 不再持有 dashboard:read（权限码已删除）。"""
+    perms = _db_perms()
+    assert "dashboard:read" not in perms
+
+
+def test_sec3b_analyst_can_edit_but_not_delete_opinions(client: TestClient, analyst_headers: dict):
+    """SEC3-01: analyst 有 opinions:write 但只能编辑，不能删除（DELETE 端点 require_admin）。"""
+    # PATCH (edit) → 404 或 200（opinion 不存在时 404，而非 403）
+    r = client.patch("/api/opinions/999999", json={"title": "test"}, headers=analyst_headers)
+    assert r.status_code != 403, "opinions:write 被拒——analyst 应能编辑舆情"
+    # DELETE → 403（require_admin 独占）
+    r = client.delete("/api/opinions/999999", headers=analyst_headers)
+    assert r.status_code == 403, f"analyst 删除舆情未被拒: {r.status_code}"
+
+
+def test_sec3b_analyst_can_delete_keywords_via_write(client: TestClient, analyst_headers: dict):
+    """SEC3-03: keywords:write 涵盖删除（后端 DELETE /keywords/{id} 用 keywords:write）。"""
+    # analyst 有 keywords:write → DELETE 不会被 403 拦
+    r = client.delete("/api/keywords/999999", headers=analyst_headers)
+    # 期望 404（关键词不存在）而非 403
+    assert r.status_code in (404, 200), f"keywords:write 删除被拒: {r.status_code}"
+
+
+def test_sec3b_analyst_can_export_reports(client: TestClient, analyst_headers: dict):
+    """SEC3-04: analyst 有 reports:export 可导出（reports:write 已删除，不影响）。"""
+    r = client.get("/api/reports/templates", headers=analyst_headers)
+    assert r.status_code != 403, f"analyst 访问报告模板被拒: {r.status_code}"
+
+
+def test_sec3b_analyst_cannot_manage_data_sources(client: TestClient, analyst_headers: dict):
+    """SEC3-02: analyst 持有 sources:read 可查看数据源列表，但写操作 require_admin。"""
+    r = client.get("/api/admin/data-sources", headers=analyst_headers)
+    assert r.status_code != 403, "sources:read 读数据源被拒"
+    r = client.post("/api/admin/data-sources", json={}, headers=analyst_headers)
+    assert r.status_code == 403, "analyst 创建数据源未被拒"
+
+
+def test_sec3b_permission_descriptions_correct():
+    """SEC3-01/02: 3 个权限码 description 已修正。"""
+    rows = _db_query(
+        "SELECT code, description FROM permissions "
+        "WHERE code IN ('opinions:write','sources:read','sources:write')"
+    )
+    for code, desc in rows:
+        if code == "opinions:write":
+            assert desc == "编辑舆情", f"opinions:write description 未修正: {desc}"
+        elif code == "sources:read":
+            assert "管理操作仅管理员" in desc, f"sources:read description 未修正: {desc}"
+        elif code == "sources:write":
+            assert "管理员" in desc, f"sources:write description 未修正: {desc}"

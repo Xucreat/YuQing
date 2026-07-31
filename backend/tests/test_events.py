@@ -309,3 +309,396 @@ def test_api_list_pagination(
     # id DESC 排序
     if len(body["items"]) >= 2:
         assert body["items"][0]["id"] >= body["items"][1]["id"]
+
+
+# =========================================================================== #
+# Phase 2-E-2：事件运营闭环后端增强测试                                         #
+# 覆盖：source_count / statistics / alerts / 风险分布 / 状态机 / hot-topic / 权限 #
+# =========================================================================== #
+from app.core.security import hash_password  # noqa: E402
+from app.models.alert import AlertRule, AlertRecord  # noqa: E402
+from app.models.user import User  # noqa: E402
+
+READONLY_USER = "evt_viewer_2e2"
+TEST_SRC_PREFIX = "2e2_"
+
+
+@pytest.fixture
+def clean_2e2():
+    """清空 2-E-2 测试产生的 events / event_opinions / opinions / alert_records。"""
+    db = SessionLocal()
+    try:
+        db.query(PropagationNode).delete()
+        db.query(AlertRecord).filter(
+            AlertRecord.opinion_title.like(f"{TEST_SRC_PREFIX}%")
+        ).delete(synchronize_session=False)
+        db.query(EventOpinion).delete()
+        db.query(Event).delete()
+        db.query(Opinion).filter(Opinion.source.like(f"{TEST_SRC_PREFIX}%")).delete(
+            synchronize_session=False
+        )
+        db.query(User).filter(User.username == READONLY_USER).delete(
+            synchronize_session=False
+        )
+        db.commit()
+    finally:
+        db.close()
+    yield
+    db = SessionLocal()
+    try:
+        db.query(PropagationNode).delete()
+        db.query(AlertRecord).filter(
+            AlertRecord.opinion_title.like(f"{TEST_SRC_PREFIX}%")
+        ).delete(synchronize_session=False)
+        db.query(EventOpinion).delete()
+        db.query(Event).delete()
+        db.query(Opinion).filter(Opinion.source.like(f"{TEST_SRC_PREFIX}%")).delete(
+            synchronize_session=False
+        )
+        db.query(User).filter(User.username == READONLY_USER).delete(
+            synchronize_session=False
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def _make_event_with_opinions(
+    db, region_id, *, title="2E2事件", topic_category="other", heat=50,
+    status="active", opinions_spec=(),
+):
+    """opinions_spec: list of dict(title, source, risk_score, content)."""
+    ev = Event(
+        title=title,
+        description="",
+        keyword="2e2",
+        risk_level="low",
+        status=status,
+        topic_category=topic_category,
+        heat_score=heat,
+        opinion_count=len(opinions_spec),
+        first_time=datetime.now(timezone.utc),
+        last_time=datetime.now(timezone.utc),
+    )
+    db.add(ev)
+    db.flush()
+    for spec in opinions_spec:
+        op = Opinion(
+            title=spec.get("title", "t"),
+            content=spec.get("content", f"c-{uuid.uuid4().hex}"),
+            source=spec["source"],
+            url=f"https://example.com/{uuid.uuid4().hex}",
+            region_id=region_id,
+            risk_score=spec.get("risk_score", 0),
+            sentiment="neutral",
+            summary="",
+            keywords="",
+            analysis_status="completed",
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(op)
+        db.flush()
+        db.add(EventOpinion(event_id=ev.id, opinion_id=op.id))
+    db.commit()
+    return ev
+
+
+def _make_alert(db, event, *, risk_level="high", opinion_title=None):
+    rule = db.query(AlertRule).first()
+    if rule is None:
+        rule = AlertRule(name="2e2-rule", risk_threshold=70, risk_level="high", enabled=True)
+        db.add(rule)
+        db.flush()
+    ar = AlertRecord(
+        rule_id=rule.id,
+        rule_name=rule.name,
+        risk_level=risk_level,
+        opinion_title=opinion_title or f"{TEST_SRC_PREFIX}alert-{uuid.uuid4().hex}",
+        event_id=event.id,
+        event_title=event.title,
+        status="pending",
+    )
+    db.add(ar)
+    db.commit()
+    return ar
+
+
+def _readonly_headers(client: TestClient) -> dict:
+    """创建无任何权限的普通用户并登录（role=viewer 角色不存在 → 空权限集）。"""
+    db = SessionLocal()
+    try:
+        db.query(User).filter(User.username == READONLY_USER).delete(
+            synchronize_session=False
+        )
+        db.add(
+            User(
+                username=READONLY_USER,
+                password_hash=hash_password("viewer123"),
+                role="viewer",
+                is_active=True,
+                is_superuser=False,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    resp = client.post(
+        "/api/login", json={"username": READONLY_USER, "password": "viewer123"}
+    )
+    assert resp.status_code == 200, resp.text
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
+# ---------------------------------------------------------------------------
+# 1) 列表 source_count 字段存在且与 SQL 一致
+# ---------------------------------------------------------------------------
+def test_list_source_count(clean_2e2, client: TestClient, auth_headers, seeded_region_id):
+    db = SessionLocal()
+    try:
+        _make_event_with_opinions(
+            db, seeded_region_id,
+            topic_category="education",
+            opinions_spec=[
+                {"source": f"{TEST_SRC_PREFIX}A", "risk_score": 10, "title": "s1"},
+                {"source": f"{TEST_SRC_PREFIX}A", "risk_score": 20, "title": "s2"},
+                {"source": f"{TEST_SRC_PREFIX}B", "risk_score": 30, "title": "s3"},
+            ],
+        )
+    finally:
+        db.close()
+
+    resp = client.get("/api/events?size=100", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    mine = [it for it in items if it["title"] == "2E2事件"]
+    assert mine, "测试事件未出现在列表"
+    it = mine[0]
+    assert "source_count" in it, it
+    # 3 条舆情、2 个不同来源
+    assert it["source_count"] == 2, it
+
+    # 与直接 SQL 核对
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func as _f
+        row = (
+            db.query(_f.count(Opinion.source.distinct()))
+            .join(EventOpinion, EventOpinion.opinion_id == Opinion.id)
+            .filter(EventOpinion.event_id == it["id"])
+            .one()
+        )
+        assert row[0] == 2, row
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# 2) 详情返回 statistics + alerts；无告警时 alerts=[]
+# ---------------------------------------------------------------------------
+def test_detail_statistics_and_alerts(clean_2e2, client: TestClient, auth_headers, seeded_region_id):
+    db = SessionLocal()
+    try:
+        ev = _make_event_with_opinions(
+            db, seeded_region_id,
+            opinions_spec=[
+                {"source": f"{TEST_SRC_PREFIX}A", "risk_score": 75, "title": "h"},
+                {"source": f"{TEST_SRC_PREFIX}B", "risk_score": 50, "title": "m"},
+                {"source": f"{TEST_SRC_PREFIX}C", "risk_score": 10, "title": "l"},
+            ],
+        )
+        _make_alert(db, ev, risk_level="high", opinion_title=f"{TEST_SRC_PREFIX}alert-X")
+        ev_id = ev.id
+    finally:
+        db.close()
+
+    resp = client.get(f"/api/events/{ev_id}", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "statistics" in body and body["statistics"] is not None, body
+    st = body["statistics"]
+    assert st["opinion_count"] == 3, st
+    assert st["source_count"] == 3, st
+    assert st["latest_time"] is not None, st
+    assert st["risk_distribution"] == {"high": 1, "medium": 1, "low": 1}, st
+    assert len(body["alerts"]) == 1, body["alerts"]
+    al = body["alerts"][0]
+    assert al["title"] == f"{TEST_SRC_PREFIX}alert-X", al
+    assert al["risk_level"] == "high", al
+    assert al["status"] == "pending", al
+
+
+def test_detail_no_alert_returns_empty(clean_2e2, client: TestClient, auth_headers, seeded_region_id):
+    db = SessionLocal()
+    try:
+        ev = _make_event_with_opinions(
+            db, seeded_region_id,
+            opinions_spec=[{"source": f"{TEST_SRC_PREFIX}A", "risk_score": 10}],
+        )
+        ev_id = ev.id
+    finally:
+        db.close()
+
+    resp = client.get(f"/api/events/{ev_id}", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["alerts"] == [], resp.json()
+
+
+# ---------------------------------------------------------------------------
+# 3) 风险分布 high/medium/low 正确（阈值 >=70 / >=40 / 其余）
+# ---------------------------------------------------------------------------
+def test_risk_distribution_buckets(clean_2e2, client: TestClient, auth_headers, seeded_region_id):
+    db = SessionLocal()
+    try:
+        ev = _make_event_with_opinions(
+            db, seeded_region_id,
+            opinions_spec=[
+                {"source": f"{TEST_SRC_PREFIX}A", "risk_score": 70, "title": "h1"},
+                {"source": f"{TEST_SRC_PREFIX}B", "risk_score": 99, "title": "h2"},
+                {"source": f"{TEST_SRC_PREFIX}C", "risk_score": 40, "title": "m1"},
+                {"source": f"{TEST_SRC_PREFIX}D", "risk_score": 69, "title": "m2"},
+                {"source": f"{TEST_SRC_PREFIX}E", "risk_score": 0, "title": "l1"},
+                {"source": f"{TEST_SRC_PREFIX}F", "risk_score": 39, "title": "l2"},
+            ],
+        )
+        ev_id = ev.id
+    finally:
+        db.close()
+
+    resp = client.get(f"/api/events/{ev_id}", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    rd = resp.json()["statistics"]["risk_distribution"]
+    assert rd == {"high": 2, "medium": 2, "low": 2}, rd
+
+
+# ---------------------------------------------------------------------------
+# 4) 状态机：active→deprecated 成功；deprecated→active 保持；active→resolved 仍 409
+# ---------------------------------------------------------------------------
+def test_status_transitions(clean_2e2, client: TestClient, auth_headers, seeded_region_id):
+    db = SessionLocal()
+    try:
+        ev = _make_event_with_opinions(
+            db, seeded_region_id,
+            status="active",
+            opinions_spec=[{"source": f"{TEST_SRC_PREFIX}A", "risk_score": 10}],
+        )
+        ev_id = ev.id
+    finally:
+        db.close()
+
+    # active -> deprecated（2-E-2 新增放行）
+    r = client.patch(f"/api/events/{ev_id}/status", json={"status": "deprecated"}, headers=auth_headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "deprecated", r.json()
+
+    # deprecated -> active（恢复，既有逻辑）
+    r = client.patch(f"/api/events/{ev_id}/status", json={"status": "active"}, headers=auth_headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "active", r.json()
+
+    # active -> resolved（非法跳转，仍 409）
+    r = client.patch(f"/api/events/{ev_id}/status", json={"status": "resolved"}, headers=auth_headers)
+    assert r.status_code == 409, r.text
+
+
+def test_status_verifying_processing_to_deprecated(
+    clean_2e2, client: TestClient, auth_headers, seeded_region_id
+):
+    """verifying / processing 也可直接忽略。"""
+    for src in ("verifying", "processing"):
+        db = SessionLocal()
+        try:
+            ev = _make_event_with_opinions(
+                db, seeded_region_id,
+                status=src,
+                opinions_spec=[{"source": f"{TEST_SRC_PREFIX}{src}", "risk_score": 10}],
+            )
+            ev_id = ev.id
+        finally:
+            db.close()
+        r = client.patch(
+            f"/api/events/{ev_id}/status", json={"status": "deprecated"}, headers=auth_headers
+        )
+        assert r.status_code == 200, (src, r.text)
+        assert r.json()["status"] == "deprecated", (src, r.json())
+
+
+# ---------------------------------------------------------------------------
+# 5) hot-topic：education 精确 / 中文 ILIKE / 不存在返回 []
+# ---------------------------------------------------------------------------
+def test_hot_topic(clean_2e2, client: TestClient, auth_headers, seeded_region_id):
+    db = SessionLocal()
+    try:
+        # 事件 A：topic_category=education（第一优先命中）
+        _make_event_with_opinions(
+            db, seeded_region_id,
+            title="教育事件A",
+            topic_category="education",
+            heat=80,
+            opinions_spec=[
+                {"source": f"{TEST_SRC_PREFIX}A", "risk_score": 10, "title": "学校新闻",
+                 "content": "某地教育政策"},
+            ],
+        )
+        # 事件 B：topic_category=other，但舆情正文含「教育」（第二优先 ILIKE 命中）
+        _make_event_with_opinions(
+            db, seeded_region_id,
+            title="普通事件B",
+            topic_category="other",
+            heat=30,
+            opinions_spec=[
+                {"source": f"{TEST_SRC_PREFIX}B", "risk_score": 10, "title": "x",
+                 "content": "教育补课乱象"},
+            ],
+        )
+    finally:
+        db.close()
+
+    # 第一优先：枚举值 education
+    r = client.get("/api/events/hot-topic/education", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    titles = [it["title"] for it in r.json()["items"]]
+    assert "教育事件A" in titles, titles
+    assert "普通事件B" not in titles, titles  # 仅 topic_category 精确命中
+
+    # 第二优先：中文 教育（ILIKE，应同时命中 A、B）
+    r = client.get("/api/events/hot-topic/%E6%95%99%E8%82%B2", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    titles = [it["title"] for it in r.json()["items"]]
+    assert "教育事件A" in titles, titles
+    assert "普通事件B" in titles, titles
+
+    # 不存在
+    r = client.get("/api/events/hot-topic/zZzNotExist", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["items"] == [], r.json()
+    assert r.json()["total"] == 0, r.json()
+
+
+# ---------------------------------------------------------------------------
+# 6) 权限：无 events:write 的用户修改状态 → 403
+# ---------------------------------------------------------------------------
+def test_status_change_requires_write(
+    clean_2e2, client: TestClient, auth_headers, seeded_region_id
+):
+    db = SessionLocal()
+    try:
+        ev = _make_event_with_opinions(
+            db, seeded_region_id,
+            status="active",
+            opinions_spec=[{"source": f"{TEST_SRC_PREFIX}A", "risk_score": 10}],
+        )
+        ev_id = ev.id
+    finally:
+        db.close()
+
+    ro = _readonly_headers(client)
+    r = client.patch(
+        f"/api/events/{ev_id}/status", json={"status": "deprecated"}, headers=ro
+    )
+    assert r.status_code == 403, r.text
+
+    # admin 仍可操作（回归）
+    r = client.patch(
+        f"/api/events/{ev_id}/status", json={"status": "deprecated"}, headers=auth_headers
+    )
+    assert r.status_code == 200, r.text

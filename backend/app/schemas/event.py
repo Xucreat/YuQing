@@ -38,6 +38,38 @@ class EventActionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# --------------------------------------------------------------------------- #
+# Phase 2-E-2：事件运营闭环增强（statistics / alerts，均为只读派生，不落库）   #
+# --------------------------------------------------------------------------- #
+class EventStatistics(BaseModel):
+    """事件运营统计快照（详情接口内即时计算，不持久化）。
+
+    - opinion_count：关联舆情数（取实际加载的关联舆情条数）
+    - source_count：COUNT(DISTINCT Opinion.source)
+    - latest_time：MAX(Opinion.created_at)
+    - risk_distribution：按 Opinion.risk_score 分桶（复用 EventRiskService.level_from_score
+      的同一阈值：>=70 high / >=40 medium / 其余 low），与线上风险模型一致。
+    """
+
+    opinion_count: int = 0
+    source_count: int = 0
+    latest_time: Optional[datetime] = None
+    risk_distribution: dict = Field(
+        default_factory=lambda: {"high": 0, "medium": 0, "low": 0}
+    )
+
+
+class EventAlertOut(BaseModel):
+    """事件关联告警（反查 alert_records.event_id）。title 映射 opinion_title
+    （AlertRecord 无 title 列，仅有 opinion_title / event_title）。"""
+
+    id: int
+    title: str
+    risk_level: str
+    status: str
+    created_at: datetime
+
+
 class EventCreateResponse(BaseModel):
     success: bool = True
     created: int = 0
@@ -74,6 +106,8 @@ class EventOut(BaseModel):
     heat_score: int = 0
     trend: str = "unknown"
     opinion_count: int
+    # Phase 2-E-2：来源数量（列表批量计算，详情来自 statistics）；可空保证兼容。
+    source_count: Optional[int] = None
     status: str = "active"
     first_time: Optional[datetime] = None
     last_time: Optional[datetime] = None
@@ -92,3 +126,6 @@ class EventDetailResponse(EventOut):
     opinions: List = []
     total_opinions: int = 0
     actions: List[EventActionOut] = Field(default_factory=list)
+    # Phase 2-E-2：运营统计 + 关联告警（只读派生，additive，向后兼容）
+    statistics: Optional[EventStatistics] = None
+    alerts: List[EventAlertOut] = Field(default_factory=list)

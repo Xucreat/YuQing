@@ -83,6 +83,8 @@ export interface EventItem {
   heat_score: number
   trend: 'rising' | 'stable' | 'falling' | 'unknown' | string
   opinion_count: number
+  // Phase 2-E-2：来源数量（列表批量计算；详情来自 statistics）。optional 保持兼容。
+  source_count?: number | null
   status: string
   first_time: string | null
   last_time: string | null
@@ -101,6 +103,39 @@ export interface EventActionItem {
   old_status: string | null
   new_status: string | null
   created_at: string
+}
+
+// Phase 2-E-2：事件运营统计（详情接口只读派生，不落库）
+export interface EventRiskDistribution {
+  high: number
+  medium: number
+  low: number
+}
+export interface EventStatistics {
+  opinion_count: number
+  source_count: number
+  latest_time: string | null
+  risk_distribution: EventRiskDistribution
+}
+
+// Phase 2-E-2：事件关联告警（反查 alert_records.event_id）
+export interface EventAlert {
+  id: number
+  title: string
+  risk_level: string
+  status: string
+  created_at: string
+}
+
+// Phase 2-E-2：事件详情（EventItem + 详情附加字段）
+export interface EventDetail extends EventItem {
+  description: string
+  keyword: string
+  opinions: any[]
+  total_opinions: number
+  actions: EventActionItem[]
+  statistics?: EventStatistics | null
+  alerts?: EventAlert[]
 }
 
 // GET /api/events 鍒嗛〉鍝嶅簲

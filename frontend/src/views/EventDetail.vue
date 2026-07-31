@@ -48,6 +48,33 @@
       </div>
     </div>
 
+    <!-- Phase 2-E-3：运营统计（读 event.statistics，只读派生） -->
+    <section v-if="event.statistics" class="stat-panel">
+      <h3 class="section-title">运营统计</h3>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <span class="stat-label">关联舆情</span>
+          <strong>{{ event.statistics.opinion_count }} 条</strong>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">来源数量</span>
+          <strong>{{ event.statistics.source_count }} 个</strong>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">最新时间</span>
+          <strong>{{ formatTime(event.statistics.latest_time) }}</strong>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">风险分布</span>
+          <span class="dist-pills">
+            <span class="pill pill-red"><span class="dot"></span>高 {{ event.statistics.risk_distribution?.high ?? 0 }}</span>
+            <span class="pill pill-orange"><span class="dot"></span>中 {{ event.statistics.risk_distribution?.medium ?? 0 }}</span>
+            <span class="pill pill-green"><span class="dot"></span>低 {{ event.statistics.risk_distribution?.low ?? 0 }}</span>
+          </span>
+        </div>
+      </div>
+    </section>
+
     <section v-if="situation" class="situation-panel">
       <div class="situation-panel-head">
         <h3 class="section-title">事件态势（只读研判）</h3>
@@ -93,7 +120,7 @@
               :disabled="savingStatus || !canChangeStatus(option.value)"
               @click="changeStatus(option.value)"
             >
-              {{ option.label }}
+              {{ option.value === 'deprecated' ? '忽略事件' : option.label }}
             </button>
           </div>
 
@@ -184,6 +211,34 @@
       </table>
     </div>
 
+    <!-- Phase 2-E-3：关联预警（反查 alert_records.event_id） -->
+    <div class="card table-card">
+      <div class="card-header">
+        <h3 class="section-title">关联预警 ({{ event.alerts?.length || 0 }})</h3>
+      </div>
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th style="min-width:240px">标题</th>
+            <th style="width:110px" class="col-center">风险等级</th>
+            <th style="width:110px" class="col-center">状态</th>
+            <th style="width:170px">时间</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="a in (event.alerts || [])" :key="a.id">
+            <td><span class="t-title">{{ a.title }}</span></td>
+            <td class="col-center"><span class="pill" :class="riskPill(a.risk_level)"><span class="dot"></span>{{ riskText(a.risk_level) }}</span></td>
+            <td class="col-center">{{ alertStatusText(a.status) }}</td>
+            <td>{{ formatTime(a.created_at) }}</td>
+          </tr>
+          <tr v-if="(event.alerts?.length || 0)===0 && !loading">
+            <td colspan="4" class="empty-row">暂无关联预警</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
   </div>
 </template>
@@ -196,7 +251,7 @@ import api from '@/api'
 import OpinionDetailModal from '@/components/OpinionDetailModal.vue'
 import { usePermission } from '@/composables/usePermission'
 import { EVENT_STATUS_OPTIONS, eventStatusLabel, eventStatusPill } from '@/utils/event'
-import type { EventActionItem } from '@/types'
+import type { EventActionItem, EventStatistics, EventAlert } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -209,13 +264,15 @@ const handleDialogVisible = ref(false)
 const { hasPermission } = usePermission()
 const canUpdateEvent = computed(() => hasPermission('events:write'))
 
-type EventStatus = 'active' | 'verifying' | 'processing' | 'resolved' | 'closed'
+type EventStatus = 'active' | 'verifying' | 'processing' | 'resolved' | 'closed' | 'deprecated'
 const nextStatus: Partial<Record<EventStatus, EventStatus>> = {
   active: 'verifying',
   verifying: 'processing',
   processing: 'resolved',
   resolved: 'closed',
 }
+// Phase 2-E-2/3：允许各活跃态直接「忽略」(deprecated)，与后端 DEPRECATE_ALLOWED_FROM 对齐
+const DEPRECATE_ALLOWED_FROM: EventStatus[] = ['active', 'verifying', 'processing']
 
 // 关联舆情跳转：打开舆情详情弹窗（与「舆情列表」一致）
 const detailVisible = ref(false)
@@ -232,6 +289,9 @@ interface EventDetail {
   status: string; first_time: string | null; last_time: string | null
   description: string; keyword: string; opinions: any[]; total_opinions: number
   actions: EventActionItem[]
+  // Phase 2-E-2：运营统计 + 关联告警（只读派生，optional）
+  statistics?: EventStatistics | null
+  alerts?: EventAlert[]
 }
 
 function sufficiencyText(value: string | undefined): string {
@@ -243,6 +303,7 @@ const event = ref<EventDetail>({
   heat_score: 0, trend: 'unknown', opinion_count: 0, status: '',
   first_time: null, last_time: null, description: '', keyword: '',
   opinions: [], total_opinions: 0, actions: [],
+  statistics: null, alerts: [],
 })
 
 function riskPill(level: string): string {
@@ -281,7 +342,15 @@ function actionTypeText(value: string): string {
 function canChangeStatus(target: EventStatus): boolean {
   const current = event.value.status as EventStatus
   if (target === current) return false
-  return target === 'active' || nextStatus[current] === target
+  if (target === 'active') return true
+  if (target === 'deprecated') return DEPRECATE_ALLOWED_FROM.includes(current)
+  return nextStatus[current] === target
+}
+function alertStatusText(value: string): string {
+  return ({
+    pending: '待处理', processing: '处理中', resolved: '已解决',
+    ignored: '已忽略', false_positive: '误报',
+  } as Record<string, string>)[value] || value
 }
 function errorMessage(err: any, fallback: string): string {
   const detail = err?.response?.data?.detail
@@ -366,6 +435,14 @@ onMounted(loadData)
 .situation-facts { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px; color: #6e6e73; font-size: 13px; }
 .risk-factor-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .risk-factor { padding: 5px 9px; border-radius: 6px; background: #f5f7fb; color: #3a3a3c; font-size: 12px; }
+
+/* Phase 2-E-3：运营统计面板 */
+.stat-panel { margin-bottom: 20px; padding: 18px 20px; background: #fff; border: 1px solid #e8e8ed; border-radius: 12px; }
+.stat-grid { display: flex; flex-wrap: wrap; gap: 1px; margin-top: 14px; background: #e8e8ed; border-radius: 10px; overflow: hidden; }
+.stat-item { flex: 1 1 180px; display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; background: #fff; }
+.stat-label { font-size: 12px; color: #86868b; }
+.stat-item strong { font-size: 16px; color: #1d1d1f; }
+.dist-pills { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 
 .card {
   background: #ffffff;

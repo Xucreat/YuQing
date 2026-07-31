@@ -108,6 +108,17 @@
       </span>
     </div>
 
+    <!-- Phase 2-E-3：运营状态快捷筛选（纯前端过滤当前页，不改 API） -->
+    <div class="quick-filters">
+      <button
+        v-for="g in statusGroups"
+        :key="g.value || 'all'"
+        class="chip"
+        :class="{ active: statusGroup === g.value }"
+        @click="statusGroup = g.value"
+      >{{ g.label }}</button>
+    </div>
+
     <div class="card table-card">
       <table class="tbl">
         <thead>
@@ -120,6 +131,7 @@
             <th style="width:80px" class="col-center">热度</th>
             <th style="width:90px" class="col-center">趋势</th>
             <th style="width:100px" class="col-center">关联舆情</th>
+            <th style="width:90px" class="col-center">来源数</th>
             <th style="width:100px" class="col-center">处置状态</th>
             <th style="width:190px">首次发现</th>
             <th style="width:190px">最后更新</th>
@@ -127,7 +139,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, idx) in rows" :key="row.id" @click="$router.push('/event/' + row.id)" style="cursor:pointer">
+          <tr v-for="(row, idx) in displayedRows" :key="row.id" @click="$router.push('/event/' + row.id)" style="cursor:pointer">
             <td>{{ (page - 1) * size + idx + 1 }}</td>
             <td><span class="t-title">{{ row.title }}</span></td>
             <td class="nowrap">{{ topicText(row.topic_category) }}</td>
@@ -145,6 +157,7 @@
               <span class="pill" :class="trendPill(row.trend)">{{ trendText(row.trend) }}</span>
             </td>
             <td class="col-center risk-num">{{ row.opinion_count }}</td>
+            <td class="col-center risk-num">{{ row.source_count ?? '-' }}</td>
             <td class="col-center"><span class="pill" :class="eventStatusPill(row.status)"><span class="dot"></span>{{ eventStatusLabel(row.status) }}</span></td>
             <td class="nowrap">{{ formatTime(row.first_time) }}</td>
             <td class="nowrap">{{ formatTime(row.last_time) }}</td>
@@ -157,8 +170,8 @@
               </div>
             </td>
           </tr>
-          <tr v-if="rows.length===0 && !loading">
-            <td colspan="12" class="empty-row">暂无事件数据</td>
+          <tr v-if="displayedRows.length===0 && !loading">
+            <td colspan="13" class="empty-row">暂无事件数据</td>
           </tr>
         </tbody>
       </table>
@@ -196,7 +209,7 @@
               :disabled="savingStatus || !canChangeStatus(option.value)"
               @click="changeStatus(option.value)"
             >
-              {{ option.label }}
+              {{ option.value === 'deprecated' ? '忽略事件' : option.label }}
             </button>
           </div>
 
@@ -281,6 +294,21 @@ const searchFocused = ref(false) // 搜索框聚焦态（驱动苹果蓝聚焦�
 const riskOpen = ref(false)      // 风险下拉浮层开合
 const shadowRiskOpen = ref(false)
 const moreOpen = ref(false)
+
+// Phase 2-E-3：运营状态快捷筛选（纯前端过滤当前页，不改 API）
+const statusGroups = [
+  { value: '', label: '全部' },
+  { value: 'pending', label: '待关注', statuses: ['active', 'verifying'] },
+  { value: 'processing', label: '处理中', statuses: ['processing'] },
+  { value: 'resolved', label: '已解决', statuses: ['resolved', 'closed'] },
+  { value: 'deprecated', label: '已忽略', statuses: ['deprecated'] },
+]
+const statusGroup = ref('')
+const displayedRows = computed(() => {
+  if (!statusGroup.value) return rows.value
+  const statuses = statusGroups.find((g) => g.value === statusGroup.value)?.statuses || []
+  return rows.value.filter((r) => statuses.includes(r.status))
+})
 
 // 事件处置弹窗（点击列表“处置”按钮唤起）
 interface HandleEvent { id: number; status: string; actions: EventActionItem[] }
@@ -457,13 +485,17 @@ onMounted(loadData)
 const nextStatus: Partial<Record<string, string>> = {
   active: 'verifying', verifying: 'processing', processing: 'resolved', resolved: 'closed',
 }
+// Phase 2-E-2/3：允许各活跃态直接「忽略」(deprecated)，与后端 DEPRECATE_ALLOWED_FROM 对齐
+const DEPRECATE_ALLOWED_FROM = ['active', 'verifying', 'processing']
 function actionTypeText(value: string): string {
   return ({ status_change: '状态变更', note: '备注', assign: '指派', resolve: '解决' } as Record<string, string>)[value] || value
 }
 function canChangeStatus(target: string): boolean {
   const current = handleEvent.value?.status
   if (!current || target === current) return false
-  return target === 'active' || nextStatus[current] === target
+  if (target === 'active') return true
+  if (target === 'deprecated') return DEPRECATE_ALLOWED_FROM.includes(current)
+  return nextStatus[current] === target
 }
 function openHandle(row: EventItem) {
   handleEventId.value = row.id
@@ -614,7 +646,7 @@ async function addNote() {
   overscroll-behavior-x: contain;
 }
 
-table.tbl { width: 100%; min-width: 1520px; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+table.tbl { width: 100%; min-width: 1610px; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
 table.tbl thead th {
   text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b;
   padding: 14px 18px; border-bottom: 1px solid #e8e8ed; white-space: nowrap;
@@ -634,6 +666,16 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .risk-source { display: block; margin-top: 4px; color: #86868b; font-size: 11px; }
 .legacy-risk { display: block; margin-top: 3px; color: #86868b; font-size: 10px; font-weight: 400; }
 .empty-row td { text-align: center; color: #86868b; padding: 40px 0; }
+
+/* Phase 2-E-3：运营状态快捷筛选 chips（纯前端过滤） */
+.quick-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.chip {
+  height: 32px; padding: 0 14px; border: 1px solid #d2d2d7; border-radius: 980px;
+  background: #fff; color: #1d1d1f; font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.chip:hover { border-color: #0071e3; color: #0066cc; }
+.chip.active { background: #0071e3; border-color: #0071e3; color: #fff; }
 
 .pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px;
