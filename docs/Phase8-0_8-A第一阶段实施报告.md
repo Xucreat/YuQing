@@ -16,6 +16,7 @@
 
 - `frontend/src/types/index.ts`：增加数据源健康摘要类型。
 - `frontend/src/components/AppLayout.vue`：将传播入口、页面标题和副标题统一为“来源与时间态势”。
+- `frontend/src/views/Events.vue`：事件中心表格改为展示影子风险等级/分数，并保留现行风险分作为辅助信息。
 - `frontend/src/views/Sources.vue`：在既有数据源列表展示健康状态、原因、错误码和连续失败次数，保留质量与运行历史。
 - `frontend/src/views/EventDetail.vue`：展示事件态势只读摘要、数据充分性和风险因素解释。
 - `frontend/src/views/Propagation.vue`：页面语义改为“来源与时间态势”，增加推断关系提示，隐藏传播层级、路径和传播主体展示。
@@ -36,12 +37,14 @@
 
 - `GET /api/admin/data-sources`：每个数据源增加 `health_summary`，包含健康状态、最近运行/成功/失败、连续失败、标准错误码、最近有效数据时间、数据新鲜度和原因。
 - `GET /api/events/{id}/situation`：返回 `data_window`、`data_sufficiency`、`source_distribution`、`daily_counts`、`keyword_distribution`/`keyword_counts`、`risk_factors`、`heat`、`trend`、`stale_sources` 和影子风险结果。
+- `GET /api/events`：每个事件增加 `risk_shadow_score`、`risk_shadow_level`、`risk_shadow_version`；原 `risk_score` 保持不变。
+- `GET /api/events` 支持 `risk_shadow_level` 筛选；前端将地区 ID、热度上下限收纳到“更多操作”。
 
 ## 5. 测试结果
 
 - `python -m compileall -q app`：通过。
 - `npm run build`：通过。
-- 已将最新 `frontend/dist_new3` 构建产物同步到 `backend/app/static`，FastAPI `8000` 页面实际加载新 bundle。
+- 已将最新前端构建产物同步到 `backend/app/static`，FastAPI `8000` 页面实际加载新 bundle。
 - `pytest -q tests/test_phase8_readonly.py -k "not situation"`：5 passed。
 - 包含真实测试库写入的事件态势集成测试在当前环境因 PostgreSQL 测试库连接超时未完成；未修改任何生产数据。
 

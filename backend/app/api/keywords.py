@@ -96,6 +96,9 @@ def list_keywords(
     sort: str = "weight",
     order: str = "desc",
     db: Session = Depends(get_db),
+    # RBAC 收口：关键词列表由「仅登录」收敛为需要 keywords:read。
+    # 观察者(viewer)不持有该权限，前端关键词入口同步隐藏。
+    _: User = Depends(require_permission("keywords:read")),
 ):
     stmt = select(Keyword)
     if q:
@@ -249,6 +252,9 @@ def delete_keyword(
 
 
 @keywords_router.get("/categories", response_model=list[str])
-def list_categories(db: Session = Depends(get_db)):
+def list_categories(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("keywords:read")),
+):
     rows = db.scalars(select(Keyword.category).distinct()).all()
     return list(rows)

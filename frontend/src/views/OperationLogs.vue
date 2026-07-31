@@ -53,12 +53,26 @@
           <template #default="{ row }">{{ fmt(row.created_at) }}</template>
         </el-table-column>
         <el-table-column prop="ip_address" label="IP 地址" width="160" />
-        <el-table-column prop="details_json" label="详情" width="400" />
+        <el-table-column label="详情" min-width="400">
+          <template #default="{ row }">
+            <el-popover
+              v-if="row.details_json"
+              placement="left"
+              trigger="hover"
+              :width="520"
+              popper-class="op-detail-pop"
+            >
+              <template #reference>
+                <span class="detail-brief">{{ detailBrief(row.details_json) }}</span>
+              </template>
+              <pre class="detail-pre">{{ detailPretty(row.details_json) }}</pre>
+            </el-popover>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
       </el-table>
       <div class="pagination">
-        <el-pagination
-          background
-          layout="total, prev, pager, next"
+        <Pager
           :total="total"
           :current-page="page"
           :page-size="size"
@@ -96,6 +110,49 @@ const size = ref(20)
 const operator = ref('')
 const action = ref('')
 const result = ref('')
+
+function parseDetails(raw: string | null | undefined): any {
+  if (!raw) return null
+  try {
+    return typeof raw === 'string' ? JSON.parse(raw) : raw
+  } catch {
+    return null
+  }
+}
+
+/** SEC2-05：优先展示 before/after 变更摘要，其次回退原始 JSON。 */
+function detailBrief(raw: string | null | undefined): string {
+  const d = parseDetails(raw)
+  if (!d) return String(raw ?? '-')
+  const parts: string[] = []
+  const fields: string[] = Array.isArray(d.changed_fields) ? d.changed_fields : []
+  if (fields.length) {
+    parts.push(
+      fields
+        .map((f: string) => {
+          const b = d.before ? JSON.stringify(d.before[f]) : '?'
+          const a = d.after ? JSON.stringify(d.after[f]) : '?'
+          return `${f}: ${b} → ${a}`
+        })
+        .join('; ')
+    )
+  }
+  if (Array.isArray(d.permissions_added) && d.permissions_added.length) {
+    parts.push(`+权限 ${d.permissions_added.join(',')}`)
+  }
+  if (Array.isArray(d.permissions_removed) && d.permissions_removed.length) {
+    parts.push(`-权限 ${d.permissions_removed.join(',')}`)
+  }
+  if (d.password_changed) parts.push('密码已重置')
+  if (!parts.length) return String(raw ?? '-')
+  const text = parts.join(' | ')
+  return text.length > 90 ? text.slice(0, 90) + '…' : text
+}
+
+function detailPretty(raw: string | null | undefined): string {
+  const d = parseDetails(raw)
+  return d ? JSON.stringify(d, null, 2) : String(raw ?? '-')
+}
 
 function fmt(t: string | null): string {
   return t ? t.replace('T', ' ').slice(0, 19) : '-'
@@ -147,4 +204,14 @@ onMounted(reload)
 .filter-card { margin-bottom: 16px; }
 .table-card { margin-top: 0; }
 .pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
+.detail-brief { cursor: help; color: #303133; word-break: break-all; }
+.detail-pre {
+  margin: 0;
+  max-height: 380px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 </style>

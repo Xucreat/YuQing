@@ -58,15 +58,26 @@
         </transition>
       </div>
 
-      <input
-        v-model="regionFilter"
-        class="compact-input"
-        type="number"
-        min="1"
-        placeholder="地区 ID"
-        title="按地区 ID 筛选"
-        @change="applyFilters"
-      />
+      <div class="risk-filter">
+        <button class="risk-trigger" :class="{ open: shadowRiskOpen, active: !!shadowRiskFilter }" @click="shadowRiskOpen = !shadowRiskOpen" @keydown.esc="shadowRiskOpen = false">
+          <span class="risk-trigger-label">
+            <span v-if="shadowRiskFilter" class="risk-trigger-dot" :class="'dot-' + shadowRiskFilter"></span>
+            {{ shadowRiskLabel }}
+          </span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div v-if="shadowRiskOpen" class="risk-backdrop" @click="shadowRiskOpen = false"></div>
+        <transition name="pop">
+          <div v-if="shadowRiskOpen" class="risk-menu" role="listbox">
+            <button v-for="opt in shadowRiskOptions" :key="opt.value" class="risk-opt" :class="{ active: shadowRiskFilter === opt.value }" @click="selectShadowRisk(opt.value)">
+              <span v-if="opt.value" class="risk-opt-dot" :class="'dot-' + opt.value"></span>
+              <span class="risk-opt-text">{{ opt.label }}</span>
+              <svg v-if="shadowRiskFilter === opt.value" class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </button>
+          </div>
+        </transition>
+      </div>
+
       <select v-model="topicFilter" class="compact-select" title="按主题筛选" @change="applyFilters">
         <option value="">全部主题</option>
         <option v-for="option in topicOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
@@ -82,28 +93,15 @@
         <option value="falling">↓ 下降</option>
         <option value="unknown">未知</option>
       </select>
-      <input
-        v-model="heatMin"
-        class="compact-input heat-input"
-        type="number"
-        min="0"
-        max="100"
-        placeholder="热度 ≥"
-        title="最低热度"
-        @change="applyFilters"
-      />
-      <input
-        v-model="heatMax"
-        class="compact-input heat-input"
-        type="number"
-        min="0"
-        max="100"
-        placeholder="热度 ≤"
-        title="最高热度"
-        @change="applyFilters"
-      />
+      <button class="btn btn-ghost more-toggle" :class="{ active: moreOpen }" @click="moreOpen = !moreOpen">{{ moreOpen ? '收起更多操作' : '更多操作' }}</button>
+      <div v-if="moreOpen" class="more-filters">
+        <input v-model="regionFilter" class="compact-input" type="number" min="1" placeholder="地区 ID" title="按地区 ID 筛选" @change="applyFilters" />
+        <input v-model="heatMin" class="compact-input heat-input" type="number" min="0" max="100" placeholder="热度 ≥" title="最低热度" @change="applyFilters" />
+        <input v-model="heatMax" class="compact-input heat-input" type="number" min="0" max="100" placeholder="热度 ≤" title="最高热度" @change="applyFilters" />
+      </div>
 
-      <button class="btn btn-ghost" :disabled="aggregating" @click="handleAggregate">{{ aggregating ? '聚合中...' : '手动聚合' }}</button>
+      <!-- RBAC 收口：手动聚合写库，需 events:write（后端 POST /events/aggregate 同权限） -->
+      <button v-if="canUpdateEvent" class="btn btn-ghost" :disabled="aggregating" @click="handleAggregate">{{ aggregating ? '聚合中...' : '手动聚合' }}</button>
       <button class="btn btn-ghost" @click="loadData">刷新</button>
       <span v-if="lastResult" class="agg-result">
         聚合成功：新建 {{ lastResult.created }} · 更新 {{ lastResult.updated }} · 关联 {{ lastResult.linked }}
@@ -117,8 +115,8 @@
             <th style="width:70px">ID</th>
             <th style="width:280px">事件标题</th>
             <th style="width:110px">主题</th>
-            <th style="width:110px" class="col-center">风险等级</th>
-            <th style="width:80px" class="col-center">风险分</th>
+            <th style="width:130px" class="col-center">研判风险（影子）</th>
+            <th style="width:110px" class="col-center">研判分</th>
             <th style="width:80px" class="col-center">热度</th>
             <th style="width:90px" class="col-center">趋势</th>
             <th style="width:100px" class="col-center">关联舆情</th>
@@ -134,10 +132,14 @@
             <td><span class="t-title">{{ row.title }}</span></td>
             <td class="nowrap">{{ topicText(row.topic_category) }}</td>
             <td class="col-center">
-              <span class="pill" :class="riskPill(row.risk_level)"><span class="dot"></span>{{ riskText(row.risk_level) }}</span>
+              <span class="pill" :class="riskPill(row.risk_shadow_level || 'low')"><span class="dot"></span>{{ riskText(row.risk_shadow_level || 'low') }}</span>
+              <span class="risk-source" :title="row.risk_shadow_version || 'event-risk-shadow-v1'">只读参考</span>
               <span v-if="isKeyEvent(row)" class="focus-mark">重点关注</span>
             </td>
-            <td class="col-center risk-num" :style="{ color: riskColor(row.risk_score) }">{{ row.risk_score }}</td>
+            <td class="col-center risk-num" :style="{ color: riskColor(row.risk_shadow_score ?? 0) }">
+              {{ row.risk_shadow_score ?? '-' }}
+              <small class="legacy-risk" :title="'现行风险分：' + row.risk_score">现行 {{ row.risk_score }}</small>
+            </td>
             <td class="col-center risk-num">{{ row.heat_score }}</td>
             <td class="col-center">
               <span class="pill" :class="trendPill(row.trend)">{{ trendText(row.trend) }}</span>
@@ -147,9 +149,11 @@
             <td class="nowrap">{{ formatTime(row.first_time) }}</td>
             <td class="nowrap">{{ formatTime(row.last_time) }}</td>
             <td class="col-center operation-col" @click.stop>
+              <!-- RBAC 收口：处置/删除入口均需 events:write；无权限者不展示（观察者只读） -->
               <div class="row-actions">
-                <button class="btn-operate" title="打开事件处置弹窗" @click.stop="openHandle(row)">处置</button>
-                <button class="btn-icon btn-delete" title="删除事件" @click="handleDelete(row)">🗑</button>
+                <button v-if="canUpdateEvent" class="btn-operate" title="打开事件处置弹窗" @click.stop="openHandle(row)">处置</button>
+                <button v-if="canUpdateEvent" class="btn-icon btn-delete" title="删除事件" @click="handleDelete(row)">🗑</button>
+                <span v-if="!canUpdateEvent" class="row-actions-empty">—</span>
               </div>
             </td>
           </tr>
@@ -160,10 +164,7 @@
       </table>
 
       <div class="pager" v-if="total > 0">
-        <span class="p-info">共 {{ total }} 条</span>
-        <button :disabled="page<=1" @click="page--; loadData()">‹</button>
-        <button v-for="p in pages" :key="p" :class="{ active: p === page }" @click="page=p; loadData()">{{ p }}</button>
-        <button :disabled="page>=maxPage" @click="page++; loadData()">›</button>
+        <Pager :total="total" v-model:current-page="page" :page-size="size" @current-change="loadData" />
       </div>
     </div>
 
@@ -179,7 +180,6 @@
         <div class="op-left">
           <div class="operation-header">
             <div>
-              <h3 class="section-title">事件处置</h3>
               <div class="operation-current">
                 当前处置状态
                 <span class="pill" :class="eventStatusPill(handleEvent.status)">{{ eventStatusLabel(handleEvent.status) }}</span>
@@ -256,7 +256,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import api, { pollTask } from '@/api'
+import api, { isPermissionDenied, pollTask } from '@/api'
 import type { EventItem, EventListResponse, EventCreateResponse, EventActionItem } from '@/types'
 import { EVENT_STATUS_OPTIONS, eventStatusLabel, eventStatusPill } from '@/utils/event'
 import { usePermission } from '@/composables/usePermission'
@@ -270,6 +270,7 @@ const size = ref(20)
 const lastResult = ref<EventCreateResponse | null>(null)
 const title = ref('')          // 标题搜索关键字
 const riskFilter = ref('')     // 风险等级筛选：''=全部 / low / medium / high
+const shadowRiskFilter = ref('')
 const regionFilter = ref('')
 const topicFilter = ref('')
 const statusFilter = ref('')
@@ -278,6 +279,8 @@ const heatMin = ref('')
 const heatMax = ref('')
 const searchFocused = ref(false) // 搜索框聚焦态（驱动苹果蓝聚焦环）
 const riskOpen = ref(false)      // 风险下拉浮层开合
+const shadowRiskOpen = ref(false)
+const moreOpen = ref(false)
 
 // 事件处置弹窗（点击列表“处置”按钮唤起）
 interface HandleEvent { id: number; status: string; actions: EventActionItem[] }
@@ -290,10 +293,16 @@ const noteContent = ref('')
 const { hasPermission } = usePermission()
 const canUpdateEvent = computed(() => hasPermission('events:write'))
 const riskOptions = [
-  { value: '', label: '全部风险' },
-  { value: 'low', label: '低风险' },
-  { value: 'medium', label: '中风险' },
-  { value: 'high', label: '高风险' },
+  { value: '', label: '全部现行风险' },
+  { value: 'low', label: '现行低风险' },
+  { value: 'medium', label: '现行中风险' },
+  { value: 'high', label: '现行高风险' },
+]
+const shadowRiskOptions = [
+  { value: '', label: '全部影子风险' },
+  { value: 'low', label: '影子低风险' },
+  { value: 'medium', label: '影子中风险' },
+  { value: 'high', label: '影子高风险' },
 ]
 const topicOptions = [
   { value: 'livelihood', label: '民生' },
@@ -309,17 +318,8 @@ const topicOptions = [
   { value: 'other', label: '其他' },
 ]
 const riskLabel = computed(() => (riskOptions.find((o) => o.value === riskFilter.value) || riskOptions[0]).label)
+const shadowRiskLabel = computed(() => (shadowRiskOptions.find((o) => o.value === shadowRiskFilter.value) || shadowRiskOptions[0]).label)
 let searchTimer: number | undefined
-
-const maxPage = computed(() => Math.ceil(total.value / size.value) || 1)
-const pages = computed(() => {
-  const p: number[] = []
-  const mp = maxPage.value
-  const start = Math.max(1, page.value - 2)
-  const end = Math.min(mp, page.value + 2)
-  for (let i = start; i <= end; i++) p.push(i)
-  return p
-})
 
 function riskPill(level: string): string {
   return ({ high: 'pill-red', medium: 'pill-orange', low: 'pill-green' } as const)[level] || 'pill-gray'
@@ -351,6 +351,7 @@ async function loadData() {
     const kw = title.value.trim()
     if (kw) params.title = kw
     if (riskFilter.value) params.risk_level = riskFilter.value
+    if (shadowRiskFilter.value) params.risk_shadow_level = shadowRiskFilter.value
     if (regionFilter.value) params.region_id = Number(regionFilter.value)
     if (topicFilter.value) params.topic_category = topicFilter.value
     if (statusFilter.value) params.status = statusFilter.value
@@ -385,6 +386,12 @@ function selectRisk(v: string) {
   page.value = 1
   loadData()
 }
+function selectShadowRisk(v: string) {
+  shadowRiskFilter.value = v
+  shadowRiskOpen.value = false
+  page.value = 1
+  loadData()
+}
 function applyFilters() {
   page.value = 1
   loadData()
@@ -407,21 +414,41 @@ async function handleAggregate() {
     } else if (res.status === 'failed') {
       ElMessage.error('聚合失败：' + (res.error || res.message || '未知错误'))
     }
-  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '聚合失败') } finally { aggregating.value = false }
+  } catch (err: any) {
+    if (!isPermissionDenied(err)) ElMessage.error(err?.response?.data?.detail || '聚合失败')
+  } finally { aggregating.value = false }
 }
 
 async function handleDelete(row: EventItem) {
+  // 二次防线：即使按钮被绕过（如控制台调用），也先做一次本地权限判断。
+  if (!canUpdateEvent.value) {
+    ElMessage.error('权限不足，无法删除事件')
+    return
+  }
+  const { ElMessageBox } = await import('element-plus')
+  // 步骤 1：确认框。用户取消时 ElMessageBox 会 reject，需与「接口失败」区分开，
+  // 否则会像收口前那样被同一个空 catch 吞掉，删除失败也毫无提示。
   try {
-    const { ElMessageBox } = await import('element-plus')
     await ElMessageBox.confirm(
       `确认删除事件「${row.title}」？关联的舆情不会被删除，仅解除关联。`,
       '删除确认',
       { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
     )
+  } catch {
+    return // 用户主动取消，静默返回
+  }
+  // 步骤 2：真正调用删除接口，失败必须明确反馈
+  try {
     await api.delete('/events/' + row.id)
     ElMessage.success('事件已删除')
     await loadData()
-  } catch { /* cancelled or error */ }
+  } catch (err: any) {
+    // 403 已由 api 全局拦截器统一提示「权限不足，请联系管理员」，此处不再重复弹窗；
+    // 其余失败（网络/500/业务错误）必须明确反馈，禁止空 catch。
+    if (!isPermissionDenied(err)) {
+      ElMessage.error(err?.response?.data?.detail || '删除事件失败，请稍后重试')
+    }
+  }
 }
 
 onMounted(loadData)
@@ -576,7 +603,16 @@ async function addNote() {
 .pop-enter-from, .pop-leave-to { opacity: 0; transform: translateY(-8px) scale(0.97); }
 
 .card { background: #ffffff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05); }
-.table-card { padding: 6px 0 14px 6px; overflow-x: auto; }
+.table-card {
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px 0 14px 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
 
 table.tbl { width: 100%; min-width: 1520px; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
 table.tbl thead th {
@@ -593,6 +629,10 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .nowrap { white-space: nowrap; }
 .t-title { font-weight: 500; color: #1d1d1f; }
 .risk-num { font-weight: 600; font-variant-numeric: tabular-nums; }
+.more-toggle.active { background: #e8f1fd; color: #0071e3; }
+.more-filters { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; }
+.risk-source { display: block; margin-top: 4px; color: #86868b; font-size: 11px; }
+.legacy-risk { display: block; margin-top: 3px; color: #86868b; font-size: 10px; font-weight: 400; }
 .empty-row td { text-align: center; color: #86868b; padding: 40px 0; }
 
 .pill {
@@ -606,15 +646,6 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
 
 .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 18px 0; }
-.pager .p-info { color: #86868b; font-size: 13px; margin-right: auto; }
-.pager button {
-  min-width: 34px; height: 34px; padding: 0 10px; border: 1px solid #d2d2d7;
-  background: #ffffff; border-radius: 9px; color: #1d1d1f; font-size: 13.5px;
-  cursor: pointer; transition: background 0.15s ease;
-}
-.pager button:hover:not(:disabled) { background: #e8e8ed; }
-.pager button.active { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
-.pager button:disabled { opacity: 0.4; cursor: default; }
 
 .btn-icon {
   display: inline-flex; align-items: center; justify-content: center;
@@ -623,6 +654,8 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
   transition: background 0.15s ease;
 }
 .row-actions { display: flex; align-items: center; justify-content: center; gap: 6px; }
+/* 无 events:write 时的操作列占位（保持行高与列宽稳定） */
+.row-actions-empty { color: #c0c4cc; font-size: 13px; }
 .operation-col {
   position: sticky; right: 0; z-index: 2; min-width: 110px; width: 110px;
   background: #fff; box-shadow: -10px 0 14px -14px rgba(0,0,0,0.38);
@@ -690,8 +723,13 @@ table.tbl tbody tr:hover .operation-col { background: #fafafc; }
 .section-title { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: #1d1d1f; }
 
 @media (max-width: 860px) {
+  .more-filters { width: 100%; flex-wrap: wrap; }
   .op-modal-body { flex-direction: column; height: auto; }
   .op-right { flex: 1 1 auto; width: 100%; max-height: 340px; position: static; display: flex; flex-direction: column; }
   .op-right-scroll { position: static; flex: 1 1 auto; min-height: 0; }
+}
+@media (max-width: 820px) {
+  .events { max-width: 100%; min-width: 0; overflow-x: hidden; }
+  .toolbar { max-width: 100%; }
 }
 </style>

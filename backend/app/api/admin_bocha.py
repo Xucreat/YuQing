@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.permissions import require_admin
 from app.db.session import get_db
@@ -52,7 +52,11 @@ def _parse_datetime(value: str | None, field_name: str) -> datetime | None:
 
 
 def _get_lead_or_404(db: Session, lead_id: int) -> BochaLead:
-    lead = db.get(BochaLead, lead_id)
+    lead = db.scalars(
+        select(BochaLead)
+        .where(BochaLead.id == lead_id)
+        .options(joinedload(BochaLead.creator))
+    ).first()
     if lead is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -132,6 +136,7 @@ def search_bocha(
 )
 def list_bocha_leads(
     status_filter: BochaLeadStatus | None = Query(default=None, alias="status"),
+    provider: str | None = Query(default=None, pattern="^(bocha|anspire)$"),
     query: str | None = Query(default=None, max_length=512),
     created_from: str | None = Query(default=None),
     created_to: str | None = Query(default=None),
@@ -143,7 +148,9 @@ def list_bocha_leads(
     start = _parse_datetime(created_from, "created_from")
     end = _parse_datetime(created_to, "created_to")
 
-    stmt = select(BochaLead)
+    stmt = select(BochaLead).options(joinedload(BochaLead.creator))
+    if provider:
+        stmt = stmt.where(BochaLead.provider == provider)
     if status_filter:
         stmt = stmt.where(BochaLead.status == status_filter)
     if query:
@@ -154,6 +161,8 @@ def list_bocha_leads(
         stmt = stmt.where(BochaLead.created_at <= end)
 
     count_stmt = select(BochaLead.id)
+    if provider:
+        count_stmt = count_stmt.where(BochaLead.provider == provider)
     if status_filter:
         count_stmt = count_stmt.where(BochaLead.status == status_filter)
     if query:
@@ -262,6 +271,7 @@ def promote_bocha_lead(
         select(BochaLead)
         .where(BochaLead.id == lead_id)
         .with_for_update()
+        .options(joinedload(BochaLead.creator))
     )
     if lead is None:
         raise HTTPException(
@@ -329,7 +339,7 @@ def promote_bocha_lead(
             opinion = Opinion(
                 title=lead.title or "",
                 content=lead.summary or lead.snippet or "",
-                source="Bocha辅助搜索",
+                source="Anspire网页搜索" if lead.provider == "anspire" else "Bocha辅助搜索",
                 url=url,
                 publish_time=lead.publish_time,
                 region_id=region.id,

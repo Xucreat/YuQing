@@ -76,6 +76,9 @@ export interface EventItem {
   region_name?: string | null
   risk_level: string
   risk_score: number
+  risk_shadow_score?: number | null
+  risk_shadow_level?: string | null
+  risk_shadow_version?: string | null
   topic_category?: string | null
   heat_score: number
   trend: 'rising' | 'stable' | 'falling' | 'unknown' | string

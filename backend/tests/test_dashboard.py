@@ -38,23 +38,30 @@ def _clear_cache():
 
 @pytest.fixture
 def fresh_opinions() -> None:
-    """清空测试库 opinions 表，提供干净基准（不影响生产种子数据）。"""
+    """清空测试库 opinions 表，提供干净基准（不影响生产种子数据）。
+
+    使用 TRUNCATE ... CASCADE 一并清理引用 opinions 的子表
+    （alert_records / event_opinions / propagation_nodes / bocha_leads），
+    避免遗留数据导致裸 DELETE 触发外键约束报错。仅清数据、不改表结构。
+    """
     db: Session = SessionLocal()
     try:
-        db.execute(text("DELETE FROM opinions"))
+        db.execute(text("TRUNCATE opinions RESTART IDENTITY CASCADE"))
         db.commit()
     finally:
         db.close()
 
 
 def _create(client: TestClient, headers: dict, region_id: int, *, keywords: str = "") -> dict:
+    import uuid
+
     resp = client.post(
         "/api/opinions",
         json={
             "title": f"dash-{keywords or 'x'}",
             "content": "内容",
             "source": "微博",
-            "url": "https://example.com/x",
+            "url": f"https://example.com/{uuid.uuid4().hex}",
             "region_id": region_id,
             "keywords": keywords,
         },
@@ -78,10 +85,10 @@ def test_dashboard_login_success(
     resp = client.get("/api/dashboard/stats", headers=auth_headers)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    # 完整字段集合（含新增 hot_keywords，保留兼容字段 keywords）
+    # 完整字段集合（含新增 hot_keywords、region_detail，保留兼容字段 keywords）
     assert set(body.keys()) == {
         "total", "today", "high_risk", "event_count", "trend",
-        "keywords", "sources", "sentiments", "regions", "hot_keywords",
+        "keywords", "sources", "sentiments", "regions", "region_detail", "hot_keywords",
     }
     assert body["trend"] is not None
     # 默认 days=7，近 7 日，无数据日期补齐 count=0
@@ -261,6 +268,78 @@ def test_hot_keywords_empty_stable(
 
 
 # ---------------------------------------------------------------------------
+# HotWord-1B：category 双模式过滤
+# ---------------------------------------------------------------------------
+def test_hot_keywords_category_default_compat(
+    auth_headers, client: TestClient, fresh_opinions, seeded_region_id
+) -> None:
+    # 服务层：category=None 必须与省略 category 完全一致（旧行为零回归）
+    db: Session = SessionLocal()
+    try:
+        a = dashboard_service.get_hot_keywords(db, days=7, limit=10)
+        b = dashboard_service.get_hot_keywords(db, days=7, limit=10, category=None)
+    finally:
+        db.close()
+    assert a == b
+    # API 层：省略 category 正常返回且含 trend 字段
+    resp = client.get("/api/dashboard/hot-keywords", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    for it in resp.json()["items"]:
+        assert it["trend"] in ("up", "down", "flat")
+
+
+def test_hot_keywords_category_topic(
+    auth_headers, client: TestClient, fresh_opinions, seeded_region_id
+) -> None:
+    # 模式 B：category=主题 仅返回主题词，排除元词「舆情」与地域词
+    db: Session = SessionLocal()
+    try:
+        db.add(Opinion(title="学校消防安全教育", content="内容", source="s",
+                       region_id=seeded_region_id, risk_score=0, sentiment="neutral"))
+        db.add(Opinion(title="城市交通拥堵投诉", content="内容", source="s",
+                       region_id=seeded_region_id, risk_score=0, sentiment="neutral"))
+        # 元词「舆情」：仅标题含「舆情」，主题模式应排除该词本身（不计入）
+        db.add(Opinion(title="学生舆情事件", content="内容", source="s",
+                       region_id=seeded_region_id, risk_score=0, sentiment="neutral"))
+        # 地域词「廊坊/河北」：标题含地域词但不含主题词 -> 不应计入主题词云
+        db.add(Opinion(title="河北廊坊征地新闻", content="内容", source="s",
+                       region_id=seeded_region_id, risk_score=0, sentiment="neutral"))
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.get("/api/dashboard/hot-keywords?category=主题", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    items = {it["keyword"]: it["count"] for it in body["items"]}
+    # 主题词正常返回
+    assert items.get("教育") == 1
+    assert items.get("消防") == 1
+    assert items.get("交通") == 1
+    assert items.get("投诉") == 1
+    assert items.get("征地") == 1
+    # 元词「舆情」被展示层过滤：不出现
+    assert "舆情" not in items
+    # 地域词不计入主题词云
+    assert "廊坊" not in items
+    assert "河北" not in items
+    # trend 字段保留
+    for it in body["items"]:
+        assert it["trend"] in ("up", "down", "flat")
+
+
+def test_hot_keywords_category_unknown_returns_empty(
+    auth_headers, client: TestClient, fresh_opinions
+) -> None:
+    # 不存在的分类 -> 返回空列表，不 500
+    resp = client.get("/api/dashboard/hot-keywords?category=不存在的分类", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["items"] == []
+    assert body["days"] == 7
+
+
+# ---------------------------------------------------------------------------
 # days 校验与窗口语义
 # ---------------------------------------------------------------------------
 def test_stats_days_validation(auth_headers, client: TestClient) -> None:
@@ -327,9 +406,9 @@ def test_dashboard_cache_endpoint_isolation() -> None:
     finally:
         db.close()
     keys = cache_keys()
-    # 各端点独立 key 前缀，互不污染
+    # 各端点独立 key 前缀，互不污染（hot-keywords 默认 category=None -> '_all' 段）
     assert "dash:stats:7" in keys
-    assert "dash:hot:7:10" in keys
+    assert "dash:hot:7:10:_all" in keys
     assert "dash:recent:8" in keys
     assert "dash:alerts:8" in keys
 

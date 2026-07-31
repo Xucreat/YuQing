@@ -95,6 +95,30 @@ def _resolve_perms(db: Session, codes: list[str]) -> list[Permission]:
     )
 
 
+# ---------- SEC2-05：权限变更审计快照 ----------
+_USER_AUDIT_FIELDS = ("display_name", "email", "role", "is_superuser", "is_active")
+_ROLE_AUDIT_FIELDS = ("display_name", "description", "is_enabled")
+
+
+def _user_audit_snapshot(user: User) -> dict:
+    """用户变更前/后快照（不含密码明文/哈希）。"""
+    snap = {f: getattr(user, f) for f in _USER_AUDIT_FIELDS}
+    snap["roles"] = sorted(r.id for r in user.roles)
+    return snap
+
+
+def _role_audit_snapshot(role: Role) -> dict:
+    """角色变更前/后快照，含权限码集合（权限治理审计核心）。"""
+    snap = {f: getattr(role, f) for f in _ROLE_AUDIT_FIELDS}
+    snap["permissions"] = sorted(p.code for p in role.permissions)
+    return snap
+
+
+def _diff_snapshot(before: dict, after: dict) -> list[str]:
+    """返回实际发生变化的字段名列表，便于日志页面快速定位。"""
+    return sorted(k for k in after if before.get(k) != after.get(k))
+
+
 # ================= 用户管理 =================
 @users_router.get("/users", response_model=dict)
 def list_users(
@@ -198,6 +222,7 @@ def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    before_snapshot = _user_audit_snapshot(user)
     was_super = is_superuser_user(user)
     new_role = body.role if body.role is not None else user.role
     new_is_super = body.is_superuser if body.is_superuser is not None else user.is_superuser
@@ -232,10 +257,20 @@ def update_user(
         user.roles = extra
     user.updated_at = datetime.now(timezone.utc)
 
+    after_snapshot = _user_audit_snapshot(user)
+    changed = body.model_dump(exclude_unset=True, mode="json")
+    if "password" in changed:
+        changed["password"] = "***"  # 永不落库明文
     log_operation(
         db, action="UPDATE", operator=current_user, request=request,
         resource_type="user", resource_id=str(user.id), target_user_id=user.id,
-        details={"changes": body.model_dump(exclude_unset=True, mode="json")},
+        details={
+            "changes": changed,
+            "before": before_snapshot,
+            "after": after_snapshot,
+            "changed_fields": _diff_snapshot(before_snapshot, after_snapshot),
+            "password_changed": body.password is not None,
+        },
     )
     db.commit()
     db.refresh(user)
@@ -258,11 +293,12 @@ def delete_user(
         raise HTTPException(status_code=403, detail="Cannot delete the last superuser")
 
     uname = user.username
+    before_snapshot = _user_audit_snapshot(user)
     db.delete(user)
     log_operation(
         db, action="DELETE", operator=current_user, request=request,
         resource_type="user", resource_id=str(user_id), target_user_id=user_id,
-        details={"username": uname},
+        details={"username": uname, "before": before_snapshot, "after": None},
     )
     db.commit()
 
@@ -396,6 +432,7 @@ def update_role(
     role = db.get(Role, role_id)
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
+    before_snapshot = _role_audit_snapshot(role)
     if body.display_name is not None:
         role.display_name = body.display_name
     if body.description is not None:
@@ -407,9 +444,19 @@ def update_role(
     if body.permissions is not None:
         role.permissions = _resolve_perms(db, body.permissions)
     role.updated_at = datetime.now(timezone.utc)
+    after_snapshot = _role_audit_snapshot(role)
+    perm_before = set(before_snapshot["permissions"])
+    perm_after = set(after_snapshot["permissions"])
     log_operation(db, action="ROLE_UPDATE", operator=current_user, request=request,
                   resource_type="role", resource_id=str(role.id),
-                  details={"changes": body.model_dump(exclude_unset=True, mode="json")})
+                  details={
+                      "changes": body.model_dump(exclude_unset=True, mode="json"),
+                      "before": before_snapshot,
+                      "after": after_snapshot,
+                      "changed_fields": _diff_snapshot(before_snapshot, after_snapshot),
+                      "permissions_added": sorted(perm_after - perm_before),
+                      "permissions_removed": sorted(perm_before - perm_after),
+                  })
     db.commit()
     db.refresh(role)
     return _serialize_role(role, db)
@@ -432,10 +479,12 @@ def delete_role(
             status_code=400,
             detail="Role is still assigned to users; reassign them first",
         )
+    before_snapshot = _role_audit_snapshot(role)
+    role_name = role.name
     db.delete(role)
     log_operation(db, action="ROLE_DELETE", operator=current_user, request=request,
                   resource_type="role", resource_id=str(role_id),
-                  details={"name": role.name})
+                  details={"name": role_name, "before": before_snapshot, "after": None})
     db.commit()
 
 

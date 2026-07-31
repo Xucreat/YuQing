@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.bocha_lead import BochaLead
 from app.models.bocha_search_session import BochaSearchSession
@@ -20,14 +21,22 @@ from app.schemas.bocha import (
     BochaSearchResponse,
     BochaSearchResultOut,
     BochaSearchSessionListResponse,
+    BochaAILeadOut,
+    BochaAISaveLeadRequest,
+    BochaAISearchRequest,
+    BochaAISearchResponse,
+    BochaAISearchResultOut,
 )
 from app.services.audit_service import audit_write
 from app.services.bocha_search_service import BochaSearchError, BochaSearchService
+from app.services.bocha_ai_search_service import BochaAISearchError, BochaAISearchService
 
 bocha_router = APIRouter(
     prefix="/bocha",
     tags=["bocha"],
-    dependencies=[Depends(get_current_user)],
+    # RBAC 收口：AI 检索（Web Search / AI Search）整体由「仅登录」收敛为需要 ai:search。
+    # 路由级依赖对本 router 下全部端点生效，端点内部逻辑与签名保持不变。
+    dependencies=[Depends(get_current_user), Depends(require_permission("ai:search"))],
 )
 
 MAX_SIZE = 100
@@ -114,6 +123,109 @@ def search_bocha(
         total=len(result.results),
         query=result.session.query,
     )
+
+
+def _ai_response(result) -> BochaAISearchResponse:
+    return BochaAISearchResponse(
+        session=result.session,
+        answer=result.answer,
+        follow_up_questions=result.follow_up_questions,
+        web_pages=[BochaAISearchResultOut(result_index=index, **item) for index, item in enumerate(result.web_pages)],
+        images=result.images,
+        modal_cards=result.modal_cards,
+        conversation_id=result.conversation_id,
+        total=result.total,
+        raw_response=result.raw_response,
+    )
+
+
+@bocha_router.post(
+    "/ai-search",
+    response_model=BochaAISearchResponse,
+    status_code=status.HTTP_200_OK,
+)
+def search_bocha_ai(
+    payload: BochaAISearchRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> BochaAISearchResponse:
+    try:
+        with audit_write(
+            db,
+            action="bocha_ai_user_search",
+            operator=current_user,
+            request=request,
+            resource_type="bocha_ai_search_session",
+            details={
+                "query": payload.query,
+                "freshness": payload.freshness,
+                "include": payload.include,
+                "requested_count": payload.count,
+                "answer": payload.answer,
+                "stream": payload.stream,
+            },
+        ) as ctx:
+            result = BochaAISearchService().search(
+                db,
+                query=payload.query,
+                freshness=payload.freshness,
+                include=payload.include,
+                count=payload.count,
+                answer=payload.answer,
+                stream=payload.stream,
+                created_by=current_user.id,
+            )
+            ctx["resource_id"] = str(result.session.id)
+    except BochaAISearchError as exc:
+        message = str(exc)
+        if "BOCHA_API_KEY" in message:
+            detail, code = "Bocha AI search is not configured", status.HTTP_503_SERVICE_UNAVAILABLE
+        elif "quota exhausted" in message.lower():
+            detail, code = "Bocha AI search quota exhausted; configure a valid BOCHA_AI_API_KEY", status.HTTP_503_SERVICE_UNAVAILABLE
+        elif "authentication failed" in message.lower() or "permission denied" in message.lower():
+            detail, code = "Bocha AI search credentials are invalid or lack permission", status.HTTP_503_SERVICE_UNAVAILABLE
+        elif "invalid" in message.lower() or "between" in message.lower() or "freshness" in message.lower() or "query" in message.lower():
+            detail, code = message, status.HTTP_422_UNPROCESSABLE_ENTITY
+        else:
+            detail, code = "Bocha AI search is unavailable", status.HTTP_503_SERVICE_UNAVAILABLE
+        raise HTTPException(status_code=code, detail=detail) from exc
+    return _ai_response(result)
+
+
+@bocha_router.get("/ai-search/options")
+def bocha_ai_search_options() -> dict[str, object]:
+    from app.core.config import settings
+
+    return {
+        "platform_includes": {
+            "weibo": settings.bocha_ai_weibo_domains,
+            "xiaohongshu": settings.bocha_ai_xiaohongshu_domains,
+        },
+        "freshness": ["oneDay", "oneWeek", "oneMonth", "oneYear", "noLimit"],
+        "max_count": 50,
+    }
+
+
+@bocha_router.post(
+    "/ai-leads",
+    response_model=BochaAILeadOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def save_bocha_ai_lead(
+    payload: BochaAISaveLeadRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> object:
+    try:
+        return BochaAISearchService().save_lead(
+            db,
+            session_id=payload.session_id,
+            result_index=payload.result_index,
+            created_by=current_user.id,
+        )
+    except BochaAISearchError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @bocha_router.get(

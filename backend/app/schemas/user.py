@@ -21,6 +21,24 @@ class Token(BaseModel):
     is_superuser: bool = False
 
 
+class MeResponse(BaseModel):
+    """GET /api/auth/me 响应：当前用户 + 角色 + 实时权限列表。
+
+    用途：前端应用启动时用它刷新本地权限缓存，使管理员改权限后用户
+    「刷新页面即可同步」，无需重新登录。字段与 /login 响应保持同构，
+    前端可复用同一套 setRole / setPermissions / setIsSuperuser 写入逻辑。
+    """
+
+    id: int
+    username: str
+    display_name: Optional[str] = None
+    role: str = ""
+    roles: List[str] = []          # 主角色 + 附加角色（去重）
+    permissions: List[str] = []    # 超级管理员为 ["*"]
+    is_superuser: bool = False
+    is_active: bool = True
+
+
 # ---------------- 权限目录 ----------------
 class PermissionOut(BaseModel):
     id: int

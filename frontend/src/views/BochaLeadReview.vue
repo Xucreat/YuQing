@@ -16,6 +16,10 @@
           <el-option label="已驳回" value="rejected" />
           <el-option label="已晋级" value="promoted" />
         </el-select>
+        <el-select v-model="filters.provider" clearable placeholder="Provider" @change="handleFilterChange">
+          <el-option label="Bocha" value="bocha" />
+          <el-option label="Anspire" value="anspire" />
+        </el-select>
         <el-input
           v-model="filters.query"
           clearable
@@ -82,6 +86,10 @@
         </el-table-column>
         <el-table-column prop="query" label="检索词" width="160" show-overflow-tooltip />
         <el-table-column prop="source_name" label="来源" width="150" show-overflow-tooltip />
+        <el-table-column label="创建人" width="140" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.creator_name || (row.created_by != null ? '用户#' + row.created_by : '-') }}</template>
+        </el-table-column>
+        <el-table-column label="Provider" width="120"><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.provider === 'anspire' ? 'Anspire' : 'Bocha' }}</el-tag><span v-if="row.provider_score != null"> {{ row.provider_score }}</span></template></el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="{ row }">
             <el-tag size="small" :type="statusType(row.status)" effect="light">
@@ -130,11 +138,9 @@
       </el-table>
 
       <div class="pagination-row">
-        <el-pagination
+        <Pager
           v-model:current-page="page"
-          v-model:page-size="size"
-          background
-          layout="total, prev, pager, next"
+          :page-size="size"
           :total="total"
           @current-change="loadLeads"
         />
@@ -227,6 +233,7 @@ const regionsLoading = ref(false)
 const regions = ref<RegionOption[]>([])
 const filters = reactive({
   status: '' as LeadStatus | '',
+  provider: '' as '' | 'bocha' | 'anspire',
   query: '',
 })
 
@@ -257,6 +264,7 @@ async function loadLeads() {
         page: page.value,
         size: size.value,
         status: filters.status || undefined,
+        provider: filters.provider || undefined,
         query: filters.query.trim() || undefined,
       },
     })

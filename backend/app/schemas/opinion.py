@@ -30,6 +30,29 @@ class OpinionCreate(OpinionBase):
     pass
 
 
+class OpinionUpdate(BaseModel):
+    """部分更新舆情（人工校正）。
+
+    当前仅开放 sentiment（情感）的人工覆盖；其余字段保持系统研判不变。
+    所有字段均为可选，便于未来按需扩展（如风险级别覆盖），未传字段不改动。
+    """
+
+    sentiment: Optional[str] = None
+
+
+class OpinionBatchUpdate(BaseModel):
+    """批量修改情感（Phase 8-E）。ids 列表 + 目标情感；逐条校验与审计。"""
+
+    ids: List[int]
+    sentiment: str
+
+
+class OpinionBatchDelete(BaseModel):
+    """批量删除舆情（Phase 8-E，admin）。循环复用单条级联清理；写汇总审计。"""
+
+    ids: List[int]
+
+
 class OpinionOut(OpinionBase):
     """完整舆情响应（列表项与详情共用）。"""
 

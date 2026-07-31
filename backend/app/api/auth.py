@@ -17,7 +17,7 @@ from app.core.security import create_access_token, verify_password
 from app.db.session import get_db
 from app.models.user import User
 from app.models.role import Role
-from app.schemas.user import LoginRequest, Token
+from app.schemas.user import LoginRequest, MeResponse, Token
 from app.services.audit_service import log_login
 
 auth_router = APIRouter(tags=["auth"])
@@ -83,6 +83,40 @@ def login(
         role=user.role,
         permissions=permissions,
         is_superuser=bool(user.is_superuser),
+    )
+
+
+@auth_router.get("/auth/me", response_model=MeResponse)
+def read_me(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MeResponse:
+    """返回当前登录用户的身份、角色与**实时**权限列表。
+
+    动机（权限生效机制）：登录时下发的 permissions 会被前端缓存在 localStorage，
+    管理员随后修改角色权限不会自动同步。前端在应用启动时调用本接口重新拉取，
+    即可做到「刷新页面即生效」，而无需重构 JWT、无需引入缓存服务。
+
+    - 仅需登录（Bearer JWT），不额外要求任何权限码，避免权限被改小后自锁。
+    - 权限计算完全复用 get_user_permissions()，与 require_permission 判定同源。
+    - 只读接口：不写库、不产生审计记录。
+    """
+    role_names: list[str] = []
+    if current_user.role:
+        role_names.append(current_user.role)
+    for r in current_user.roles:
+        if r is not None and r.name not in role_names:
+            role_names.append(r.name)
+
+    return MeResponse(
+        id=current_user.id,
+        username=current_user.username,
+        display_name=current_user.display_name,
+        role=current_user.role or "",
+        roles=role_names,
+        permissions=_user_permissions(db, current_user),
+        is_superuser=bool(current_user.is_superuser),
+        is_active=bool(current_user.is_active),
     )
 
 

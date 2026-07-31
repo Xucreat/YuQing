@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.opinion import Opinion
 from app.models.user import User
@@ -40,7 +41,8 @@ analysis_router = APIRouter(
 def analyze_opinion(
     opinion_id: int,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    # RBAC 收口：AI 研判由「仅登录」收敛为需要 ai:analyze（会消耗外部模型额度）。
+    _current_user: User = Depends(require_permission("ai:analyze")),
 ) -> Opinion:
     """对指定舆情触发 AI 分析，更新结果并返回完整 Opinion。
 

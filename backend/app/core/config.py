@@ -169,6 +169,23 @@ class Settings(BaseSettings):
     bocha_timeout: float = 10.0
     bocha_search_count: int = 8
 
+    # Bocha AI Search is a separate integration.  The credential remains
+    # environment-only; these settings are never serialized in API output.
+    # When unset, the existing BOCHA_API_KEY is reused for backwards compatibility.
+    bocha_ai_api_key: str = ""
+    bocha_ai_base_url: str = "https://api.bocha.cn/v1"
+    bocha_ai_timeout: float = 30.0
+    bocha_ai_search_count: int = 20
+    bocha_ai_weibo_domains: str = "weibo.com|m.weibo.cn"
+    bocha_ai_xiaohongshu_domains: str = "xiaohongshu.com|xhslink.com"
+
+    # ===== Anspire web search (environment-only credential) =====
+    anspire_enabled: bool = False
+    anspire_api_key: str = ""
+    anspire_base_url: str = "https://plugin.anspire.cn"
+    anspire_timeout: float = 20.0
+    anspire_default_top_k: int = 10
+
     # ===== Event 聚合配置（Phase 3C-0）=====
     # 聚合窗口：仅归并最近 N 天内、analysis_status=completed 的 Opinion。
     # Phase 4-Event-1 起：不再要求 keywords 非空（文本相似度也可召回），

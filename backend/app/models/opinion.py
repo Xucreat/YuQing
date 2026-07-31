@@ -108,6 +108,17 @@ class Opinion(Base):
     content_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     admission_reason: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
+    # ===== Phase X-History-1A：地域语义过滤标记（历史污染治理）=====
+    # geo_filtered：是否因「地域语义不匹配」被标记为过滤
+    #   （如「互联网大厂」噪声被误归大厂回族自治县）。
+    # 仅作标记、不删数据，保留原 region_id 供审计追溯。
+    # Dashboard 按地域统计的排除条件在 Phase X-History-1B 接入。
+    #   NULL / False = 未过滤（正常计入地域统计）
+    #   True         = 地域语义过滤（应从按地域统计中排除）
+    geo_filtered: Mapped[Optional[bool]] = mapped_column(
+        Boolean, nullable=True, default=False
+    )
+
     __table_args__ = (
         CheckConstraint(
             "analysis_status IN ('pending','processing','completed','failed')",

@@ -44,6 +44,7 @@ from app.models.region import Region
 from app.models.collector_run import CollectorRun
 from app.services.ai.fallback import RuleFallbackProvider
 from app.services.keyword_service import (
+    get_keyword_rules,
     get_monitoring_keywords,
     get_monitoring_keywords_grouped,
     get_severity_keywords,
@@ -51,7 +52,8 @@ from app.services.keyword_service import (
 )
 from app.services.risk_engine import RISK_MODEL_VERSION, RiskEngine
 from app.services.opinion_admission_service import OpinionAdmissionService
-from app.services.opinion_region_service import OpinionRegionService
+from app.services.opinion_region_service import OpinionRegionService, is_national_scope
+from app.services.keyword_filter_service import KeywordFilterService
 
 # ---------------------------------------------------------------------------
 # Phase 3A temporary implementation.
@@ -98,6 +100,7 @@ class CollectorRunResult:
     comments_seen: int = 0  # 采集阶段识别到的评论数量（评论不创建 Opinion）
     comments_skipped: int = 0  # 已跳过、未进入 Opinion 的评论数量
     admission_filtered: int = 0  # 微博正文因准入规则拒绝的数量
+    dachang_filtered: int = 0  # Phase X：「大厂」语义过滤拦截（非地域互联网语义）的数量
     collector_type: str = ""  # 本次采集方式（government/mock）
 
     upstream_total: Optional[int] = None
@@ -321,6 +324,7 @@ class CollectorService:
             result.comments_seen += sub.comments_seen
             result.comments_skipped += sub.comments_skipped
             result.admission_filtered += sub.admission_filtered
+            result.dachang_filtered += sub.dachang_filtered
 
         result.finalize()
 
@@ -360,6 +364,22 @@ class CollectorService:
         )
         db.add(run)
         db.commit()
+
+    def _build_dachang_filter(self, db: Session) -> "KeywordFilterService":
+        """构造「大厂」语义过滤服务。
+
+        - 优先读取 keywords.rule_config（id=30 已播种）构建；
+        - 列缺失 / 未播种 / 查询异常 → 回退内置 DEFAULT_RULE（避免迁移时序问题）。
+        其余关键词不受影响：KeywordFilterService 仅在 keyword=="大厂" 时介入。
+        """
+        try:
+            db_rules = get_keyword_rules(db)
+            dachang_rule = db_rules.get("大厂")
+            if dachang_rule:
+                return KeywordFilterService.from_rule_config(dachang_rule)
+        except Exception:  # 迁移未跑 / 列不存在 / 其它异常 → 安全回退
+            logger.warning("读取大厂 rule_config 失败，使用内置 DEFAULT_RULE 兜底")
+        return KeywordFilterService.default()
 
     def _process_collector(
         self,
@@ -417,6 +437,10 @@ class CollectorService:
 
             # 按采集器声明的覆盖范围绑定区域（省/市/县）
             region_resolver = OpinionRegionService()
+            # Phase X：「大厂」地域语义过滤（仅对 keyword="大厂" 生效；其余关键词零影响）。
+            # 优先从 keywords.rule_config（id=30 已播种）加载；列缺失/未播种/异常时
+            # 回退内置 DEFAULT_RULE，避免迁移时序问题。本地源在 is_valid_match 内豁免。
+            kw_filter = self._build_dachang_filter(db)
 
             # 每条 Opinion 的 AI 分析独立（无共享可变状态），逐采集器新建 Provider。
             # 敏感/风险词由 keywords 表（type='sensitive'）注入；无启用敏感词时
@@ -429,12 +453,25 @@ class CollectorService:
 
             c_created = c_analyzed = c_failed = 0
             admission_filtered = 0
+            dachang_filtered = 0
             for item in items:
                 # 微博评论是公众反馈数据，不是独立舆情主体；Phase 1-A 禁止评论创建 Opinion。
                 if item.get("source_type") == "weibo_comment":
                     comments_seen += 1
                     comments_skipped += 1
                     continue
+
+                # Phase X：「大厂」地域语义过滤（作用点 1 的收口）。
+                # 仅 keyword="大厂" 介入；本地源（scope 绑定廊坊辖区）豁免；其他关键词恒 True。
+                # 命中互联网「大厂」语义（无地域锚点）→ 拦截，不进入舆情库。
+                item_text = f"{(item.get('title') or '')} {(item.get('content') or '')}"
+                item_is_local = not is_national_scope(
+                    getattr(collector, "scope_region_codes", None)
+                )
+                if not kw_filter.is_valid_match("大厂", item_text, is_local_source=item_is_local):
+                    dachang_filtered += 1
+                    continue
+
                 region_decision = region_resolver.decide(
                     db,
                     item,
@@ -636,6 +673,7 @@ class CollectorService:
                 comments_seen=comments_seen,
                 comments_skipped=comments_skipped,
                 admission_filtered=admission_filtered,
+                dachang_filtered=dachang_filtered,
             )
         except Exception as exc:
             # P1-1：采集器级异常（fetch / 区域解析 / 循环内未捕获异常）必须最终落为 failed，
@@ -776,6 +814,7 @@ class CollectorService:
                 merged.comments_seen += sub.comments_seen
                 merged.comments_skipped += sub.comments_skipped
                 merged.admission_filtered += sub.admission_filtered
+                merged.dachang_filtered += sub.dachang_filtered
                 done += 1
                 if on_progress is not None:
                     on_progress(done, total, getattr(collector, "source_name", ""))

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -58,6 +59,12 @@ class Keyword(Base):
     )
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # —— Phase X：关键词专项语义过滤规则（仅 id=30「大厂」使用，其余为 NULL）——
+    # JSONB 可空：承载地域实体关键词的扩展规则（强地域锚点 / 负向词 / 兜底策略等），
+    # 不写死代码、支持未来 UI 维护；代码内置同款 DEFAULT_RULE 作 fallback。
+    # 其余关键词恒为 NULL → 走原逻辑（KeywordFilterService 仅对 keyword="大厂" 生效）。
+    rule_config: Mapped[dict | None] = mapped_column("rule_config", JSONB, nullable=True)
 
     def __repr__(self) -> str:
         return f"<Keyword word={self.word!r} type={self.type!r} source={self.source!r}>"

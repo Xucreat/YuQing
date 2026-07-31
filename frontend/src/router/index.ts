@@ -25,11 +25,30 @@ const router = createRouter({
       component: () => import('@/views/Opinions.vue'),
       meta: { requiresAuth: true },
     },
+    // AI 检索：需 ai:search（后端 /bocha/*、/anspire/* 已同步收敛为 ai:search）
     {
       path: '/ai-search',
       name: 'ai-search',
       component: () => import('@/views/AiSearch.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, permission: 'ai:search' },
+    },
+    {
+      path: '/ai-search/web',
+      name: 'ai-search-web',
+      component: () => import('@/views/AiSearch.vue'),
+      meta: { requiresAuth: true, permission: 'ai:search' },
+    },
+    {
+      path: '/ai-search/ai',
+      name: 'ai-search-ai',
+      component: () => import('@/views/AiSearch.vue'),
+      meta: { requiresAuth: true, permission: 'ai:search' },
+    },
+    {
+      path: '/ai-search/anspire',
+      name: 'ai-search-anspire',
+      component: () => import('@/views/AiSearch.vue'),
+      meta: { requiresAuth: true, permission: 'ai:search' },
     },
     {
       path: '/opinion/:id',
@@ -41,13 +60,13 @@ const router = createRouter({
       path: '/events',
       name: 'events',
       component: () => import('@/views/Events.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, permission: 'events:read' },
     },
     {
       path: '/event/:id',
       name: 'event-detail',
       component: () => import('@/views/EventDetail.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, permission: 'events:read' },
     },
     {
       path: '/alerts',
@@ -55,11 +74,14 @@ const router = createRouter({
       component: () => import('@/views/Alerts.vue'),
       meta: { requiresAuth: true, permission: 'alerts:read' },
     },
+    // 数据管理聚合页：默认子页为「关键词管理」，故整页门槛取 keywords:read。
+    // 超管/持 keywords:read 的角色可进；观察者(viewer)无该权限 → 守卫提示并回退首页。
+    // 页内「数据源/采集日志/AI线索审核」仍受 isSuperuser 控制，行为不变。
     {
       path: '/data',
       name: 'data',
       component: DataManagePage,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, permission: 'keywords:read' },
     },
     // 旧路由重定向到数据管理聚合页的对应子页，保留已有书签
     { path: '/keywords', redirect: { name: 'data', query: { tab: 'keywords' } } },
@@ -137,12 +159,14 @@ router.beforeEach((to) => {
   if (to.path === '/login' && isLoggedIn) return { path: '/dashboard' }
 
   // 路由级权限（前端体验层，非安全边界）：已登录但无权限 → 回退首页并提示。
-  // 业务只读页（dashboard/opinions/events/alerts/data/propagation）不带 permission meta，
-  // 保持「已登录即可访问」的现有行为（后端这些读接口亦仅校验登录，详见 RBAC-2C 审计）。
+  // RBAC 收口后已补齐：events / event 详情 → events:read；data（关键词管理）→ keywords:read；
+  // ai-search 及子路由 → ai:search；alerts → alerts:read；propagation → propagation:read。
+  // 报告能力无独立路由（Dashboard 内导出抽屉），由 reports:export / reports:manage 控制按钮。
+  // 提示文案与全局 403 拦截保持一致。
   if (isLoggedIn && to.meta.permission) {
     const { canAccessRoute } = usePermission()
     if (!canAccessRoute(to.meta as Record<string, any>)) {
-      ElMessage.warning('无权限访问该页面')
+      ElMessage.warning('权限不足，请联系管理员')
       return { path: '/dashboard' }
     }
   }

@@ -60,7 +60,7 @@
         <div class="sit-kpi"><span class="k">{{ (stats.event_count || 0).toLocaleString() }}</span><span class="l">事件</span></div>
       </div>
       <div class="sit-action">
-        <el-button v-if="can('reports:read')" type="primary" :loading="reporting" @click="downloadReport">
+        <el-button v-if="can('reports:export')" type="primary" @click="openReportDrawer">
           <span style="margin-right:4px;">⎙</span>导出舆情报告
         </el-button>
       </div>
@@ -129,9 +129,12 @@
         </div>
       </article>
 
-      <!-- 热点词云（移至地理分布左侧，等高对齐） -->
+      <!-- 热点词云（移至地理分布左侧，等高对齐）：双模式切换（风险关键词 / 热点主题） -->
       <article class="card widget widget-word">
-        <header class="w-head"><h3 class="w-title">热点词云</h3></header>
+        <header class="w-head">
+          <h3 class="w-title">热点词云</h3>
+          <SegmentedControl v-model="wordMode" :options="wordModeOptions" />
+        </header>
         <div ref="wordcloudRef" class="chart-box"></div>
       </article>
 
@@ -143,6 +146,9 @@
     </section>
 
     <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
+
+    <!-- ===== 导出舆情报告：右侧抽屉（Phase Report-1.1，逻辑抽到 ReportExportDrawer） ===== -->
+    <ReportExportDrawer v-model="reportDrawer" />
   </div>
 </template>
 
@@ -153,10 +159,12 @@ import "echarts-wordcloud"
 import { ElMessage } from "element-plus"
 import api from "@/api"
 import type { DashboardStats, TrendPoint, KeywordCount, RegionItem, RecentOpinionItem, DashboardAlertItem } from "@/types"
+import type { HotKeyword, HotKeywordsResponse } from "@/types/command-screen"
 import { usePermission } from "@/composables/usePermission"
 import SegmentedControl from "@/components/SegmentedControl.vue"
 import SentimentDonut from "@/components/SentimentDonut.vue"
 import OpinionDetailModal from "@/components/OpinionDetailModal.vue"
+import ReportExportDrawer from "@/components/report/ReportExportDrawer.vue"
 
 const { can } = usePermission()
 
@@ -177,6 +185,13 @@ const segOptions = [
   { label: "30天", value: 30 },
 ]
 
+// 热点词云双模式（Phase HotWord-1B）：risk=风险关键词（stats.keywords），hot=热点主题（hot-keywords?category=主题）
+const wordMode = ref<'risk' | 'hot'>('risk')
+const wordModeOptions = [
+  { label: "风险关键词", value: 'risk' },
+  { label: "热点主题", value: 'hot' },
+]
+
 const stats = reactive<DashboardStats>({
   total: 0, today: 0, high_risk: 0, event_count: 0,
   trend: [], keywords: [], sources: [], sentiments: [], regions: [], region_detail: [],
@@ -189,6 +204,31 @@ const doubledNews = computed(() => recentNews.value.length ? [...recentNews.valu
 const doubledAlerts = computed(() => alerts.value.length ? [...alerts.value, ...alerts.value] : [])
 const feedDuration = computed(() => Math.max(12, recentNews.value.length * 3))
 const alertDuration = computed(() => Math.max(12, alerts.value.length * 3))
+
+// 热点主题词云（模式 B）：懒加载，复用 HotKeyword 类型；首次进入 hot 模式才请求
+const topicKeywords = ref<HotKeyword[]>([])
+const topicLoaded = ref(false)
+const topicLoading = ref(false)
+function loadTopicKeywords(force = false): Promise<void> {
+  if (topicLoading.value) return Promise.resolve()
+  if (topicLoaded.value && !force) return Promise.resolve()
+  topicLoading.value = true
+  return api
+    .get<HotKeywordsResponse>("/dashboard/hot-keywords", {
+      params: { days: trendDays.value, limit: 10, category: "主题" },
+    })
+    .then((res) => {
+      topicKeywords.value = res.data.items || []
+      topicLoaded.value = true
+    })
+    .catch(() => {
+      // 非关键：失败时保持空，词云展示空态（clear 防残影）
+      topicKeywords.value = []
+    })
+    .finally(() => {
+      topicLoading.value = false
+    })
+}
 
 // Collector status
 const collectorOnline = ref(false)
@@ -214,29 +254,10 @@ const situationText = computed(() => {
   return "态势紧张，高风险舆情占比偏高，建议立即研判处置。"
 })
 
-const reporting = ref(false)
-async function downloadReport() {
-  reporting.value = true
-  try {
-    const res = await api.get("/reports/overview/pdf", {
-      params: { days: trendDays.value },
-      responseType: "blob",
-    })
-    const blob = new Blob([res.data], { type: "application/pdf" })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `舆情监测报告_${new Date().toISOString().slice(0, 10)}.pdf`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(url)
-    ElMessage.success("报告已生成，开始下载")
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.detail || "生成报告失败")
-  } finally {
-    reporting.value = false
-  }
+// ===== Phase Report-1.1：导出舆情报告抽屉（逻辑已抽到 ReportExportDrawer 组件） =====
+const reportDrawer = ref(false)
+function openReportDrawer() {
+  reportDrawer.value = true
 }
 
 // charts
@@ -309,17 +330,54 @@ function renderRegionDistribution() {
 }
 
 function renderWordCloud() {
-  if (!wordcloudChart || !stats.keywords?.length) return
-  const max = stats.keywords[0]?.count || 1
-  const data = stats.keywords.slice(0, 30).map((kw: KeywordCount) => ({
-    name: kw.word,
-    value: kw.count,
-    textStyle: { color: `hsl(${(kw.count / max) * 210 + 200}, 70%, ${60 - (kw.count / max) * 30}%)` },
-  }))
+  if (!wordcloudChart) return
+  let data: { name: string; value: number; textStyle: { color: string } }[] = []
+  let tooltipFormatter: (p: any) => string = (p) => `${p.name}: ${p.value}`
+
+  if (wordMode.value === 'hot') {
+    // 模式 B：热点主题（hot-keywords?category=主题）
+    if (!topicKeywords.value.length) {
+      // 空数据必须 clear，否则风险模式切换过来会残留旧词云
+      wordcloudChart.clear()
+      return
+    }
+    const max = Math.max(...topicKeywords.value.map((k) => k.count), 1)
+    data = topicKeywords.value.slice(0, 30).map((k) => ({
+      name: k.keyword,
+      value: k.count,
+      textStyle: { color: `hsl(${(k.count / max) * 210 + 200}, 70%, ${60 - (k.count / max) * 30}%)` },
+    }))
+    tooltipFormatter = (p: any) => {
+      const k = topicKeywords.value.find((x) => x.keyword === p.name)
+      if (!k) return `${p.name}: ${p.value}`
+      const arrow = k.trend === 'up' ? '↑' : k.trend === 'down' ? '↓' : '→'
+      const label = k.trend === 'up' ? '上升' : k.trend === 'down' ? '下降' : '持平'
+      return `${k.keyword}<br/>近${trendDays.value}天: ${k.count}<br/>趋势: ${arrow} ${label}`
+    }
+  } else {
+    // 模式 A：风险关键词（stats.keywords，保持原逻辑）
+    if (!stats.keywords?.length) {
+      wordcloudChart.clear()
+      return
+    }
+    const max = stats.keywords[0]?.count || 1
+    data = stats.keywords.slice(0, 30).map((kw: KeywordCount) => ({
+      name: kw.word,
+      value: kw.count,
+      textStyle: { color: `hsl(${(kw.count / max) * 210 + 200}, 70%, ${60 - (kw.count / max) * 30}%)` },
+    }))
+  }
+
   wordcloudChart.setOption({
-    tooltip: { show: true, backgroundColor: "rgba(29,29,31,0.94)", borderColor: "transparent", textStyle: { color: "#fff", fontSize: 12 } },
+    tooltip: {
+      show: true,
+      backgroundColor: "rgba(29,29,31,0.94)",
+      borderColor: "transparent",
+      textStyle: { color: "#fff", fontSize: 12 },
+      formatter: tooltipFormatter,
+    },
     series: [{ type: "wordCloud", shape: "circle", left: "center", top: "center", width: "90%", height: "90%", sizeRange: [14, 42], rotationRange: [-30, 30], gridSize: 8, layoutAnimation: true, textStyle: { fontFamily: "sans-serif", fontWeight: "bold" }, emphasis: { textStyle: { color: "#0071e3" } }, data }],
-  })
+  }, { notMerge: true })
 }
 
 async function loadCollectorStatus() {
@@ -368,7 +426,22 @@ async function loadData() {
   } finally { loading.value = false }
 }
 
-watch(trendDays, () => { loadData() })
+watch(trendDays, () => {
+  // 风险模式：整体 reload（stats.keywords 随 days 同步）
+  loadData()
+  // 热点主题模式：额外重拉主题词云，保证 7/14/30 天数值同步变化
+  if (wordMode.value === 'hot') {
+    loadTopicKeywords(true).then(() => renderWordCloud())
+  }
+})
+
+// 切换词云模式：进入热点主题时懒加载（仅首次请求），随后按当前模式渲染
+watch(wordMode, async (m) => {
+  if (m === 'hot') {
+    await loadTopicKeywords()
+  }
+  renderWordCloud()
+})
 
 // helpers
 function fmtTime(s: string): string {

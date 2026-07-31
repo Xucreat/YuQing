@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import json
 import time
 from typing import Dict, List, Optional, Tuple
 
@@ -32,6 +33,8 @@ _MON_CACHE: dict = {"words": None, "ts": 0.0}
 _SENS_CACHE: dict = {"words": None, "ts": 0.0}
 # 分组缓存（与扁平缓存分离，避免互相污染）：{category: [word, ...]}
 _MON_GROUPED_CACHE: dict = {"words": None, "ts": 0.0}
+# 规则配置缓存（rule_config 非空的关键词，当前仅 id=30「大厂」）
+_RULE_CACHE: dict = {"words": None, "ts": 0.0}
 _TTL_SECONDS: float = 60.0
 
 
@@ -169,10 +172,47 @@ def get_severity_keywords(db: Session) -> Dict[str, int]:
 
 def clear_keyword_cache() -> None:
     """显式失效全部关键词缓存（关键词 CRUD 后调用，保证立即生效）。"""
-    global _MON_CACHE, _SENS_CACHE, _MON_GROUPED_CACHE
+    global _MON_CACHE, _SENS_CACHE, _MON_GROUPED_CACHE, _RULE_CACHE
     _MON_CACHE = {"words": None, "ts": 0.0}
     _SENS_CACHE = {"words": None, "ts": 0.0}
     _MON_GROUPED_CACHE = {"words": None, "ts": 0.0}
+    _RULE_CACHE = {"words": None, "ts": 0.0}
+
+
+def get_keyword_rules(db: Session) -> Dict[str, dict]:
+    """返回 ``{word: rule_config}``，仅含 ``rule_config`` 非空的 monitoring 关键词。
+
+    当前仅 id=30「大厂」有值；供 ``KeywordFilterService.from_rule_config`` 未来从 DB
+    加载规则。运行时仍以 ``keyword_filter_service.DEFAULT_RULE`` 为准（避免迁移 /
+    播种时序耦合）；本函数仅作「DB 镜像 → 代码」的可选桥接。
+
+    JSONB 在 SQLAlchemy 下已反序列化为 dict（个别旧 PG 驱动可能返回 str），此处做兜底解析。
+    """
+    global _RULE_CACHE
+    now = time.time()
+    if _RULE_CACHE["words"] is not None and (now - _RULE_CACHE["ts"]) < _TTL_SECONDS:
+        return _RULE_CACHE["words"]
+
+    rows = (
+        db.query(Keyword.word, Keyword.rule_config)
+        .filter(Keyword.type == "monitoring", Keyword.rule_config.isnot(None))
+        .all()
+    )
+    rules: Dict[str, dict] = {}
+    for word, rc in rows:
+        if not rc:
+            continue
+        if isinstance(rc, str):
+            try:
+                rc = json.loads(rc)
+            except Exception:
+                rc = {}
+        if isinstance(rc, dict):
+            rules[word] = rc
+
+    _RULE_CACHE["words"] = rules
+    _RULE_CACHE["ts"] = now
+    return rules
 
 
 # 向后兼容别名（既有调用方可能仍引用此名称）。

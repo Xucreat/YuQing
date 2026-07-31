@@ -17,9 +17,13 @@ from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
 from app.models.bocha_search_session import BochaSearchSession
 from app.models.bocha_lead import BochaLead
+from app.models.bocha_ai_search_session import BochaAISearchSession
+from app.models.bocha_ai_lead import BochaAILead
 from app.models.role import Role
 from app.models.permission import Permission
 from app.models.audit import LoginLog, OperationLog
+from app.models.report_record import ReportRecord
+from app.models.report_template import ReportTemplate
 
 __all__ = [
     "Base",
@@ -37,8 +41,12 @@ __all__ = [
     "DataSource",
     "BochaSearchSession",
     "BochaLead",
+    "BochaAISearchSession",
+    "BochaAILead",
     "Role",
     "Permission",
     "LoginLog",
     "OperationLog",
+    "ReportRecord",
+    "ReportTemplate",
 ]

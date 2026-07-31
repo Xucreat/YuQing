@@ -41,7 +41,10 @@ from app.models.alert import AlertRecord
 from app.models.event import Event
 from app.models.opinion import Opinion
 from app.models.region import Region
-from app.services.keyword_service import get_monitoring_keywords
+from app.services.keyword_service import (
+    get_monitoring_keywords,
+    get_monitoring_keywords_grouped,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +145,7 @@ def _detail_regions(db: Session, window_start) -> list[dict]:
                 and_(
                     cast(Opinion.created_at, Date) >= window_start,
                     Region.level != "province",
+                    Opinion.geo_filtered.isnot(True),
                 )
             )
             .group_by(Region.id, Region.name, Region.level)
@@ -220,6 +224,7 @@ def get_region_children(db: Session, province_name: str, days: int = 7) -> dict 
             select(Opinion.region_id, func.count(Opinion.id).label("cnt"))
             .where(Opinion.region_id.in_(sub_ids))
             .where(cast(Opinion.created_at, Date) >= window_start)
+            .where(Opinion.geo_filtered.isnot(True))
             .group_by(Opinion.region_id)
         )
         .all()
@@ -268,13 +273,19 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
     if cached is not None:
         return cached
 
-    total = db.scalar(select(func.count(Opinion.id))) or 0
+    # 统计口径（Phase X-History-1B）：排除地域语义污染标记 geo_filtered IS NOT TRUE
+    total = (
+        db.scalar(
+            select(func.count(Opinion.id)).where(Opinion.geo_filtered.isnot(True))
+        )
+        or 0
+    )
 
     today = (
         db.scalar(
-            select(func.count(Opinion.id)).where(
-                cast(Opinion.created_at, Date) == func.current_date()
-            )
+            select(func.count(Opinion.id))
+            .where(cast(Opinion.created_at, Date) == func.current_date())
+            .where(Opinion.geo_filtered.isnot(True))
         )
         or 0
     )
@@ -282,14 +293,20 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
     # 累计指标：系统高危态势（全量，不随 days 变化）
     high_risk = (
         db.scalar(
-            select(func.count(Opinion.id)).where(
-                Opinion.risk_score >= HIGH_RISK_THRESHOLD
-            )
+            select(func.count(Opinion.id))
+            .where(Opinion.risk_score >= HIGH_RISK_THRESHOLD)
+            .where(Opinion.geo_filtered.isnot(True))
         )
         or 0
     )
 
-    event_count = db.scalar(select(func.count(Event.id))) or 0
+    # 事件统计（Phase X-History-1B）：排除软废弃事件 status='deprecated'
+    event_count = (
+        db.scalar(
+            select(func.count(Event.id)).where(Event.status != "deprecated")
+        )
+        or 0
+    )
 
     today_date: date = db.scalar(select(func.current_date()))
     window_start = today_date - timedelta(days=days - 1)
@@ -301,6 +318,7 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
             func.count(Opinion.id).label("cnt"),
         )
         .where(cast(Opinion.created_at, Date) >= window_start)
+        .where(Opinion.geo_filtered.isnot(True))
         .group_by(cast(Opinion.created_at, Date))
         .order_by("day")
     ).all()
@@ -317,6 +335,7 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
     sentiment_rows = db.execute(
         select(Opinion.sentiment, func.count(Opinion.id))
         .where(cast(Opinion.created_at, Date) >= window_start)
+        .where(Opinion.geo_filtered.isnot(True))
         .group_by(Opinion.sentiment)
     ).all()
     sentiments = [{"label": s, "count": c} for s, c in sentiment_rows]
@@ -325,6 +344,7 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
     source_rows = db.execute(
         select(Opinion.source, func.count(Opinion.id))
         .where(cast(Opinion.created_at, Date) >= window_start)
+        .where(Opinion.geo_filtered.isnot(True))
         .group_by(Opinion.source)
         .order_by(func.count(Opinion.id).desc())
         .limit(TOP_SOURCES)
@@ -335,6 +355,7 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
     region_rows = db.execute(
         select(Opinion.region_id, func.count(Opinion.id))
         .where(cast(Opinion.created_at, Date) >= window_start)
+        .where(Opinion.geo_filtered.isnot(True))
         .group_by(Opinion.region_id)
     ).all()
     regions = _rollup_provinces(db, region_rows)
@@ -343,7 +364,14 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
     region_detail = _detail_regions(db, window_start)
 
     # keywords：[兼容字段] 全量，来自 opinions.keywords（敏感词命中集合）
-    raw_keywords = db.execute(select(Opinion.keywords)).scalars().all()
+    # （Phase X-History-1B）排除地域语义污染标记
+    raw_keywords = (
+        db.execute(
+            select(Opinion.keywords).where(Opinion.geo_filtered.isnot(True))
+        )
+        .scalars()
+        .all()
+    )
     counter: Counter = Counter()
     for raw in raw_keywords:
         for kw in (raw or "").split(","):
@@ -394,6 +422,7 @@ def get_recent_opinions(db: Session, limit: int = 8) -> list[dict]:
                 Opinion.created_at,
             )
             .join(Region, Region.id == Opinion.region_id)
+            .where(Opinion.geo_filtered.isnot(True))
             .order_by(Opinion.created_at.desc())
             .limit(limit)
         )
@@ -472,6 +501,7 @@ def get_kpi_trends(db: Session, days: int = 14) -> dict:
             func.count(Opinion.id).label("cnt"),
         )
         .where(cast(Opinion.created_at, Date) >= window_start)
+        .where(Opinion.geo_filtered.isnot(True))
         .group_by(cast(Opinion.created_at, Date))
         .order_by("day")
     ).all()
@@ -487,18 +517,20 @@ def get_kpi_trends(db: Session, days: int = 14) -> dict:
             cast(Opinion.created_at, Date) >= window_start,
             Opinion.risk_score >= HIGH_RISK_THRESHOLD,
         ))
+        .where(Opinion.geo_filtered.isnot(True))
         .group_by(cast(Opinion.created_at, Date))
         .order_by("day")
     ).all()
     hr_counts = {row.day: row.cnt for row in hr_rows}
 
-    # ---- 每日新增事件（用 first_time 代替 created_at） ----
+    # ---- 每日新增事件（用 first_time 代替 created_at；Phase X-History-1B 排除 deprecated） ----
     event_rows = db.execute(
         select(
             cast(Event.first_time, Date).label("day"),
             func.count(Event.id).label("cnt"),
         )
         .where(cast(Event.first_time, Date) >= window_start)
+        .where(Event.status != "deprecated")
         .group_by(cast(Event.first_time, Date))
         .order_by("day")
     ).all()
@@ -530,28 +562,47 @@ def _like_escape(col):
     return s
 
 
-def get_hot_keywords(db: Session, days: int = 7, limit: int = 10) -> dict:
+def get_hot_keywords(
+    db: Session, days: int = 7, limit: int = 10, category: str | None = None
+) -> dict:
     """指挥大屏「热门关键词」。
 
-    数据源：监测关键词表（keywords 表，经 keyword_service.get_monitoring_keywords 获取）。
+    数据源：监测关键词表（keywords 表，经 keyword_service 获取）。
     口径：统计窗口内（created_at >= window_start）title+content 真实「提及」的舆情条数。
           - 去重到「每条舆情最多计 1 次」（避免同一文档内多次出现导致严重重复计数）。
           - 不读取 Opinion.keywords（那只是规则命中的敏感词集合，语义不符）。
           - 关键词大小写不敏感（ILIKE 处理英文；中文无大小写）。
+    分类 category（Phase HotWord-1B 双模式）：
+          - None（默认）：与改造前完全一致——取全部已启用监测词（扁平），供指挥大屏使用。
+          - "主题"：仅取 keywords.type='monitoring' 且 category='主题' 且 is_enabled=True 的词，
+            并在展示层排除元词「舆情」（不修改数据库、不影响其它业务）。
+          - 其它取值（如不存在的分类）：返回空列表，不 500。
     趋势 trend：当前窗口计数 vs 紧邻的前一个等长窗口计数（cur>prev→up，<→down，=→flat）。
           为真实对比，非伪造；若无可比数据则按 cur 给出 up/flat 的稳妥判定。
     空数据：keywords 表为空或窗口内无提及 -> 返回稳定空结构 {"items":[], "days":N}，不 500。
     """
-    key = f"dash:hot:{days}:{limit}"
+    cat_seg = category if category else "_all"
+    key = f"dash:hot:{days}:{limit}:{cat_seg}"
     cached = cache_get(key)
     if cached is not None:
         return cached
 
-    keywords = get_monitoring_keywords(db)
+    if category:
+        # 按 category 分组取词（仅已启用监测词）；分类不存在则返回空列表，不 500。
+        grouped = get_monitoring_keywords_grouped(db)
+        keywords = list(grouped.get(category, []))
+    else:
+        # 兼容旧行为：全部已启用监测词（扁平），用于指挥大屏。
+        keywords = get_monitoring_keywords(db)
+
     if not keywords:
         data = {"items": [], "days": days}
         cache_set(key, data)
         return data
+
+    # 展示层过滤：主题模式排除元词「舆情」，不修改数据库，不影响其它业务。
+    if category == "主题":
+        keywords = [w for w in keywords if w != "舆情"]
 
     today_date: date = db.scalar(select(func.current_date()))
     window_start = today_date - timedelta(days=days - 1)
@@ -586,6 +637,7 @@ def get_hot_keywords(db: Session, days: int = 7, limit: int = 10) -> dict:
             ),
         )
         .where(cast(Opinion.created_at, Date) >= prev_start)
+        .where(Opinion.geo_filtered.isnot(True))
         .group_by(sub.c.kw)
     )
     rows = db.execute(stmt).all()
@@ -635,6 +687,7 @@ def get_risk_distribution(db: Session, days: int = 7) -> dict:
             func.count(Opinion.id).label("cnt"),
         )
         .where(cast(Opinion.created_at, Date) >= window_start)
+        .where(Opinion.geo_filtered.isnot(True))
         .group_by("level")
     ).all()
     risk_levels = [{"label": r.level, "count": r.cnt} for r in rl_rows]
@@ -643,6 +696,7 @@ def get_risk_distribution(db: Session, days: int = 7) -> dict:
     es_rows = db.execute(
         select(Opinion.event_state, func.count(Opinion.id))
         .where(cast(Opinion.created_at, Date) >= window_start)
+        .where(Opinion.geo_filtered.isnot(True))
         .group_by(Opinion.event_state)
     ).all()
     event_states = [{"label": s or "unknown", "count": c} for s, c in es_rows]
@@ -654,6 +708,7 @@ def get_risk_distribution(db: Session, days: int = 7) -> dict:
             func.count(Opinion.id).label("cnt"),
         )
         .where(cast(Opinion.created_at, Date) >= window_start)
+        .where(Opinion.geo_filtered.isnot(True))
         .group_by("cat")
     ).all()
     risk_categories = [{"label": r.cat, "count": r.cnt} for r in rc_rows]

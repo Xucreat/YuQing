@@ -83,9 +83,10 @@
 
         <div class="detail-divider"></div>
 
-        <div class="ai-actions">
+        <!-- RBAC：无 ai:analyze 权限时不展示触发入口（后端 /analyze/{id} 亦已加权限校验） -->
+        <div class="ai-actions" v-if="canAnalyze || opinion.analysis_status === 'processing'">
           <button
-            v-if="opinion.analysis_status !== 'processing'"
+            v-if="canAnalyze && opinion.analysis_status !== 'processing'"
             class="btn btn-primary btn-block"
             :disabled="analyzing"
             @click="triggerAnalyze"
@@ -109,12 +110,17 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import api from '@/api'
+import api, { isPermissionDenied } from '@/api'
 import type { Opinion } from '@/types'
 import { formatAdmissionHits } from '@/utils/admission'
+import { usePermission } from '@/composables/usePermission'
 
 const route = useRoute()
 const router = useRouter()
+
+// RBAC：ai:analyze 才允许触发 AI 研判
+const { hasPermission } = usePermission()
+const canAnalyze = computed(() => hasPermission('ai:analyze'))
 
 const loading = ref(false)
 const analyzing = ref(false)
@@ -217,7 +223,10 @@ async function triggerAnalyze() {
     opinion.value = data
     ElMessage.success('AI 分析完成')
   } catch (err: any) {
-    ElMessage.error(err?.response?.data?.detail || 'AI 分析失败，请稍后重试')
+    // RBAC 403 已由全局拦截器统一提示
+    if (!isPermissionDenied(err)) {
+      ElMessage.error(err?.response?.data?.detail || 'AI 分析失败，请稍后重试')
+    }
     loadData()
   } finally { analyzing.value = false }
 }

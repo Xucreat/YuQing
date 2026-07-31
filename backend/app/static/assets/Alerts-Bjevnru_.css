@@ -1,0 +1,55 @@
+
+.alerts[data-v-6e1011b8] { height: 100%;
+}
+.filter-card[data-v-6e1011b8] { margin-bottom: 16px;
+}
+.filter-card[data-v-6e1011b8] .el-card__body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.record-filter-select[data-v-6e1011b8] { width: 160px;
+}
+.false-positive-filter[data-v-6e1011b8] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.table-card[data-v-6e1011b8] { margin-top: 0;
+}
+.pagination[data-v-6e1011b8] { margin-top: 16px; display: flex; justify-content: flex-end;
+}
+.eval-result[data-v-6e1011b8] { margin-left: 16px; color: #67c23a; font-size: 14px;
+}
+.nav-link[data-v-6e1011b8] { color: #409eff; text-decoration: none;
+}
+.nav-link[data-v-6e1011b8]:hover { text-decoration: underline;
+}
+.form-hint[data-v-6e1011b8] { color: #909399; font-size: 12px; line-height: 1.5; margin-top: 4px;
+}
+@media (max-width: 600px) {
+.filter-card[data-v-6e1011b8] .el-card__body { align-items: stretch;
+}
+.record-filter-select[data-v-6e1011b8],
+  .filter-card[data-v-6e1011b8] .el-date-editor,
+  .filter-card[data-v-6e1011b8] .el-button {
+    width: 100% !important;
+    max-width: 100%;
+    margin-left: 0 !important;
+}
+.false-positive-filter[data-v-6e1011b8] { width: 100%;
+}
+.eval-result[data-v-6e1011b8] { margin-left: 0;
+}
+.alert-form[data-v-6e1011b8] .el-form-item { display: block;
+}
+.alert-form[data-v-6e1011b8] .el-form-item__label {
+    display: block;
+    width: auto !important;
+    margin-bottom: 6px;
+    text-align: left;
+}
+.alert-form[data-v-6e1011b8] .el-form-item__content { margin-left: 0 !important;
+}
+}

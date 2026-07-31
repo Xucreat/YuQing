@@ -117,11 +117,11 @@ html, body, #app {
   border-radius: 980px !important;
   font-weight: 500;
 }
-.el-button--primary {
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-dashed) {
   background: #0071e3;
   border-color: #0071e3;
 }
-.el-button--primary:hover {
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-dashed):hover {
   background: #0077ed;
   border-color: #0077ed;
 }
@@ -236,6 +236,17 @@ html, body, #app {
 .el-dialog {
   border-radius: 22px !important;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18) !important;
+}
+@media (max-width: 820px) {
+  /* Constrain fixed-width dialogs without changing their desktop sizing. */
+  .el-dialog {
+    max-width: calc(100vw - 24px) !important;
+    margin: 12px auto !important;
+  }
+  .el-dialog__body {
+    max-height: calc(100vh - 180px);
+    overflow-y: auto;
+  }
 }
 .el-message {
   border-radius: 14px !important;

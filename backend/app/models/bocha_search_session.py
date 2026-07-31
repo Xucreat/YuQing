@@ -20,6 +20,9 @@ class BochaSearchSession(Base):
     __tablename__ = "bocha_search_sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, default="bocha", server_default="bocha")
+    provider_request_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    provider_options: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     query: Mapped[str] = mapped_column(Text, nullable=False, default="")
     freshness: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     summary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -48,6 +51,7 @@ class BochaSearchSession(Base):
         Index("ix_bocha_search_sessions_status", "status"),
         Index("ix_bocha_search_sessions_created_at", "created_at"),
         Index("ix_bocha_search_sessions_query", "query"),
+        Index("ix_bocha_search_sessions_provider_status_created", "provider", "status", "created_at"),
     )
 
     def __repr__(self) -> str:

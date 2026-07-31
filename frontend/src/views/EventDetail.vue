@@ -77,7 +77,6 @@
         <div class="op-left">
           <div class="operation-header">
             <div>
-              <h3 class="section-title">事件处置</h3>
               <div class="operation-current">
                 当前处置状态
                 <span class="pill" :class="eventStatusPill(event.status)">{{ eventStatusLabel(event.status) }}</span>

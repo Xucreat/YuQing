@@ -128,7 +128,8 @@ const saving = ref(false)
 const roles = ref<RoleOut[]>([])
 const catalog = ref<PermissionCatalogItem[]>([])
 
-// 业务模块分组顺序与中文标签（与后端 Permission.group 一一对应；仅基于真实存在的 26 个权限）
+// 业务模块分组顺序与中文标签（与后端 Permission.group 一一对应）
+// 修正：后端实际 group 为「预警管理」，此前写成「告警管理」导致该组落到未知分组、排序失效。
 const GROUP_LABEL: Record<string, string> = {
   舆情管理: '舆情',
   事件管理: '事件',
@@ -136,8 +137,9 @@ const GROUP_LABEL: Record<string, string> = {
   用户管理: '用户',
   角色管理: '角色',
   权限管理: '权限',
-  告警管理: '预警',
+  预警管理: '预警',
   报告: '报告',
+  AI能力: 'AI 能力',
   数据源: '数据源',
   采集管理: '采集器',
   传播溯源: '传播',
@@ -146,7 +148,7 @@ const GROUP_LABEL: Record<string, string> = {
 }
 const GROUP_ORDER: Record<string, number> = {
   舆情管理: 1, 事件管理: 2, 关键词管理: 3, 用户管理: 4, 角色管理: 5, 权限管理: 6,
-  告警管理: 7, 报告: 8, 数据源: 9, 采集管理: 10, 传播溯源: 11, 驾驶舱: 12, 审计: 13,
+  预警管理: 7, 报告: 8, AI能力: 9, 数据源: 10, 采集管理: 11, 传播溯源: 12, 驾驶舱: 13, 审计: 14,
 }
 
 const groupedPermissions = computed(() => {

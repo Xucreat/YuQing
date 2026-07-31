@@ -36,12 +36,12 @@ class EventAction(Base):
         ),
         CheckConstraint(
             "old_status IS NULL OR old_status IN "
-            "('active','verifying','processing','resolved','closed')",
+            "('active','verifying','processing','resolved','closed','deprecated')",
             name="ck_event_actions_old_status",
         ),
         CheckConstraint(
             "new_status IS NULL OR new_status IN "
-            "('active','verifying','processing','resolved','closed')",
+            "('active','verifying','processing','resolved','closed','deprecated')",
             name="ck_event_actions_new_status",
         ),
         Index("ix_event_actions_event_id", "event_id"),

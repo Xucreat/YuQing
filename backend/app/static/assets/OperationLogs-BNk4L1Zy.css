@@ -1,0 +1,20 @@
+
+.logs-page[data-v-a5bf60a6] { min-height: 100%;
+}
+.filter-card[data-v-a5bf60a6] { margin-bottom: 16px;
+}
+.table-card[data-v-a5bf60a6] { margin-top: 0;
+}
+.pagination[data-v-a5bf60a6] { margin-top: 16px; display: flex; justify-content: flex-end;
+}
+.detail-brief[data-v-a5bf60a6] { cursor: help; color: #303133; word-break: break-all;
+}
+.detail-pre[data-v-a5bf60a6] {
+  margin: 0;
+  max-height: 380px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

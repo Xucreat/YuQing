@@ -3,9 +3,9 @@
     <el-tabs v-model="activeTab">
       <el-tab-pane label="预警规则" name="rules">
         <el-card shadow="never" class="filter-card">
-          <el-button type="primary" @click="openRuleDialog(null)">新增规则</el-button>
+          <el-button v-if="canWriteAlert" type="primary" @click="openRuleDialog(null)">新增规则</el-button>
           <el-button @click="loadRules">刷新</el-button>
-          <el-button type="warning" :loading="evaluating" @click="handleEvaluate">执行评估</el-button>
+          <el-button v-if="canWriteAlert" type="warning" :loading="evaluating" @click="handleEvaluate">执行评估</el-button>
           <span v-if="evalResult" class="eval-result">评估完成：检查 {{ evalResult.total_checked }} 条，生成 {{ evalResult.alerts_created }} 条预警</span>
         </el-card>
 
@@ -22,10 +22,11 @@
             </el-table-column>
             <el-table-column label="状态" width="100" align="center">
               <template #default="{ row }">
-                <el-switch :model-value="row.enabled" @change="(val: boolean) => toggleRule(row, val)" />
+                <el-switch v-if="canWriteAlert" :model-value="row.enabled" @change="(val: boolean) => toggleRule(row, val)" />
+                <el-tag v-else :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '已启用' : '已停用' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" align="center">
+            <el-table-column v-if="canWriteAlert" label="操作" width="180" align="center">
               <template #default="{ row }">
                 <el-button type="primary" size="small" link @click="openRuleDialog(row)">编辑</el-button>
                 <el-button type="danger" size="small" link @click="deleteRule(row)">删除</el-button>
@@ -33,29 +34,29 @@
             </el-table-column>
           </el-table>
           <div class="pagination">
-            <el-pagination background layout="total, prev, pager, next" :total="rulesTotal" :current-page="rulesPage" :page-size="rulesSize" @current-change="handleRulesPage" />
+            <Pager :total="rulesTotal" :current-page="rulesPage" :page-size="rulesSize" @current-change="handleRulesPage" />
           </div>
         </el-card>
       </el-tab-pane>
 
       <el-tab-pane label="预警记录" name="records">
         <el-card shadow="never" class="filter-card">
-          <el-select v-model="recFilterRisk" placeholder="预警等级" clearable style="width: 160px" @change="loadRecords">
+          <el-select v-model="recFilterRisk" placeholder="预警等级" clearable class="record-filter-select" @change="loadRecords">
             <el-option label="严重" value="critical" />
             <el-option label="高" value="high" />
             <el-option label="中" value="medium" />
             <el-option label="低" value="low" />
           </el-select>
-          <el-select v-model="recFilterStatus" placeholder="处置状态" clearable style="width: 160px; margin-left: 12px" @change="loadRecords">
+          <el-select v-model="recFilterStatus" placeholder="处置状态" clearable class="record-filter-select" @change="loadRecords">
             <el-option label="待处理" value="pending" />
             <el-option label="处理中" value="processing" />
             <el-option label="已解决" value="resolved" />
             <el-option label="已忽略" value="ignored" />
             <el-option label="误报" value="false_positive" />
           </el-select>
-          <span style="margin-left: 12px; display: inline-flex; align-items: center;">
+          <span class="false-positive-filter">
             <el-switch v-model="hideFalsePositive" @change="loadRecords" />
-            <span style="margin-left: 6px;">隐藏误报</span>
+            <span>隐藏误报</span>
           </span>
           <el-date-picker
             v-model="recDateRange"
@@ -64,10 +65,9 @@
             start-placeholder="开始日期"
             end-placeholder="结束日期"
             value-format="YYYY-MM-DD"
-            style="margin-left: 12px"
             @change="onDateRangeChange"
           />
-          <el-button @click="loadRecords" style="margin-left: 12px">刷新</el-button>
+          <el-button @click="loadRecords">刷新</el-button>
         </el-card>
 
         <el-card shadow="never" class="table-card">
@@ -99,22 +99,22 @@
             <el-table-column label="触发时间" width="180">
               <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="100" align="center">
+            <el-table-column v-if="canWriteAlert" label="操作" width="100" align="center">
               <template #default="{ row }">
                 <el-button type="primary" size="small" link @click="openHandleDialog(row)">处置</el-button>
               </template>
             </el-table-column>
           </el-table>
           <div class="pagination">
-            <el-pagination background layout="total, prev, pager, next" :total="recordsTotal" :current-page="recordsPage" :page-size="recordsSize" @current-change="handleRecordsPage" />
+            <Pager :total="recordsTotal" :current-page="recordsPage" :page-size="recordsSize" @current-change="handleRecordsPage" />
           </div>
         </el-card>
       </el-tab-pane>
     </el-tabs>
 
     <!-- Rule Form Dialog -->
-    <el-dialog v-model="ruleDialogVisible" :title="isEditing ? '编辑规则' : '新增规则'" width="600px">
-      <el-form :model="ruleForm" label-width="100px">
+    <el-dialog v-model="ruleDialogVisible" :title="isEditing ? '编辑规则' : '新增规则'" width="min(600px, calc(100vw - 24px))">
+      <el-form :model="ruleForm" label-width="100px" class="alert-form">
         <el-form-item label="规则名称"><el-input v-model="ruleForm.name" placeholder="请输入规则名称" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="ruleForm.description" type="textarea" :rows="2" placeholder="描述该规则的用途" /></el-form-item>
         <el-form-item label="风险阈值"><el-input-number v-model="ruleForm.risk_threshold" :min="0" :max="100" /></el-form-item>
@@ -138,8 +138,8 @@
     </el-dialog>
 
     <!-- Handle (处置) Dialog -->
-    <el-dialog v-model="handleDialogVisible" title="预警处置" width="480px">
-      <el-form :model="handleForm" label-width="88px">
+    <el-dialog v-model="handleDialogVisible" title="预警处置" width="min(480px, calc(100vw - 24px))">
+      <el-form :model="handleForm" label-width="88px" class="alert-form">
         <el-form-item label="处置状态">
           <el-select v-model="handleForm.status" style="width: 100%">
             <el-option label="待处理" value="pending" />
@@ -164,10 +164,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, reactive, watch } from 'vue'
+import { onMounted, ref, reactive, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import api from '@/api'
+import api, { isPermissionDenied } from '@/api'
+import { usePermission } from '@/composables/usePermission'
 import { riskText, riskTag } from '@/utils/alert'
 import type { AlertRule, AlertRuleListResponse, AlertRecord, AlertRecordListResponse, AlertEvaluateResponse } from '@/types'
 import OpinionDetailModal from '@/components/OpinionDetailModal.vue'
@@ -180,6 +181,10 @@ function openOpinion(id: number) {
   detailId.value = id
   detailVisible.value = true
 }
+
+// RBAC：alerts:write 才允许新增/编辑/删除规则、启停、执行评估、处置预警
+const { hasPermission } = usePermission()
+const canWriteAlert = computed(() => hasPermission('alerts:write'))
 
 const activeTab = ref('rules')
 const loading = ref(false)
@@ -277,7 +282,9 @@ async function saveRule() {
     }
     ruleDialogVisible.value = false
     await loadRules()
-  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '保存失败') } finally { saving.value = false }
+  } catch (e: any) {
+    if (!isPermissionDenied(e)) ElMessage.error(e?.response?.data?.detail || '保存失败')
+  } finally { saving.value = false }
 }
 
 async function toggleRule(rule: AlertRule, val: boolean) {
@@ -285,16 +292,26 @@ async function toggleRule(rule: AlertRule, val: boolean) {
     await api.put(`/alerts/rules/${rule.id}`, { enabled: val })
     rule.enabled = val
     ElMessage.success(val ? '规则已启用' : '规则已禁用')
-  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '操作失败') }
+  } catch (e: any) {
+    if (!isPermissionDenied(e)) ElMessage.error(e?.response?.data?.detail || '操作失败')
+  }
 }
 
 async function deleteRule(rule: AlertRule) {
   try {
     await ElMessageBox.confirm(`确认删除规则「${rule.name}」？`, '提示', { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' })
+  } catch {
+    return // 用户取消，不提示
+  }
+  try {
     await api.delete(`/alerts/rules/${rule.id}`)
     ElMessage.success('规则已删除')
     await loadRules()
-  } catch { /* cancelled */ }
+  } catch (e: any) {
+    // 403 已由全局拦截器统一提示「权限不足，请联系管理员」，此处不重复弹窗
+    if (isPermissionDenied(e)) return
+    ElMessage.error(e?.response?.data?.detail || '删除失败')
+  }
 }
 
 async function handleEvaluate() {
@@ -305,7 +322,9 @@ async function handleEvaluate() {
     evalResult.value = data
     ElMessage.success(`评估完成：检查 ${data.total_checked} 条，生成 ${data.alerts_created} 条预警`)
     if (activeTab.value === 'records') await loadRecords()
-  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '评估失败') } finally { evaluating.value = false }
+  } catch (e: any) {
+    if (!isPermissionDenied(e)) ElMessage.error(e?.response?.data?.detail || '评估失败')
+  } finally { evaluating.value = false }
 }
 
 function openHandleDialog(rec: AlertRecord) {
@@ -327,7 +346,9 @@ async function submitHandle() {
     if (idx >= 0) records.value[idx] = data
     ElMessage.success('处置成功')
     handleDialogVisible.value = false
-  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '处置失败') } finally { handling.value = false }
+  } catch (e: any) {
+    if (!isPermissionDenied(e)) ElMessage.error(e?.response?.data?.detail || '处置失败')
+  } finally { handling.value = false }
 }
 
 function handleRulesPage(p: number) { rulesPage.value = p; loadRules() }
@@ -365,6 +386,18 @@ watch(() => route.query.tab, (tab) => {
 <style scoped>
 .alerts { height: 100%; }
 .filter-card { margin-bottom: 16px; }
+.filter-card :deep(.el-card__body) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.record-filter-select { width: 160px; }
+.false-positive-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .table-card { margin-top: 0; }
 .pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
 .eval-result { margin-left: 16px; color: #67c23a; font-size: 14px; }
@@ -373,4 +406,25 @@ watch(() => route.query.tab, (tab) => {
 .nav-link:hover { text-decoration: underline; }
 
 .form-hint { color: #909399; font-size: 12px; line-height: 1.5; margin-top: 4px; }
+
+@media (max-width: 600px) {
+  .filter-card :deep(.el-card__body) { align-items: stretch; }
+  .record-filter-select,
+  .filter-card :deep(.el-date-editor),
+  .filter-card :deep(.el-button) {
+    width: 100% !important;
+    max-width: 100%;
+    margin-left: 0 !important;
+  }
+  .false-positive-filter { width: 100%; }
+  .eval-result { margin-left: 0; }
+  .alert-form :deep(.el-form-item) { display: block; }
+  .alert-form :deep(.el-form-item__label) {
+    display: block;
+    width: auto !important;
+    margin-bottom: 6px;
+    text-align: left;
+  }
+  .alert-form :deep(.el-form-item__content) { margin-left: 0 !important; }
+}
 </style>

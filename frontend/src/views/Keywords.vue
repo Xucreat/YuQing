@@ -23,7 +23,7 @@
           <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
         </select>
         <button class="btn btn-ghost" @click="handleSearch">搜索</button>
-        <button class="btn btn-primary" @click="openCreate">+ 新增</button>
+        <button v-if="canWriteKeyword" class="btn btn-primary" @click="openCreate">+ 新增</button>
       </div>
     </div>
 
@@ -67,7 +67,10 @@
             <td>{{ row.weight }}</td>
             <td>{{ row.category }}</td>
             <td>
-              <template v-if="isProtected(row)">
+              <template v-if="!canWriteKeyword">
+                <span class="readonly-hint">—</span>
+              </template>
+              <template v-else-if="isProtected(row)">
                 <button class="btn btn-ghost btn-sm" @click="toggleEnabled(row)">
                   {{ row.is_enabled ? '停用' : '启用' }}
                 </button>
@@ -85,10 +88,7 @@
         </tbody>
       </table>
       <div class="pager" v-if="total > 0">
-        <span class="p-info">共 {{ total }} 条</span>
-        <button :disabled="page <= 1" @click="page--; loadData()">&#8249;</button>
-        <button v-for="p in pages" :key="p" :class="{ active: p === page }" @click="page = p; loadData()">{{ p }}</button>
-        <button :disabled="page >= maxPage" @click="page++; loadData()">&#8250;</button>
+        <Pager :total="total" v-model:current-page="page" :page-size="size" @current-change="loadData" />
       </div>
     </div>
 
@@ -130,7 +130,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import api from "@/api"
+import api, { isPermissionDenied } from "@/api"
+import { usePermission } from "@/composables/usePermission"
 
 interface Keyword {
   id: number
@@ -149,6 +150,10 @@ interface ListResp {
   page: number
   size: number
 }
+
+// RBAC：keywords:write 才允许新增/编辑/删除/启停（读列表由 keywords:read 控制，见路由与后端）
+const { hasPermission } = usePermission()
+const canWriteKeyword = computed(() => hasPermission("keywords:write"))
 
 const loading = ref(false)
 const rows = ref<Keyword[]>([])
@@ -169,15 +174,6 @@ const form = reactive({
   category: "",
   type: "monitoring",
   is_enabled: true,
-})
-
-const maxPage = computed(() => Math.ceil(total.value / size.value) || 1)
-const pages = computed(() => {
-  const p: number[] = []
-  const s = Math.max(1, page.value - 2)
-  const e = Math.min(maxPage.value, page.value + 2)
-  for (let i = s; i <= e; i++) p.push(i)
-  return p
 })
 
 function isProtected(row: Keyword): boolean {
@@ -258,8 +254,10 @@ async function handleSave() {
     dialogVisible.value = false
     loadData()
     loadCategories()
-  } catch {
-    ElMessage.error("保存失败")
+  } catch (err: any) {
+    // RBAC 403 已由全局拦截器提示，避免重复弹窗
+    if (isPermissionDenied(err)) return
+    ElMessage.error(err?.response?.data?.detail || "保存失败")
   }
 }
 
@@ -268,23 +266,26 @@ async function toggleEnabled(row: Keyword) {
     await api.put("/keywords/" + row.id, { is_enabled: !row.is_enabled })
     ElMessage.success(row.is_enabled ? "已停用" : "已启用")
     loadData()
-  } catch {
-    ElMessage.error("操作失败")
+  } catch (err: any) {
+    if (isPermissionDenied(err)) return
+    ElMessage.error(err?.response?.data?.detail || "操作失败")
   }
 }
 
 async function handleDelete(row: Keyword) {
   try {
     await ElMessageBox.confirm(`确认删除「${row.word}」？`, "提示", { type: "warning" })
+  } catch {
+    return // 用户取消
+  }
+  try {
     await api.delete("/keywords/" + row.id)
     ElMessage.success("删除成功")
     loadData()
   } catch (err: any) {
-    if (err && err.response && err.response.status === 403) {
-      ElMessage.error("系统内置敏感词不可删除")
-    } else if (err && err.response) {
-      ElMessage.error("删除失败")
-    }
+    // RBAC 403（无 keywords:write）→ 全局已提示；业务 403（系统内置敏感词）→ 展示后端 detail
+    if (isPermissionDenied(err)) return
+    ElMessage.error(err?.response?.data?.detail || "删除失败")
   }
 }
 
@@ -318,8 +319,16 @@ onMounted(() => {
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block }
 .dot-sys { background: #ff9500 }
 .card { background: #fff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 12px 32px rgba(0, 0, 0, .05) }
-.table-card { padding: 6px 6px 14px; overflow: hidden }
-table.tbl { width: 100%; border-collapse: collapse; font-size: 14px }
+.table-card {
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px 6px 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+}
+table.tbl { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 14px }
 table.tbl thead th { text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b; padding: 14px 18px; border-bottom: 1px solid #e8e8ed }
 table.tbl tbody td { padding: 15px 18px; border-bottom: 1px solid #e8e8ed; color: #1d1d1f }
 table.tbl tbody tr:hover { background: #fafafc }
@@ -333,10 +342,10 @@ table.tbl tbody tr:last-child td { border-bottom: none }
 .badge-on { background: #eafaf0; color: #1a9e4b }
 .badge-off { background: #f0f0f3; color: #86868b }
 .lock { margin-left: 6px; font-size: 13px }
+.readonly-hint { color: #c0c4cc; font-size: 13px }
 .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 18px 0 }
-.pager .p-info { color: #86868b; font-size: 13px; margin-right: auto }
-.pager button { min-width: 34px; height: 34px; padding: 0 10px; border: 1px solid #d2d2d7; background: #fff; border-radius: 9px; color: #1d1d1f; font-size: 13.5px; cursor: pointer }
-.pager button:hover:not(:disabled) { background: #e8e8ed }
-.pager button.active { background: #1d1d1f; color: #fff; border-color: #1d1d1f }
-.pager button:disabled { opacity: .4; cursor: default }
+@media (max-width: 600px) {
+  .filters { align-items: stretch; }
+  .search, .select { width: 100%; min-width: 0; }
+}
 </style>

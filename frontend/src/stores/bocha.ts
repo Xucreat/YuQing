@@ -40,6 +40,7 @@ export interface BochaLead {
   status: LeadStatus
   opinion_id?: number | null
   created_by?: number | null
+  creator_name?: string | null
   search_session_id?: number | null
   result_index?: number | null
   created_at: string

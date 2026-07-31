@@ -60,14 +60,45 @@
       </div>
     </div>
 
+    <!-- 批量操作栏：选中行 > 0 时显示 -->
+    <div class="batch-bar" v-if="selectedIds.size > 0">
+      <span class="batch-count">已选择 <b>{{ selectedIds.size }}</b> 条</span>
+      <el-popover
+        trigger="manual"
+        :visible="batchPopVisible"
+        placement="bottom"
+        :width="132"
+        popper-class="sent-popper"
+      >
+        <template #reference>
+          <button class="btn btn-primary" :disabled="!canEditOpinion" @click.stop="toggleBatchPop">修改情感</button>
+        </template>
+        <div class="sent-pop">
+          <button
+            v-for="opt in sentimentOptions"
+            :key="opt.value"
+            type="button"
+            class="sent-opt"
+            :class="sentimentPill(opt.value)"
+            @click.stop="batchSetSentiment(opt.value)"
+          >{{ opt.label }}</button>
+        </div>
+      </el-popover>
+      <button v-if="canDelete" class="btn btn-danger" @click="batchDelete">删除</button>
+      <button class="btn btn-ghost" @click="clearSelection">取消选择</button>
+    </div>
+
     <!-- Table -->
     <div class="card table-card">
       <div class="tbl-scroll">
       <table class="tbl">
         <thead>
           <tr>
-            <th style="width:70px">ID</th>
-            <th style="width:300px">标题</th>
+            <th v-if="canEditOpinion || canDelete" style="width:44px" class="col-center leading-check">
+              <input type="checkbox" class="row-check" :checked="isAllSelected" :indeterminate="isIndeterminate" @click.stop="toggleSelectAll" />
+            </th>
+            <th style="width:58px" class="leading-id">ID</th>
+            <th style="width:280px" class="leading-title">标题</th>
             <th style="width:150px">来源</th>
             <th style="width:110px" class="col-center">类型</th>
             <th style="width:110px" class="col-center">相关性</th>
@@ -77,12 +108,16 @@
             <th style="width:110px" class="col-center">风险评分</th>
             <th style="width:110px" class="col-center">分析状态</th>
             <th style="width:170px">发布时间</th>
+            <th v-if="canDelete" style="width:90px" class="col-center">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(row, idx) in rows" :key="row.id" @click="openDetail(row.id)" style="cursor:pointer">
-            <td>{{ (page - 1) * size + idx + 1 }}</td>
-            <td><span class="t-title">{{ row.title }}</span></td>
+            <td v-if="canEditOpinion || canDelete" class="col-center leading-check">
+              <input type="checkbox" class="row-check" :checked="selectedIds.has(row.id)" @click.stop="toggleRow(row)" />
+            </td>
+            <td class="leading-id">{{ (page - 1) * size + idx + 1 }}</td>
+            <td class="leading-title"><span class="t-title">{{ row.title }}</span></td>
             <td>{{ row.source }}</td>
             <td class="col-center">
               <span class="pill pill-blue">{{ contentTypeText(row.content_type) }}</span>
@@ -94,7 +129,32 @@
               <span class="admission-summary">{{ admissionSummary(row.admission_reason) }}</span>
             </td>
             <td class="col-center">
-              <span class="pill" :class="sentimentPill(row.sentiment)">
+              <!-- 情感：可人工校正（仅 opinions:write 角色）。点击单元格弹出竖向胶囊选项。 -->
+              <el-popover
+                v-if="canEditOpinion"
+                trigger="manual"
+                :visible="popoverRowId === row.id"
+                placement="bottom"
+                :width="132"
+                popper-class="sent-popper"
+              >
+                <template #reference>
+                  <span class="pill editable" :class="sentimentPill(row.sentiment)" @click.stop="toggleSentPop(row)">
+                    <span class="dot"></span>{{ sentimentText(row.sentiment) }}
+                  </span>
+                </template>
+                <div class="sent-pop">
+                  <button
+                    v-for="opt in sentimentOptions"
+                    :key="opt.value"
+                    type="button"
+                    class="sent-opt"
+                    :class="[sentimentPill(opt.value), { active: row.sentiment === opt.value }]"
+                    @click.stop="chooseSentiment(row, opt.value)"
+                  >{{ opt.label }}</button>
+                </div>
+              </el-popover>
+              <span v-else class="pill" :class="sentimentPill(row.sentiment)">
                 <span class="dot"></span>{{ sentimentText(row.sentiment) }}
               </span>
             </td>
@@ -108,9 +168,12 @@
               <span class="pill" :class="statusPill(row.analysis_status)">{{ statusText(row.analysis_status) }}</span>
             </td>
             <td>{{ formatTime(row.publish_time) }}</td>
+            <td v-if="canDelete" class="col-center">
+              <button class="op-del" @click.stop="deleteOne(row)">删除</button>
+            </td>
           </tr>
           <tr v-if="rows.length===0 && !loading">
-            <td colspan="11" class="empty-row">暂无舆情数据</td>
+            <td :colspan="colCount" class="empty-row">暂无舆情数据</td>
           </tr>
         </tbody>
       </table>
@@ -119,15 +182,7 @@
 
       <!-- Pager -->
       <div class="pager" v-if="total > 0">
-        <span class="p-info">共 {{ total }} 条</span>
-        <button :disabled="page<=1" @click="page--; loadData()">‹</button>
-        <button
-          v-for="p in pages"
-          :key="p"
-          :class="{ active: p === page }"
-          @click="page=p; loadData()"
-        >{{ p }}</button>
-        <button :disabled="page>=maxPage" @click="page++; loadData()">›</button>
+        <Pager :total="total" v-model:current-page="page" :page-size="size" @current-change="loadData" />
       </div>
     </div>
 
@@ -137,11 +192,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import type { Opinion, OpinionListResponse } from '@/types'
 import OpinionDetailModal from '@/components/OpinionDetailModal.vue'
+import { usePermission } from '@/composables/usePermission'
 import { riskColor, levelPill, levelText, sentimentPill, sentimentText, statusPill, statusText, formatTime } from '@/utils/opinion'
 import { formatAdmissionHits } from '@/utils/admission'
 
@@ -187,15 +243,160 @@ const filters = reactive({
 const detailVisible = ref(false)
 const detailId = ref<number | null>(null)
 
-const maxPage = computed(() => Math.ceil(total.value / size.value) || 1)
-const pages = computed(() => {
-  const p: number[] = []
-  const mp = maxPage.value
-  const start = Math.max(1, page.value - 2)
-  const end = Math.min(mp, page.value + 2)
-  for (let i = start; i <= end; i++) p.push(i)
-  return p
-})
+// ===== 情感人工校正（仅 opinions:write 角色可见编辑入口）=====
+const { hasPermission, isSuperuser } = usePermission()
+const canEditOpinion = computed(() => hasPermission('opinions:write'))
+const sentimentOptions = [
+  { value: 'positive', label: '正面' },
+  { value: 'neutral', label: '中性' },
+  { value: 'negative', label: '负面' },
+] as const
+// 当前打开的情感编辑气泡对应的舆情行 id（保证同一时刻仅一个）。
+const popoverRowId = ref<number | null>(null)
+
+function toggleSentPop(row: Opinion) {
+  popoverRowId.value = popoverRowId.value === row.id ? null : row.id
+}
+function closeSentPop() {
+  popoverRowId.value = null
+}
+
+async function chooseSentiment(row: Opinion, value: string) {
+  if (!canEditOpinion.value) return
+  closeSentPop()
+  if (row.sentiment === value) return // 未变化，无需请求
+  const oldVal = row.sentiment
+  row.sentiment = value as Opinion['sentiment'] // 乐观更新
+  try {
+    await api.patch(`/opinions/${row.id}`, { sentiment: value })
+    ElMessage.success('情感已更新')
+  } catch (err: any) {
+    row.sentiment = oldVal // 失败回滚
+    ElMessage.error(err?.response?.data?.detail || '情感更新失败')
+  }
+}
+
+// 点击气泡外部关闭（参考元素与气泡内按钮均已 @click.stop，不会冒泡到此处；
+// 气泡内容区本身点击也应忽略，故放行 .sent-pop）。同时关闭批量情感气泡。
+function onDocClick(e: MouseEvent) {
+  if (popoverRowId.value == null && !batchPopVisible.value) return
+  const t = e.target as HTMLElement | null
+  if (t && t.closest('.sent-pop')) return
+  closeSentPop()
+  batchPopVisible.value = false
+}
+
+// ===== 批量操作（Phase 8-E）：选择 + 批量改情感 + 删除 =====
+// 删除权限收紧为 admin（isSuperuser 等价于 role=='admin' 或 is_superuser）。
+const canDelete = computed(() => isSuperuser.value)
+
+const selectedIds = ref<Set<number>>(new Set())
+const batchPopVisible = ref(false)
+const isAllSelected = computed(
+  () => rows.value.length > 0 && selectedIds.value.size === rows.value.length,
+)
+const isIndeterminate = computed(
+  () => selectedIds.value.size > 0 && selectedIds.value.size < rows.value.length,
+)
+// 当前可见列数（选择列 + 操作列按权限显隐），用于空行 colspan。
+const colCount = computed(
+  () => 11 + (canEditOpinion.value || canDelete.value ? 1 : 0) + (canDelete.value ? 1 : 0),
+)
+
+function toggleRow(row: Opinion) {
+  const next = new Set(selectedIds.value)
+  if (next.has(row.id)) next.delete(row.id)
+  else next.add(row.id)
+  selectedIds.value = next
+}
+function toggleSelectAll() {
+  if (isAllSelected.value) selectedIds.value = new Set()
+  else selectedIds.value = new Set(rows.value.map((r) => r.id))
+}
+function clearSelection() {
+  selectedIds.value = new Set()
+}
+function toggleBatchPop() {
+  batchPopVisible.value = !batchPopVisible.value
+}
+
+async function batchSetSentiment(value: string) {
+  if (!canEditOpinion.value || selectedIds.value.size === 0) return
+  batchPopVisible.value = false
+  const ids = [...selectedIds.value]
+  // 乐观更新：先把选中且值不同的行本地改值，提升反馈速度
+  const oldMap: Record<number, string> = {}
+  rows.value.forEach((r) => {
+    if (ids.includes(r.id) && r.sentiment !== value) {
+      oldMap[r.id] = r.sentiment
+      r.sentiment = value as Opinion['sentiment']
+    }
+  })
+  try {
+    const { data } = await api.patch('/opinions/batch', { ids, sentiment: value })
+    ElMessage.success(
+      `已更新 ${data.updated} 条，跳过 ${data.skipped} 条` +
+        (data.failed ? `，失败 ${data.failed} 条` : ''),
+    )
+  } catch (err: any) {
+    rows.value.forEach((r) => {
+      if (oldMap[r.id] !== undefined) r.sentiment = oldMap[r.id] as Opinion['sentiment']
+    })
+    ElMessage.error(err?.response?.data?.detail || '批量修改情感失败')
+  } finally {
+    clearSelection()
+    loadData() // 保持当前分页刷新
+  }
+}
+
+async function batchDelete() {
+  if (!canDelete.value || selectedIds.value.size === 0) return
+  const ids = [...selectedIds.value]
+  try {
+    await ElMessageBox.confirm(
+      `即将删除 ${ids.length} 条舆情\n该操作不可恢复`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const { data } = await api.delete('/opinions/batch', { data: { ids } })
+    ElMessage.success(
+      `已删除 ${data.deleted} 条` + (data.not_found ? `，${data.not_found} 条不存在` : ''),
+    )
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '批量删除失败')
+  } finally {
+    clearSelection()
+    loadData()
+  }
+}
+
+async function deleteOne(row: Opinion) {
+  if (!canDelete.value) return
+  try {
+    await ElMessageBox.confirm(
+      '即将删除该条舆情\n该操作不可恢复',
+      '删除确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await api.delete(`/opinions/${row.id}`)
+    ElMessage.success('已删除')
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '删除失败')
+  } finally {
+    const next = new Set(selectedIds.value)
+    next.delete(row.id)
+    selectedIds.value = next
+    loadData()
+  }
+}
 
 function levelRange(level: string): [number | null, number | null] {
   if (level === 'high') return [70, null]
@@ -272,6 +473,11 @@ async function loadData() {
     const { data } = await api.get<OpinionListResponse>('/opinions', { params })
     rows.value = data.items
     total.value = data.total
+    // 删除后当前页可能清空：若本页无数据且非首页，回退一页重载
+    if (rows.value.length === 0 && page.value > 1) {
+      page.value -= 1
+      return loadData()
+    }
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || '加载舆情列表失败')
   } finally { loading.value = false }
@@ -294,6 +500,12 @@ onMounted(() => {
   loadData()
   loadSources()
   window.addEventListener('data-refresh', loadData)
+  document.addEventListener('click', onDocClick)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('data-refresh', loadData)
+  document.removeEventListener('click', onDocClick)
 })
 </script>
 
@@ -341,10 +553,16 @@ onMounted(() => {
 .btn-block { width: 100%; justify-content: center; }
 
 .card { background: #ffffff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05); }
-.table-card { padding: 6px 6px 14px; overflow: hidden; }
+.table-card {
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px 6px 14px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
 .card-pad { padding: 24px 26px; }
 
-table.tbl { width: 100%; min-width: 1540px; table-layout: fixed; border-collapse: collapse; font-size: 14px; }
+table.tbl { width: 100%; min-width: 1686px; table-layout: fixed; border-collapse: collapse; font-size: 14px; }
 table.tbl thead th {
   text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b;
   padding: 14px 18px; border-bottom: 1px solid #e8e8ed; white-space: nowrap;
@@ -356,7 +574,14 @@ table.tbl tbody tr { transition: background-color 0.12s ease; }
 table.tbl tbody tr:hover { background: #fafafc; }
 table.tbl tbody tr:last-child td { border-bottom: none; }
 .col-center { text-align: center; }
-.tbl-scroll { overflow-x: auto; }
+.tbl-scroll {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
 .t-title {
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -367,6 +592,9 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
   font-weight: 500; color: #1d1d1f;
 }
 .risk-num { font-weight: 600; font-variant-numeric: tabular-nums; }
+.leading-check { width: 44px !important; padding-left: 8px !important; padding-right: 8px !important; }
+.leading-id { width: 58px !important; padding-left: 8px !important; padding-right: 10px !important; }
+.leading-title { width: 280px !important; padding-left: 10px !important; padding-right: 14px !important; }
 .empty-row td { text-align: center; color: #86868b; padding: 40px 0; }
 
 .pill {
@@ -394,15 +622,6 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 }
 
 .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 18px 0; }
-.pager .p-info { color: #86868b; font-size: 13px; margin-right: auto; }
-.pager button {
-  min-width: 34px; height: 34px; padding: 0 10px; border: 1px solid #d2d2d7;
-  background: #ffffff; border-radius: 9px; color: #1d1d1f; font-size: 13.5px;
-  cursor: pointer; transition: background 0.15s ease;
-}
-.pager button:hover:not(:disabled) { background: #e8e8ed; }
-.pager button.active { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
-.pager button:disabled { opacity: 0.4; cursor: default; }
 
 /* ===== Modal ===== */
 .modal-mask {
@@ -490,4 +709,71 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1100px) { .detail-grid { grid-template-columns: 1fr; } }
+@media (max-width: 820px) {
+  .opinions { max-width: 100%; min-width: 0; overflow-x: hidden; }
+  .toolbar, .batch-bar { max-width: 100%; }
+}
+
+/* ===== 情感人工校正：可编辑胶囊 + 竖向选项气泡 ===== */
+.pill.editable {
+  cursor: pointer;
+  position: relative;
+  transition: box-shadow 0.15s ease, transform 0.12s ease;
+}
+.pill.editable:hover {
+  box-shadow: 0 0 0 2px rgba(0,113,227,0.35);
+}
+.pill.editable::after {
+  content: "✎";
+  margin-left: 6px;
+  font-size: 11px;
+  opacity: 0.55;
+}
+.sent-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px;
+}
+.sent-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 980px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  color: #1d1d1f;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.sent-opt:hover { background: #f0f0f3; }
+/* 用与展示胶囊一致的语义色（红/灰/绿），当前选中项加描边突出 */
+.sent-opt.pill-red { background: rgba(255,59,48,0.10); color: #ff3b30; }
+.sent-opt.pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
+.sent-opt.pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.sent-opt.active { border-color: rgba(0,0,0,0.25); box-shadow: 0 0 0 2px rgba(0,113,227,0.25); }
+
+/* ===== Phase 8-E：批量操作栏 / 选择框 / 删除按钮 ===== */
+.row-check { width: 16px; height: 16px; cursor: pointer; accent-color: #0071e3; vertical-align: middle; }
+.batch-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 12px 16px;
+  background: #f5f8ff; border: 1px solid #d6e4ff; border-radius: 14px;
+}
+.batch-count { font-size: 14px; color: #1d1d1f; }
+.batch-count b { color: #0071e3; }
+.btn-danger { background: #ff3b30; color: #fff; }
+.btn-danger:hover { background: #e6352b; }
+.btn-danger:disabled { opacity: 0.5; cursor: default; }
+.op-del {
+  border: 1px solid #ffd9d6; background: #fff; color: #ff3b30;
+  border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer;
+  transition: background 0.15s ease;
+}
+.op-del:hover { background: #fff0ef; }
 </style>

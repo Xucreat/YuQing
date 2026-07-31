@@ -3,6 +3,7 @@
     <!-- 横向导航栏：在两个子页面间切换 -->
     <div class="segmented" role="tablist">
       <button
+        v-if="canReadKeyword"
         class="seg"
         :class="{ active: tab === 'keywords' }"
         role="tab"
@@ -45,16 +46,17 @@
 
     <!-- 子页面：keep-alive 保留各自状态（筛选/弹窗等） -->
     <keep-alive>
-      <KeywordsView v-if="tab === 'keywords'" />
-      <SourcesView v-else-if="tab === 'sources'" />
-      <CollectionLogView v-else-if="tab === 'logs'" />
-      <BochaLeadReviewView v-else />
+      <KeywordsView v-if="tab === 'keywords' && canReadKeyword" />
+      <SourcesView v-else-if="tab === 'sources' && isSuperuser" />
+      <CollectionLogView v-else-if="tab === 'logs' && isSuperuser" />
+      <BochaLeadReviewView v-else-if="tab === 'bocha-leads' && isSuperuser" />
+      <el-empty v-else description="权限不足，请联系管理员" />
     </keep-alive>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePermission } from '@/composables/usePermission'
 import KeywordsView from '@/views/Keywords.vue'
@@ -68,19 +70,19 @@ const route = useRoute()
 const router = useRouter()
 // 数据源接口后端实际使用 require_admin（即超管专属），与 sources:read/write 种子权限不一致；
 // 前端据此将「数据源管理」tab 仅对超管可见，不按 sources:* 判断（RBAC-2C 审计结论）。
-const { isSuperuser } = usePermission()
+const { isSuperuser, hasPermission } = usePermission()
+// RBAC-1：无 keywords:read 的用户不展示「关键词管理」tab（后端读接口亦已加 keywords:read）
+const canReadKeyword = computed(() => hasPermission('keywords:read'))
 
 // 初始 tab 来自路由 query（支持 /data?tab=sources 直达），默认关键词管理；
-// 非超管即使带 ?tab=sources 也强制回退到关键词管理（后端会 403）。
-const tab = ref<TabKey>(
-  isSuperuser.value && route.query.tab === 'sources'
-    ? 'sources'
-    : isSuperuser.value && route.query.tab === 'logs'
-      ? 'logs'
-      : isSuperuser.value && route.query.tab === 'bocha-leads'
-        ? 'bocha-leads'
-        : 'keywords',
-)
+// 非超管即使带 ?tab=sources 也强制回退（后端会 403）；无关键词读权限时回退到超管可见页。
+function resolveInitialTab(): TabKey {
+  const q = route.query.tab
+  if (isSuperuser.value && (q === 'sources' || q === 'logs' || q === 'bocha-leads')) return q as TabKey
+  if (canReadKeyword.value) return 'keywords'
+  return isSuperuser.value ? 'sources' : 'keywords'
+}
+const tab = ref<TabKey>(resolveInitialTab())
 
 function switchTab(t: TabKey) {
   if (t === tab.value) return
@@ -94,13 +96,19 @@ function switchTab(t: TabKey) {
 .dm-page { min-height: 100%; }
 .segmented {
   display: inline-flex;
+  max-width: 100%;
   background: #f0f0f3;
   border-radius: 12px;
   padding: 4px;
   gap: 4px;
   margin-bottom: 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
 }
 .seg {
+  flex: 0 0 auto;
   border: none;
   background: transparent;
   padding: 8px 20px;

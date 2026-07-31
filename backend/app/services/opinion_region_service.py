@@ -13,6 +13,7 @@ from typing import Any, Iterable
 from sqlalchemy.orm import Session
 
 from app.models.region import Region
+from app.services.keyword_filter_service import KeywordFilterService
 
 LANGFANG_CITY_CODE = "131000"
 
@@ -87,7 +88,7 @@ class OpinionRegionService:
         text = f"{title} {content}".strip()
         scope_codes = normalize_scope_codes(scope_region_codes)
         national = not scope_codes
-        hits = self._region_hits(text)
+        hits = self._region_hits(text, is_local_source=not national)
 
         if hits:
             hit_codes = {h["code"] for h in hits}
@@ -148,9 +149,10 @@ class OpinionRegionService:
             False,
         )
 
-    def _region_hits(self, text: str) -> list[dict[str, str]]:
+    def _region_hits(self, text: str, *, is_local_source: bool = False) -> list[dict[str, str]]:
         seen: set[tuple[str, str]] = set()
         hits: list[dict[str, str]] = []
+        kf = KeywordFilterService.default()
         for code, words in LANGFANG_REGION_ALIASES.items():
             for word in words:
                 if (
@@ -159,6 +161,12 @@ class OpinionRegionService:
                     and (code, word) not in seen
                     and not self._is_negated_hit(text, word)
                 ):
+                    # Phase X：131028「大厂」裸别名需经语义过滤，避免互联网「大厂」
+                    # 被错误绑定大厂回族自治县(131028)标签（"大厂县"/"大厂回族自治县"
+                    # 为强地域锚点，无需过滤）。
+                    if code == "131028" and word == "大厂":
+                        if not kf.is_valid_match("大厂", text, is_local_source=is_local_source):
+                            continue
                     seen.add((code, word))
                     hits.append({"code": code, "word": word})
         return hits

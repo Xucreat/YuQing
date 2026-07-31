@@ -1,124 +1,335 @@
 <template>
-  <div class="source-time-view" v-loading="loading">
-    <div class="page-note">当前关系根据来源与时间推断，不代表真实转发关系</div>
-    <div class="layout">
-      <el-card shadow="never" class="event-list-card">
-        <template #header>
-          <div class="card-title-row"><span>事件列表</span><el-button size="small" @click="loadEvents">刷新</el-button></div>
-        </template>
-        <el-input v-model="searchKeyword" placeholder="搜索事件标题" clearable size="small" />
-        <div class="event-list">
-          <button v-for="ev in filteredEvents" :key="ev.event_id" class="event-item" :class="{ active: selectedEvent?.event_id === ev.event_id }" @click="selectEvent(ev)">
-            <span class="event-title">{{ ev.event_title }}</span>
-            <span class="event-meta">{{ ev.opinion_count }} 条内容 · {{ formatDate(ev.last_time) }}</span>
-          </button>
-          <el-empty v-if="!filteredEvents.length" description="暂无事件" />
-        </div>
-      </el-card>
+  <div class="propagation" v-loading="loading">
+    <el-row :gutter="16" class="prop-layout">
+      <el-col :span="8" :xs="24" :sm="24" :md="24" :lg="8" :xl="8">
+        <el-card shadow="never" class="event-list-card">
+          <template #header>
+            <span>事件列表</span>
+            <el-button size="small" type="primary" style="float:right" @click="loadEvents">刷新</el-button>
+          </template>
+          <el-input v-model="searchKeyword" placeholder="搜索事件标题" clearable size="small" class="search-input" @input="filterEvents" />
+          <div class="event-list">
+            <div
+              v-for="ev in filteredEvents"
+              :key="ev.event_id"
+              :class="['event-item', { active: selectedEvent?.event_id === ev.event_id }]"
+              @click="selectEvent(ev)"
+              @dblclick="router.push('/event/' + ev.event_id)"
+            >
+              <div class="ei-title">{{ ev.event_title }}</div>
+              <div class="ei-meta">
+                <el-tag :type="riskTag(ev.risk_level)" size="small">{{ riskText(ev.risk_level) }}</el-tag>
+                <span class="ei-count">{{ ev.opinion_count }} 条舆情</span>
+                <span v-if="ev.node_count > 0" class="ei-nodes">{{ ev.node_count }} 节点</span>
+              </div>
+            </div>
+            <el-empty v-if="filteredEvents.length === 0 && !loading" description="暂无事件" />
+          </div>
+        </el-card>
+      </el-col>
 
-      <el-card v-if="selectedEvent" shadow="never" class="detail-card">
-        <template #header><router-link :to="'/event/' + selectedEvent.event_id">{{ selectedEvent.event_title }}</router-link></template>
-        <div v-if="graphData" class="summary-grid">
-          <div><span>内容数量</span><strong>{{ graphData.total_opinions }}</strong></div>
-          <div><span>来源数量</span><strong>{{ graphData.distinct_sources }}</strong></div>
-          <div><span>时间范围</span><strong>{{ spanText }}</strong></div>
+      <el-col :span="16" :xs="24" :sm="24" :md="24" :lg="16" :xl="16">
+        <div v-if="!selectedEvent" class="no-selection">
+          <el-empty description="请从左侧选择一个事件查看传播溯源" />
         </div>
-        <div class="columns" v-if="graphData">
-          <section>
-            <h3>来源分布</h3>
-            <div v-for="item in graphData.source_summary" :key="item.source" class="source-row">
-              <span>{{ item.source || '未知' }}</span><b>{{ item.count }}</b>
+        <div v-else class="detail-panel">
+          <el-card shadow="never">
+            <template #header>
+              <div class="detail-header">
+                <router-link :to="'/event/' + selectedEvent.event_id" class="dh-title-link">{{ selectedEvent.event_title }}</router-link>
+                <el-button v-if="canRebuild" type="warning" size="small" :loading="rebuilding" @click="handleRebuild">构建传播链</el-button>
+              </div>
+            </template>
+
+            <!-- 事件级指标条 -->
+            <div v-if="graphData" class="metrics-strip">
+              <div class="metric"><span class="m-val">{{ graphData.total_opinions }}</span><span class="m-lab">节点数</span></div>
+              <div class="metric"><span class="m-val">{{ graphData.max_depth }}</span><span class="m-lab">最大传播深度</span></div>
+              <div class="metric"><span class="m-val">{{ graphData.distinct_sources }}</span><span class="m-lab">来源平台数</span></div>
+              <div class="metric"><span class="m-val">{{ spanText }}</span><span class="m-lab">时间跨度</span></div>
+              <div class="metric"><span class="m-val danger">{{ graphData.negative_ratio }}%</span><span class="m-lab">负面占比</span></div>
             </div>
-            <el-empty v-if="!graphData.source_summary.length" description="暂无来源数据" />
-          </section>
-          <section>
-            <h3>时间态势</h3>
-            <div v-for="item in timelineData" :key="item.key" class="timeline-row">
-              <time>{{ item.time }}</time><span>{{ item.title }}</span><small>{{ item.source }}</small>
-            </div>
-            <el-empty v-if="!timelineData.length" description="暂无时间数据" />
-          </section>
+
+            <el-row :gutter="16">
+              <el-col :span="24">
+                <div ref="graphRef" class="graph-box"></div>
+              </el-col>
+            </el-row>
+
+            <el-row :gutter="16" style="margin-top: 16px" class="st-row">
+              <el-col :span="9" class="st-col">
+                <el-card shadow="hover" class="mini-card st-card">
+                  <template #header><span>来源分布</span></template>
+                  <div v-if="graphData?.source_summary && graphData.source_summary.length > 0" class="source-list">
+                    <div v-for="s in graphData.source_summary" :key="s.source" class="source-item">
+                      <span class="source-name">{{ s.source || '未知' }}</span>
+                      <el-progress :percentage="Math.round(s.count / graphData.total_opinions * 100)" :stroke-width="8" :show-text="false" />
+                      <span class="source-num">{{ s.count }}</span>
+                    </div>
+                  </div>
+                  <el-empty v-else description="暂无传播数据" />
+                </el-card>
+              </el-col>
+              <el-col :span="15" class="st-col">
+                <el-card shadow="hover" class="mini-card st-card">
+                  <template #header><span>传播时间线</span></template>
+                  <div v-if="timelineData.length > 0" class="timeline-list">
+                    <div v-for="t in timelineData" :key="t.time" class="tl-item">
+                      <div class="tl-dot"></div>
+                      <div class="tl-content">
+                        <div class="tl-time">{{ t.time }}</div>
+                        <div class="tl-title">{{ t.title }}</div>
+                        <div class="tl-source">{{ t.source }}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <el-empty v-else description="暂无时间线数据" />
+                </el-card>
+              </el-col>
+            </el-row>
+          </el-card>
         </div>
-      </el-card>
-      <el-empty v-else description="请选择一个事件查看来源与时间态势" class="empty-detail" />
-    </div>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
-import type { PropagationEventSummary, PropagationGraph } from '@/types'
+import { usePermission } from '@/composables/usePermission'
+import type { PropagationEventSummary, PropagationGraph, PropagationRebuildResponse } from '@/types'
 
+const router = useRouter()
+const { hasPermission } = usePermission()
+// SEC2-01：构建传播链为写操作，与后端 require_permission("events:write") 对齐
+const canRebuild = computed(() => hasPermission('events:write'))
 const loading = ref(false)
-const searchKeyword = ref('')
+const rebuilding = ref(false)
 const events = ref<PropagationEventSummary[]>([])
+const searchKeyword = ref('')
 const selectedEvent = ref<PropagationEventSummary | null>(null)
 const graphData = ref<PropagationGraph | null>(null)
-const filteredEvents = computed(() => {
-  const value = searchKeyword.value.trim().toLowerCase()
-  return value ? events.value.filter(item => item.event_title.toLowerCase().includes(value)) : events.value
-})
-const spanText = computed(() => {
-  if (!graphData.value?.first_time) return '-'
-  const first = formatDate(graphData.value.first_time)
-  const last = formatDate(graphData.value.last_time || graphData.value.first_time)
-  return first === last ? first : `${first} ~ ${last}`
-})
-const timelineData = computed(() => (graphData.value?.nodes || [])
-  .filter(node => node.publish_time)
-  .sort((a, b) => String(a.publish_time).localeCompare(String(b.publish_time)))
-  .slice(0, 30)
-  .map(node => ({ key: node.id, time: formatDate(node.publish_time), title: node.title, source: node.source })))
 
-function formatDate(value: string | null): string {
-  return value ? value.replace('T', ' ').slice(0, 19) : '-'
+const graphRef = ref<HTMLElement>()
+let chart: echarts.ECharts | null = null
+
+const filteredEvents = computed(() => {
+  if (!searchKeyword.value) return events.value
+  const kw = searchKeyword.value.toLowerCase()
+  return events.value.filter(e => e.event_title.toLowerCase().includes(kw))
+})
+
+const spanText = computed(() => {
+  const g = graphData.value
+  if (!g || !g.first_time) return '-'
+  const a = g.first_time.slice(0, 10)
+  const b = (g.last_time || g.first_time).slice(0, 10)
+  return a === b ? a : `${a} ~ ${b}`
+})
+
+const timelineData = computed(() => {
+  if (!graphData.value?.nodes) return []
+  return graphData.value.nodes
+    .filter(n => n.publish_time)
+    .sort((a, b) => (a.publish_time! > b.publish_time! ? 1 : -1))
+    .slice(0, 15)
+    .map(n => ({
+      time: n.publish_time ? n.publish_time!.replace('T', ' ').slice(0, 19) : '-',
+      title: n.title.length > 30 ? n.title.slice(0, 30) + '...' : n.title,
+      source: n.source,
+    }))
+})
+
+function riskTag(level: string): 'danger' | 'warning' | 'success' | 'info' {
+  return ({ critical: 'danger', high: 'danger', medium: 'warning', low: 'info' } as const)[level] || 'info'
 }
+function riskText(level: string): string {
+  return ({ critical: '严重', high: '高', medium: '中', low: '低' } as const)[level] || level
+}
+
 async function loadEvents() {
   loading.value = true
   try {
     const { data } = await api.get<PropagationEventSummary[]>('/propagation/events')
-    events.value = data || []
-    if (!selectedEvent.value && events.value.length) await selectEvent(events.value[0])
-  } catch (error: any) {
-    ElMessage.error(error?.response?.data?.detail || '加载事件失败')
-  } finally { loading.value = false }
+    events.value = data
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载事件失败') } finally { loading.value = false }
 }
-async function selectEvent(event: PropagationEventSummary) {
-  selectedEvent.value = event
+
+async function selectEvent(ev: PropagationEventSummary) {
+  selectedEvent.value = ev
+  graphData.value = null
   try {
-    const { data } = await api.get<PropagationGraph>(`/propagation/graph/${event.event_id}`)
+    const { data } = await api.get<PropagationGraph>(`/propagation/graph/${ev.event_id}`)
     graphData.value = data
-  } catch (error: any) {
-    graphData.value = null
-    ElMessage.error(error?.response?.data?.detail || '加载来源态势失败')
-  }
+    await nextTick()
+    renderGraph()
+  } catch (_) { /* nodes may not exist yet */ }
 }
-onMounted(loadEvents)
+
+async function handleRebuild() {
+  if (!canRebuild.value) {
+    ElMessage.warning('无权限执行该操作')
+    return
+  }
+  if (!selectedEvent.value || rebuilding.value) return
+  rebuilding.value = true
+  try {
+    const { data } = await api.post<PropagationRebuildResponse>(`/propagation/rebuild/${selectedEvent.value.event_id}`)
+    ElMessage.success(`传播链构建完成：创建 ${data.nodes_created} 个节点`)
+    await loadEvents()
+    await selectEvent(selectedEvent.value)
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '构建失败') } finally { rebuilding.value = false }
+}
+
+function filterEvents() { /* computed, no-op */ }
+
+function renderGraph() {
+  if (!graphRef.value || !graphData.value || graphData.value.nodes.length === 0) return
+  if (!chart) chart = echarts.init(graphRef.value, undefined, { renderer: 'svg' })
+
+  const nodes = graphData.value.nodes.map(n => ({
+    id: n.id,
+    name: n.source + ': ' + (n.title.length > 20 ? n.title.slice(0, 20) + '...' : n.title),
+    symbolSize: Math.max(12, Math.min(36, n.risk_score / 3 + 8)),
+    itemStyle: {
+      color: ({ critical: '#ff3b30', high: '#ff3b30', medium: '#c77700', low: '#0071e3', neutral: '#86868b' } as any)[n.sentiment] || '#86868b',
+    },
+    category: n.depth,
+    depth: n.depth,
+  }))
+
+  const links = graphData.value.links.map(l => ({
+    source: String(l.source_id),
+    target: String(l.target_id),
+    lineStyle: { color: '#c0ccda', width: 1.5 },
+  }))
+
+  // 动态生成分类，避免 node.category(=depth) 越界导致深层节点丢失分类着色
+  const maxDepth = nodes.reduce((m, n) => Math.max(m, n.depth || 0), 0)
+  const categories = []
+  for (let d = 0; d <= maxDepth; d++) {
+    categories.push({ name: d === 0 ? '源头' : `${d}级传播` })
+  }
+
+  chart.setOption({
+    tooltip: { trigger: 'item', formatter: (p: any) => p.data?.name || '' },
+    series: [{
+      type: 'graph',
+      layout: 'force',
+      roam: true,
+      draggable: true,
+      categories: categories,
+      data: nodes,
+      links: links,
+      force: { repulsion: 300, edgeLength: [120, 300], gravity: 0.1 },
+      label: { show: true, fontSize: 10, formatter: (p: any) => p.name.split(':')[0] },
+      emphasis: { focus: 'adjacency', label: { fontSize: 12 } },
+    }],
+  }, true)
+}
+
+function handleResize() {
+  if (chart && graphRef.value) chart.resize()
+}
+
+onMounted(async () => {
+  await loadEvents()
+  if (events.value.length > 0) selectEvent(events.value[0])
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  if (chart) { chart.dispose(); chart = null }
+})
 </script>
 
 <style scoped>
-.source-time-view { min-height: 100%; }
-.page-note { margin-bottom: 14px; color: #6e6e73; font-size: 13px; }
-.layout { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 16px; }
-.event-list-card, .detail-card { min-height: 520px; }
-.card-title-row { display: flex; justify-content: space-between; align-items: center; }
-.event-list { margin-top: 12px; }
-.event-item { display: flex; width: 100%; flex-direction: column; gap: 5px; padding: 12px; border: 0; border-bottom: 1px solid #eee; background: #fff; text-align: left; cursor: pointer; }
-.event-item:hover, .event-item.active { background: #f5f7fb; }
-.event-title { color: #1d1d1f; font-size: 14px; }
-.event-meta { color: #86868b; font-size: 12px; }
-.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 1px; background: #e8e8ed; }
-.summary-grid div { display: flex; flex-direction: column; gap: 7px; padding: 14px; background: #fff; }
-.summary-grid span, .source-row, .timeline-row small { color: #6e6e73; font-size: 12px; }
-.summary-grid strong { color: #1d1d1f; font-size: 16px; }
-.columns { display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; margin-top: 24px; }
-h3 { margin: 0 0 12px; font-size: 15px; color: #1d1d1f; }
-.source-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #eee; }
-.timeline-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 100px; gap: 10px; padding: 9px 0; border-bottom: 1px solid #eee; font-size: 13px; }
-.timeline-row time { color: #6e6e73; font-variant-numeric: tabular-nums; }
-.timeline-row span { overflow-wrap: anywhere; }
-.empty-detail { min-height: 520px; }
-@media (max-width: 900px) { .layout, .columns { grid-template-columns: 1fr; } .event-list-card, .detail-card { min-height: auto; } .timeline-row { grid-template-columns: 1fr; gap: 3px; } }
+.propagation { height: 100%; max-height: calc(100vh - 140px); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.prop-layout { flex: 1; overflow: hidden; height: 100%; min-width: 0; }
+.prop-layout > .el-col { height: 100%; display: flex; flex-direction: column; }
+.event-list-card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.event-list-card :deep(.el-card__body) { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.event-list { flex: 1; overflow-y: auto; min-height: 0; max-height: 100%; padding-right: 2px; }
+.search-input { margin-bottom: 10px; }
+.event-item { padding: 10px 12px; border-radius: 12px; cursor: pointer; margin-bottom: 4px; border: 1px solid transparent; transition: all 0.2s; }
+.event-item:hover { background: #e8f1fd; }
+.event-item.active { background: #e8f1fd; border-color: #0071e3; }
+.ei-title { font-size: 14px; font-weight: 600; color: #1d1d1f; margin-bottom: 4px; }
+.ei-meta { display: flex; align-items: center; gap: 8px; }
+.ei-count, .ei-nodes { font-size: 12px; color: #86868b; }
+.no-selection { display: flex; align-items: center; justify-content: center; height: 100%; }
+.detail-panel { height: 100%; overflow-y: auto; max-height: calc(100vh - 140px); }
+.detail-header { display: flex; align-items: center; justify-content: space-between; }
+.dh-title-link { font-size: 16px; font-weight: 600; color: #0071e3; text-decoration: none; }
+.dh-title-link:hover { text-decoration: underline; }
+
+.metrics-strip { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.metric { flex: 1; min-width: 96px; background: #f6f8fb; border-radius: 12px; padding: 12px 14px; text-align: center; }
+.metric .m-val { display: block; font-size: 22px; font-weight: 700; color: #1d1d1f; line-height: 1.1; }
+.metric .m-val.danger { color: #ff3b30; }
+.metric .m-lab { font-size: 12px; color: #86868b; margin-top: 4px; }
+
+.graph-box { width: 100%; height: 320px; }
+.mini-card { margin-bottom: 0; }
+.mini-chart { width: 100%; height: 200px; }
+.st-row { align-items: stretch; }
+.st-col { display: flex; }
+.st-card { flex: 1; display: flex; flex-direction: column; }
+.st-card :deep(.el-card__body) { flex: 1; min-height: 0; overflow: hidden; }
+.source-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+.source-item { display: flex; align-items: center; gap: 8px; }
+.source-name { width: 70px; font-size: 13px; color: #6e6e73; flex-shrink: 0; }
+.source-num { width: 30px; text-align: right; font-size: 13px; color: #1d1d1f; font-weight: 600; }
+.timeline-list { max-height: 300px; overflow-y: auto; }
+.tl-item { display: flex; gap: 10px; margin-bottom: 8px; }
+.tl-dot { width: 8px; height: 8px; border-radius: 50%; background: #0071e3; margin-top: 6px; flex-shrink: 0; }
+.tl-content { flex: 1; }
+.tl-time { font-size: 11px; color: #86868b; }
+.tl-title { font-size: 13px; color: #1d1d1f; line-height: 1.4; }
+.tl-source { font-size: 11px; color: #86868b; }
+
+/* 平板/手机改为内容流，避免固定高度和 hidden 共同裁切详情。 */
+@media (max-width: 1199px) {
+  .propagation {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .prop-layout {
+    flex: none;
+    height: auto;
+    overflow: visible;
+  }
+  .prop-layout > .el-col {
+    height: auto;
+    max-width: 100%;
+    flex: 0 0 100%;
+  }
+  .event-list-card {
+    flex: none;
+    height: clamp(280px, 42vh, 420px);
+  }
+  .event-list-card :deep(.el-card__body) {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .detail-panel {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .graph-box { height: 300px; }
+}
+
+@media (max-width: 600px) {
+  .graph-box { height: 260px; }
+  .mini-chart { height: 180px; }
+  .metrics-strip { gap: 8px; }
+  .metric { min-width: 82px; padding: 10px 8px; }
+}
 </style>

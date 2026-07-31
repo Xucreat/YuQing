@@ -52,6 +52,7 @@ class BochaSearchService:
         )
         started = time.perf_counter()
         search_session = BochaSearchSession(
+            provider="bocha",
             query=payload["query"],
             freshness=payload.get("freshness"),
             summary=bool(payload["summary"]),
@@ -123,6 +124,7 @@ class BochaSearchService:
             raise BochaSearchError("Bocha search result URL is required")
 
         lead = BochaLead(
+            provider="bocha",
             query=search_session.query,
             title=str(item.get("title") or "").strip(),
             url=url,

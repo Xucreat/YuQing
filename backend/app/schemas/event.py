@@ -4,7 +4,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-EventStatus = Literal["active", "verifying", "processing", "resolved", "closed"]
+EventStatus = Literal["active", "verifying", "processing", "resolved", "closed", "deprecated"]
 
 
 class EventStatusUpdate(BaseModel):
@@ -65,6 +65,11 @@ class EventOut(BaseModel):
     region_name: Optional[str] = None
     risk_level: str
     risk_score: int = 0
+    # Read-only event-level reference score; the existing risk_score remains
+    # unchanged for compatibility with current filters and alert behavior.
+    risk_shadow_score: Optional[int] = None
+    risk_shadow_level: Optional[str] = None
+    risk_shadow_version: Optional[str] = None
     topic_category: Optional[str] = None
     heat_score: int = 0
     trend: str = "unknown"

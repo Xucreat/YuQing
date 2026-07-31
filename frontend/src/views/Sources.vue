@@ -129,8 +129,7 @@
 
     <!-- 分页 -->
     <div class="pager" v-if="total > size">
-      <el-pagination
-        layout="prev, pager, next"
+      <Pager
         :total="total"
         :page-size="size"
         :current-page="page"
@@ -700,8 +699,15 @@ async function submitCreate() {
   padding: 6px 6px 14px; overflow: hidden;
 }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
-.source-table-card { overflow-x: auto; overflow-y: hidden; }
-.source-table-card .tbl { min-width: 1430px; }
+.source-table-card {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+}
+.source-table-card .tbl { width: max-content; min-width: 100%; }
 table.tbl thead th {
   text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b;
   padding: 14px 18px; border-bottom: 1px solid #e8e8ed;
@@ -783,6 +789,9 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 }
 .hist-tbl td { padding: 12px 18px; }
 .dlg-foot { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+@media (max-width: 600px) {
+  .f-select, .f-input { width: 100%; }
+}
 .cfg-err { color: #ff3b30; font-size: 12.5px; margin-right: auto; }
 
 /* 工具栏右侧：计数 + 新建按钮 */

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.propagation import PropagationGraphResponse, PropagationRebuildResponse
@@ -17,7 +18,12 @@ def list_propagation_events(db: Session = Depends(get_db), _u: User = Depends(ge
 
 
 @propagation_router.post("/rebuild/{event_id}", response_model=PropagationRebuildResponse)
-def rebuild(event_id: int, db: Session = Depends(get_db), _u: User = Depends(get_current_user)):
+def rebuild(
+    event_id: int,
+    db: Session = Depends(get_db),
+    _u: User = Depends(require_permission("events:write")),
+):
+    """重建事件传播链（写操作，需 events:write 权限）。"""
     try:
         result = PropagationService.rebuild_for_event(db, event_id)
         return PropagationRebuildResponse(success=True, **result)

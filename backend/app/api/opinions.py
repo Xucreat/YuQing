@@ -16,19 +16,20 @@ from datetime import datetime
 from html.parser import HTMLParser
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, or_, select, delete as sa_delete, text
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
-from app.core.permissions import require_permission
+from app.core.permissions import require_permission, require_admin
 from app.db.session import get_db
 from app.models.opinion import Opinion
 from app.models.user import User
 from app.models.region import Region
 from app.models.event_opinion import EventOpinion
 from app.models.alert import AlertRecord
-from app.schemas.opinion import OpinionCreate, OpinionListResponse, OpinionOut
+from app.schemas.opinion import OpinionCreate, OpinionListResponse, OpinionOut, OpinionUpdate, OpinionBatchUpdate, OpinionBatchDelete
+from app.services.audit_service import audit_write, log_operation
 
 opinions_router = APIRouter(
     tags=["opinions"],
@@ -343,13 +344,200 @@ def create_opinion(
     return opinion
 
 
+# ===== Phase 8-E：批量操作（公共删除函数 + 批量接口）=====
+# 注意：/batch 路由必须定义在 /{opinion_id} 之前，否则 "batch" 会被路径参数捕获。
+
+def _delete_opinion(
+    db: Session, opinion_id: int, request: Request, operator: User, audit: bool = True
+) -> int | None:
+    """级联清理并删除单条舆情（供单条删除与批量删除复用）。
+
+    - 复用现有级联逻辑：解绑 EventOpinion、置空 AlertRecord.opinion_id、删除 PropagationNode。
+    - audit=True：写单条 OPINION_DELETE 审计（含 id + title），随业务提交（单条删除用）。
+    - audit=False：仅删除 + flush，不写审计、不提交（批量删除由调用方统一提交 + 写汇总审计）。
+    返回 opinion_id；记录不存在返回 None。
+    """
+    opinion = db.get(Opinion, opinion_id)
+    if opinion is None:
+        return None
+    title = opinion.title
+
+    from app.models.propagation import PropagationNode
+    from app.models.bocha_lead import BochaLead
+
+    # 解绑事件关联（bulk delete，synchronize_session=False 避免 ORM 对象删除的 StaleDataError）
+    db.query(EventOpinion).where(EventOpinion.opinion_id == opinion_id).delete(
+        synchronize_session=False
+    )
+    # 预警保留、解除关联
+    db.query(AlertRecord).where(AlertRecord.opinion_id == opinion_id).update(
+        {"opinion_id": None}, synchronize_session=False
+    )
+    # Bocha 线索保留、解除关联（此前遗漏的引用表）
+    db.query(BochaLead).where(BochaLead.opinion_id == opinion_id).update(
+        {"opinion_id": None}, synchronize_session=False
+    )
+    # 传播链：先解父引用，再删自身（bulk delete）
+    node_ids = [
+        nid
+        for (nid,) in db.query(PropagationNode.id)
+        .where(PropagationNode.opinion_id == opinion_id)
+        .all()
+    ]
+    if node_ids:
+        db.query(PropagationNode).where(
+            PropagationNode.parent_id.in_(node_ids)
+        ).update({"parent_id": None}, synchronize_session=False)
+    db.query(PropagationNode).where(PropagationNode.opinion_id == opinion_id).delete(
+        synchronize_session=False
+    )
+    db.flush()
+
+    if audit:
+        with audit_write(
+            db,
+            action="OPINION_DELETE",
+            operator=operator,
+            request=request,
+            resource_type="opinion",
+            resource_id=str(opinion_id),
+            details={"id": opinion_id, "title": title},
+        ):
+            db.query(Opinion).where(Opinion.id == opinion_id).delete(synchronize_session=False)
+    else:
+        db.query(Opinion).where(Opinion.id == opinion_id).delete(synchronize_session=False)
+    return opinion_id
+
+
+@opinions_router.patch("/batch", response_model=dict)
+def update_opinion_batch(
+    payload: OpinionBatchUpdate,
+    request: Request,
+    current_user: User = Depends(require_permission("opinions:write")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """批量修改情感（opinions:write）。
+
+    - ids 去重；超过 200 条返回 400。
+    - 情感取值校验（positive/negative/neutral）。
+    - 逐条校验 + 逐条写 OPINION_SENTIMENT_UPDATE 审计；原值相同计 skipped，不存在计 failed。
+    """
+    ids = list(dict.fromkeys(payload.ids))
+    if len(ids) > 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="批量修改数量超过上限（最多 200 条）",
+        )
+    if payload.sentiment not in _SENTIMENT_VALUES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid sentiment value (expected positive|negative|neutral)",
+        )
+
+    updated = skipped = failed = 0
+    failed_ids: list[int] = []
+    for oid in ids:
+        opinion = db.get(Opinion, oid)
+        if opinion is None:
+            failed += 1
+            failed_ids.append(oid)
+            continue
+        if opinion.sentiment == payload.sentiment:
+            skipped += 1
+            continue
+        old_sentiment = opinion.sentiment
+        with audit_write(
+            db,
+            action="OPINION_SENTIMENT_UPDATE",
+            operator=current_user,
+            request=request,
+            resource_type="opinion",
+            resource_id=str(oid),
+            details={"field": "sentiment", "old": old_sentiment, "new": payload.sentiment},
+        ):
+            opinion.sentiment = payload.sentiment
+        updated += 1
+
+    return {"updated": updated, "skipped": skipped, "failed": failed, "failed_ids": failed_ids}
+
+
+@opinions_router.delete("/batch", status_code=status.HTTP_200_OK)
+def delete_opinion_batch(
+    payload: OpinionBatchDelete,
+    request: Request,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """批量删除舆情（admin）。
+
+    - ids 去重；超过 200 条返回 400。
+    - 循环复用 _delete_opinion（audit=False）做级联清理，不逐条审计。
+    - 全部处理完后统一提交，并写一条汇总 OPINION_DELETE 审计（details 含 count + ids 列表）。
+    """
+    ids = list(dict.fromkeys(payload.ids))
+    if len(ids) > 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="批量删除数量超过上限（最多 200 条）",
+        )
+
+    deleted_ids: list[int] = []
+    not_found = 0
+    for oid in ids:
+        res = _delete_opinion(db, oid, request, current_user, audit=False)
+        if res is None:
+            not_found += 1
+        else:
+            deleted_ids.append(oid)
+
+    log_operation(
+        db,
+        action="OPINION_DELETE",
+        operator=current_user,
+        request=request,
+        resource_type="opinion",
+        details={"count": len(deleted_ids), "ids": deleted_ids, "not_found": not_found},
+    )
+    db.commit()
+    return {"deleted": len(deleted_ids), "not_found": not_found}
+
+
 @opinions_router.delete("/{opinion_id}", status_code=status.HTTP_200_OK)
 def delete_opinion(
     opinion_id: int,
-    _: User = Depends(require_permission("opinions:write")),
+    request: Request,
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Delete opinion with cascade cleanup of related records."""
+    """删除舆情（admin）。含级联清理，写单条 OPINION_DELETE 审计。"""
+    res = _delete_opinion(db, opinion_id, request, current_user, audit=True)
+    if res is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Opinion not found",
+        )
+    return {"detail": "Opinion deleted", "id": opinion_id}
+
+
+# 允许的情感取值（opinions.sentiment 字段约束：positive|negative|neutral）。
+_SENTIMENT_VALUES = {"positive", "negative", "neutral"}
+
+
+@opinions_router.patch("/{opinion_id}", response_model=OpinionOut)
+def update_opinion(
+    opinion_id: int,
+    payload: OpinionUpdate,
+    request: Request,
+    current_user: User = Depends(require_permission("opinions:write")),
+    db: Session = Depends(get_db),
+) -> Opinion:
+    """人工校正舆情（当前仅 sentiment 字段）。
+
+    - 要求 opinions:write 权限（分析员/管理员；观察员无此权限，前端也不展示编辑入口）。
+    - 情感取值必须为 positive/negative/neutral，否则 400。
+    - 与原值相同则幂等返回，不写审计。
+    - 变更经 audit_write 记录操作审计（action=OPINION_SENTIMENT_UPDATE，details 含 old/new）。
+    """
     opinion = db.get(Opinion, opinion_id)
     if opinion is None:
         raise HTTPException(
@@ -357,24 +545,30 @@ def delete_opinion(
             detail="Opinion not found",
         )
 
-    # Cascade-clean related records before deleting opinion
-    from app.models.propagation import PropagationNode
-    for eo in db.query(EventOpinion).where(EventOpinion.opinion_id == opinion_id).all():
-        db.delete(eo)
-    db.query(AlertRecord).where(AlertRecord.opinion_id == opinion_id).update(
-        {"opinion_id": None}, synchronize_session=False
-    )
-    # Nullify parent references first to avoid FK violations when
-    # other nodes still point to the ones being deleted.
-    nodes = db.query(PropagationNode).where(PropagationNode.opinion_id == opinion_id).all()
-    if nodes:
-        node_ids = [n.id for n in nodes]
-        db.query(PropagationNode).where(
-            PropagationNode.parent_id.in_(node_ids)
-        ).update({"parent_id": None}, synchronize_session=False)
-        for pn in nodes:
-            db.delete(pn)
-    db.flush()
-    db.delete(opinion)
-    db.commit()
-    return {"detail": "Opinion deleted", "id": opinion_id}
+    new_sentiment = payload.sentiment
+    if new_sentiment is None:
+        # 无变更字段：直接返回现状（未来扩展其它字段时同理）。
+        return opinion
+    if new_sentiment not in _SENTIMENT_VALUES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid sentiment value (expected positive|negative|neutral)",
+        )
+
+    old_sentiment = opinion.sentiment
+    if new_sentiment == old_sentiment:
+        return opinion
+
+    with audit_write(
+        db,
+        action="OPINION_SENTIMENT_UPDATE",
+        operator=current_user,
+        request=request,
+        resource_type="opinion",
+        resource_id=str(opinion_id),
+        details={"field": "sentiment", "old": old_sentiment, "new": new_sentiment},
+    ):
+        opinion.sentiment = new_sentiment
+
+    db.refresh(opinion)
+    return opinion

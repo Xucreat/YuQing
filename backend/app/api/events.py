@@ -38,6 +38,7 @@ from app.schemas.event import (
 from app.schemas.opinion import OpinionListResponse, OpinionOut
 from app.services.event.aggregator import EventAggregator
 from app.services.event.risk_service import EventRiskService
+from app.services.event.risk_shadow import EventRiskShadowService
 from app.services.event.situation import EventSituationService
 from app.services.audit_service import audit_write
 
@@ -54,12 +55,14 @@ EVENT_STATUS_LABELS = {
     "processing": "处理中",
     "resolved": "已解决",
     "closed": "已关闭",
+    "deprecated": "已废弃",
 }
 NEXT_EVENT_STATUS = {
     "active": "verifying",
     "verifying": "processing",
     "processing": "resolved",
     "resolved": "closed",
+    "deprecated": "active",  # 软废弃可恢复为 active（Phase X-History-1B）
 }
 
 
@@ -365,6 +368,9 @@ def list_events(
     risk_level: Optional[Literal["low", "medium", "high"]] = Query(
         None, description="风险等级筛选：low=低 / medium=中 / high=高"
     ),
+    risk_shadow_level: Optional[Literal["low", "medium", "high"]] = Query(
+        None, description="影子风险等级筛选：low=低 / medium=中 / high=高"
+    ),
     topic_category: Optional[
         Literal[
             "livelihood", "traffic", "education", "healthcare", "environment",
@@ -373,8 +379,8 @@ def list_events(
         ]
     ] = Query(None, description="按事件主题筛选"),
     event_status: Optional[
-        Literal["active", "verifying", "processing", "resolved", "closed"]
-    ] = Query(None, alias="status", description="按事件处置状态筛选"),
+        Literal["active", "verifying", "processing", "resolved", "closed", "deprecated"]
+    ] = Query(None, alias="status", description="按事件处置状态筛选（含 deprecated 已废弃）"),
     trend: Optional[Literal["rising", "stable", "falling", "unknown"]] = Query(
         None, description="趋势筛选：rising=升温 / stable=稳定 / falling=降温 / unknown=数据不足"
     ),
@@ -405,18 +411,39 @@ def list_events(
         q = q.filter(Event.heat_score >= heat_min)
     if heat_max is not None:
         q = q.filter(Event.heat_score <= heat_max)
-    total = q.count()
-    rows = (
+    candidate_rows = (
         q.add_columns(risk_score_expr.label("computed_risk_score"))
         .order_by(
             risk_score_expr.desc(),
             Event.heat_score.desc(),
             Event.last_time.desc().nullslast(),
         )
-        .offset((page - 1) * size)
-        .limit(size)
         .all()
     )
+    # Derive an explainable event-level reference score without changing the
+    # persisted/current event score or the existing risk filters. Calculate it
+    # before pagination so a shadow-risk filter applies to the full result set.
+    event_opinions: dict[int, list[Opinion]] = {event.id: [] for event, _ in candidate_rows}
+    if event_opinions:
+        linked_rows = (
+            db.query(EventOpinion.event_id, Opinion)
+            .join(Opinion, Opinion.id == EventOpinion.opinion_id)
+            .filter(EventOpinion.event_id.in_(event_opinions))
+            .all()
+        )
+        for event_id, opinion in linked_rows:
+            event_opinions[event_id].append(opinion)
+    shadow_by_event = {
+        event.id: EventRiskShadowService.calculate(event, event_opinions[event.id])
+        for event, _ in candidate_rows
+    }
+    if risk_shadow_level:
+        candidate_rows = [
+            row for row in candidate_rows
+            if shadow_by_event[row[0].id]["level"] == risk_shadow_level
+        ]
+    total = len(candidate_rows)
+    rows = candidate_rows[(page - 1) * size: page * size]
     region_ids = {
         event.region_id
         for event, _computed_score in rows
@@ -434,6 +461,9 @@ def list_events(
             region_name=region_names.get(e.region_id),
             risk_level=EventRiskService.level_from_score(computed_score),
             risk_score=EventRiskService.clamp_score(computed_score),
+            risk_shadow_score=shadow_by_event[e.id]["score"],
+            risk_shadow_level=shadow_by_event[e.id]["level"],
+            risk_shadow_version=shadow_by_event[e.id]["score_version"],
             topic_category=e.topic_category,
             heat_score=e.heat_score,
             trend=e.trend,

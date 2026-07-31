@@ -159,9 +159,10 @@
 
                 <div class="detail-divider"></div>
 
-                <div class="ai-actions">
+                <!-- RBAC：无 ai:analyze 权限时不展示触发入口 -->
+                <div class="ai-actions" v-if="canAnalyze || detail.ai_analysis_status === 'processing'">
                   <button
-                    v-if="detail.ai_analysis_status !== 'processing'"
+                    v-if="canAnalyze && detail.ai_analysis_status !== 'processing'"
                     class="btn btn-primary btn-block"
                     :disabled="analyzing"
                     @click="triggerAnalyze"
@@ -187,9 +188,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import api from '@/api'
+import api, { isPermissionDenied } from '@/api'
 import type { Opinion } from '@/types'
 import { formatAdmissionHits } from '@/utils/admission'
+import { usePermission } from '@/composables/usePermission'
 import {
   riskColor, levelPill, levelText, sentimentPill, sentimentText, statusPill, statusText, formatTime,
 } from '@/utils/opinion'
@@ -200,6 +202,10 @@ const props = withDefaults(defineProps<{
 }>(), { opinionId: null })
 
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
+
+// RBAC：ai:analyze 才允许触发 AI 研判
+const { hasPermission } = usePermission()
+const canAnalyze = computed(() => hasPermission('ai:analyze'))
 
 const detailLoading = ref(false)
 const originalLoading = ref(false)
@@ -337,7 +343,10 @@ async function triggerAnalyze() {
     detail.value = data
     ElMessage.success('AI 分析完成')
   } catch (err: any) {
-    ElMessage.error(err?.response?.data?.detail || 'AI 分析失败，请稍后重试')
+    // RBAC 403 已由全局拦截器统一提示
+    if (!isPermissionDenied(err)) {
+      ElMessage.error(err?.response?.data?.detail || 'AI 分析失败，请稍后重试')
+    }
     openDetail(id)
   } finally { analyzing.value = false }
 }

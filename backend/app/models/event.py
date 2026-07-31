@@ -42,7 +42,8 @@ class Event(Base):
     # 事件 <-> 舆情（多对多，经 event_opinions 关联表）
     __table_args__ = (
         CheckConstraint(
-            "status IN ('active','verifying','processing','resolved','closed')",
+            "status IN "
+            "('active','verifying','processing','resolved','closed','deprecated')",
             name="ck_events_status",
         ),
         CheckConstraint(

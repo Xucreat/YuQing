@@ -1,59 +1,57 @@
 ﻿<template>
   <div class="app-shell">
     <!-- Light sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar" :class="{ collapsed: sidebarIsCollapsed }">
       <div class="brand">
         <div class="brand-logo">YQ</div>
         <div class="brand-name">
           舆情监测研判平台
           <small>河北省公安</small>
         </div>
+        <button
+          class="sidebar-toggle"
+          type="button"
+          :aria-label="sidebarCollapsed ? '展开导航栏' : '收起导航栏'"
+          :title="sidebarCollapsed ? '展开导航栏' : '收起导航栏'"
+          @click="toggleSidebar"
+        >{{ sidebarCollapsed ? '›' : '‹' }}</button>
       </div>
 
       <nav class="nav">
-        <router-link to="/dashboard" class="nav-item" :class="{ active: activeMenu === '/dashboard' }">
-          <span class="ico">▤</span><span>驾驶舱</span>
-        </router-link>
-        <router-link to="/opinions" class="nav-item" :class="{ active: activeMenu === '/opinions' }">
-          <span class="ico">☰</span><span>舆情列表</span>
-        </router-link>
-        <router-link to="/ai-search" class="nav-item" :class="{ active: activeMenu === '/ai-search' }">
-          <span class="ico">AI</span><span>AI检索</span>
-        </router-link>
-        <router-link to="/events" class="nav-item" :class="{ active: activeMenu === '/events' }">
-          <span class="ico">⚠</span><span>事件中心</span>
-        </router-link>
-        <router-link to="/alerts" class="nav-item" :class="{ active: activeMenu === '/alerts' }">
-          <span class="ico">🔔</span><span>预警中心</span>
-        </router-link>
-        <router-link to="/propagation" class="nav-item" :class="{ active: activeMenu === '/propagation' }">
-          <span class="ico">📡</span><span>来源与时间态势</span>
-        </router-link>
-        <router-link to="/command-screen" class="nav-item nav-item--screen" :class="{ active: activeMenu === '/command-screen' }">
-          <span class="ico">▦</span><span>指挥大屏</span>
-        </router-link>
-        
-        <div class="nav-sep"></div>
-                <!-- 系统管理：用户管理/角色权限/登录日志/操作日志 整合入口（横向 Tab 切换） -->
-        <router-link to="/data" class="nav-item" :class="{ active: activeMenu === '/data' }">
-          <span class="ico">🗂</span><span>数据管理</span>
-        </router-link>
-        <router-link v-if="hasSystemPerm" to="/system" class="nav-item" :class="{ active: activeMenu === '/system' }">
-          <span class="ico">⚙</span><span>系统管理</span>
-        </router-link>
-
+        <template v-for="item in menuItems" :key="item.separator ? 'separator' : item.to">
+          <div v-if="item.separator" class="nav-sep"></div>
+          <router-link
+            v-else-if="item.visible !== false"
+            :to="item.to || '/dashboard'"
+            class="nav-item"
+            :class="{ active: activeMenu === item.to, 'nav-item--screen': item.screen }"
+            :title="item.label"
+          >
+            <span class="ico">{{ item.icon }}</span><span>{{ item.label }}</span>
+          </router-link>
+        </template>
       </nav>
 
       <div class="nav-spacer"></div>
 
-      <div class="nav-user">
-        <div class="avatar">{{ (authStore.username || 'A')[0].toUpperCase() }}</div>
+      <div
+        class="nav-user"
+        :class="{ 'is-collapsed': sidebarIsCollapsed }"
+        @click="handleNavUserClick"
+      >
+        <button
+          class="avatar"
+          type="button"
+          :title="sidebarIsCollapsed ? '展开用户信息和导航' : undefined"
+          :aria-label="sidebarIsCollapsed ? '展开用户信息和导航' : '当前用户'"
+          @click.stop="handleNavUserClick"
+        >{{ (authStore.username || 'A')[0].toUpperCase() }}</button>
         <div class="u-meta">
           <div class="u-name">{{ authStore.username || 'admin' }}</div>
           <div class="u-role">{{ roleLabel }}</div>
         </div>
         <div class="nav-bell-wrap">
-          <button class="nav-bell" :class="{ active: messageRedDot }" title="消息提醒" @click="toggleMessages">
+          <button class="nav-bell" :class="{ active: messageRedDot }" title="消息提醒" @click.stop="toggleMessages">
             <span class="bell-ico">🔔</span>
             <span v-if="messageRedDot" class="bell-dot"></span>
           </button>
@@ -70,16 +68,28 @@
             </div>
           </div>
         </div>
-        <button class="u-out" title="退出登录" @click="handleLogout">↩</button>
+        <button class="u-out" title="退出登录" @click.stop="handleLogout">↩</button>
       </div>
     </aside>
 
     <!-- Main content -->
-    <main class="main">
+    <main class="main" :class="{ 'main--collapsed': sidebarIsCollapsed }">
       <header class="topbar">
-        <div>
-          <h1 class="h-page-title">{{ pageTitle }}</h1>
-          <p class="h-page-sub">{{ pageSub }}</p>
+        <div class="topbar-heading">
+          <button
+            class="mobile-menu-toggle"
+            type="button"
+            aria-label="打开导航菜单"
+            title="打开导航菜单"
+            @click="mobileNavOpen = true"
+          >
+            <span aria-hidden="true">☰</span>
+            <span>菜单</span>
+          </button>
+          <div class="topbar-copy">
+            <h1 class="h-page-title">{{ pageTitle }}</h1>
+            <p class="h-page-sub">{{ pageSub }}</p>
+          </div>
         </div>
         <div class="actions">
           <button v-if="isSuperuser" class="btn btn-primary" :disabled="collecting" @click="handleCollect">
@@ -91,12 +101,65 @@
       <router-view />
     </main>
 
+    <transition name="mobile-nav">
+      <div v-if="mobileNavOpen" class="mobile-nav-layer" @click.self="closeMobileNav">
+        <aside class="mobile-nav-drawer" aria-label="移动端导航">
+          <div class="mobile-nav-header">
+            <div class="brand-logo">YQ</div>
+            <strong>舆情监测研判平台</strong>
+            <button class="mobile-nav-close" type="button" aria-label="关闭导航菜单" title="关闭导航菜单" @click="closeMobileNav">×</button>
+          </div>
+          <nav class="nav">
+            <template v-for="item in menuItems" :key="item.separator ? 'mobile-separator' : `mobile-${item.to}`">
+              <div v-if="item.separator" class="nav-sep"></div>
+              <router-link
+                v-else-if="item.visible !== false"
+                :to="item.to || '/dashboard'"
+                class="nav-item"
+                :class="{ active: activeMenu === item.to, 'nav-item--screen': item.screen }"
+                :title="item.label"
+                @click="closeMobileNav"
+              >
+                <span class="ico">{{ item.icon }}</span><span>{{ item.label }}</span>
+              </router-link>
+            </template>
+          </nav>
+          <div class="nav-user mobile-nav-user">
+            <div class="avatar">{{ (authStore.username || 'A')[0].toUpperCase() }}</div>
+            <div class="u-meta">
+              <div class="u-name">{{ authStore.username || 'admin' }}</div>
+              <div class="u-role">{{ roleLabel }}</div>
+            </div>
+            <div class="nav-bell-wrap">
+              <button class="nav-bell" :class="{ active: messageRedDot }" title="消息提醒" @click.stop="toggleMessages">
+                <span class="bell-ico">🔔</span>
+                <span v-if="messageRedDot" class="bell-dot"></span>
+              </button>
+              <div v-if="menuVisible" class="msg-menu" @click.stop>
+                <div class="msg-menu-item" :class="{ has: unreadCount > 0 }" @click="goAlerts">
+                  <span class="mm-ico">⚠️</span>
+                  <span class="mm-label">预警记录</span>
+                  <span v-if="unreadCount > 0" class="mm-count">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+                </div>
+                <div class="msg-menu-item" :class="{ has: bochaPendingCount > 0 }" @click="goBocha">
+                  <span class="mm-ico">🤖</span>
+                  <span class="mm-label">AI线索审核</span>
+                  <span v-if="bochaPendingCount > 0" class="mm-count">{{ bochaPendingCount > 99 ? '99+' : bochaPendingCount }}</span>
+                </div>
+              </div>
+            </div>
+            <button class="u-out" title="退出登录" @click.stop="handleLogout">↩</button>
+          </div>
+        </aside>
+      </div>
+    </transition>
+
     <AlertToastHost />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, h } from 'vue'
+import { computed, ref, onMounted, onUnmounted, h, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores'
@@ -114,6 +177,39 @@ const { role, isSuperuser, hasPermission } = usePermission()
 const { redDot, unreadCount, openNotifications, start } = useAlertNotifier()
 const bochaPendingCount = ref(0)
 let bochaPendingTimer: number | null = null
+const sidebarCollapsed = ref(localStorage.getItem('yq.sidebar.collapsed') === '1')
+const mobileNavOpen = ref(false)
+const compactViewport = ref(false)
+const compactSidebarExpanded = ref(false)
+let compactMediaQuery: MediaQueryList | null = null
+
+const sidebarIsCollapsed = computed(() =>
+  compactViewport.value ? !compactSidebarExpanded.value : sidebarCollapsed.value,
+)
+
+function toggleSidebar() {
+  if (compactViewport.value) {
+    compactSidebarExpanded.value = !compactSidebarExpanded.value
+    return
+  }
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  localStorage.setItem('yq.sidebar.collapsed', sidebarCollapsed.value ? '1' : '0')
+}
+
+function handleNavUserClick() {
+  if (!sidebarIsCollapsed.value) return
+  if (compactViewport.value) {
+    compactSidebarExpanded.value = true
+    return
+  }
+  sidebarCollapsed.value = false
+  localStorage.setItem('yq.sidebar.collapsed', '0')
+}
+
+function syncCompactViewport(event: MediaQueryList | MediaQueryListEvent) {
+  compactViewport.value = event.matches
+  if (!event.matches) compactSidebarExpanded.value = false
+}
 
 const messageRedDot = computed(() => redDot.value || bochaPendingCount.value > 0)
 const roleLabel = computed(() => {
@@ -124,10 +220,44 @@ const hasSystemPerm = computed(() =>
   hasPermission('users:read') || hasPermission('roles:read') ||
   hasPermission('login_logs:read') || hasPermission('audit_logs:read'),
 )
+// RBAC-1：菜单可见性与路由 meta.permission / 后端权限保持一致，
+// 避免用户点进去后满屏 403（观察员无 ai:search、无 keywords:read）。
+const hasAiSearchPerm = computed(() => hasPermission('ai:search'))
+// 数据管理下含「关键词管理」(keywords:read) 与超管专属的数据源/采集日志/AI线索审核
+const hasDataPerm = computed(() => hasPermission('keywords:read') || isSuperuser.value)
+
+type MenuEntry = {
+  to?: string
+  label?: string
+  icon?: string
+  screen?: boolean
+  separator?: boolean
+  visible?: boolean
+}
+
+const menuItems = computed<MenuEntry[]>(() => [
+  { to: '/dashboard', label: '驾驶舱', icon: '▤' },
+  { to: '/opinions', label: '舆情列表', icon: '☰' },
+  { to: '/ai-search', label: 'AI检索', icon: 'AI', visible: hasAiSearchPerm.value },
+  { to: '/events', label: '事件中心', icon: '⚠' },
+  { to: '/alerts', label: '预警中心', icon: '🔔' },
+  { to: '/propagation', label: '传播溯源', icon: '📡' },
+  { to: '/command-screen', label: '指挥大屏', icon: '▦', screen: true },
+  { separator: true },
+  { to: '/data', label: '数据管理', icon: '🗂', visible: hasDataPerm.value },
+  { to: '/system', label: '系统管理', icon: '⚙', visible: hasSystemPerm.value },
+])
+
+function closeMobileNav() {
+  mobileNavOpen.value = false
+}
+
+watch(() => route.path, closeMobileNav)
 
 const collecting = ref(false)
 
 const activeMenu = computed(() => {
+  if (route.path.startsWith('/ai-search')) return '/ai-search'
   if (route.path.startsWith('/opinion')) return '/opinions'
   if (route.path.startsWith('/event')) return '/events'
   if (route.path.startsWith('/system')) return '/system'
@@ -146,7 +276,7 @@ const pageTitle = computed(() => {
     '/roles': '角色权限',
     '/login-logs': '登录日志',
     '/operation-logs': '操作日志',
-    '/propagation': '来源与时间态势',
+    '/propagation': '传播溯源',
     '/system': '系统管理',
     '/system/users': '用户管理',
     '/system/roles': '角色权限',
@@ -156,6 +286,7 @@ const pageTitle = computed(() => {
   }
   if (route.path.startsWith('/opinion/')) return '舆情详情'
   if (route.path.startsWith('/event/')) return '事件详情'
+  if (route.path.startsWith('/ai-search/')) return 'AI检索'
   return m[route.path] || '驾驶舱'
 })
 
@@ -171,7 +302,7 @@ const pageSub = computed(() => {
     '/roles': '管理系统角色与权限分配',
     '/login-logs': '查看用户登录与注销记录',
     '/operation-logs': '查看系统操作审计记录',
-    '/propagation': '根据来源与时间进行只读态势研判',
+    '/propagation': '基于多源舆情数据的传播演化分析',
     '/system': '用户、角色权限与系统审计日志',
     '/system/users': '管理系统用户与角色权限',
     '/system/roles': '管理系统角色与权限分配',
@@ -181,6 +312,7 @@ const pageSub = computed(() => {
   }
   if (route.path.startsWith('/opinion/')) return '舆情详细信息与AI分析'
   if (route.path.startsWith('/event/')) return '事件详情与关联舆情'
+  if (route.path.startsWith('/ai-search/')) return '主动搜索外部舆情线索'
   return m[route.path] || ''
 })
 
@@ -288,6 +420,9 @@ function handleBochaLeadsRefresh() {
 
 // 启动预警通知轮询（单例，仅首次挂载生效）。
 onMounted(() => {
+  compactMediaQuery = window.matchMedia('(max-width: 1100px) and (min-width: 601px)')
+  syncCompactViewport(compactMediaQuery)
+  compactMediaQuery.addEventListener?.('change', syncCompactViewport)
   start()
   refreshBochaPendingCount()
   bochaPendingTimer = window.setInterval(refreshBochaPendingCount, 20_000)
@@ -297,6 +432,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  compactMediaQuery?.removeEventListener?.('change', syncCompactViewport)
+  compactMediaQuery = null
   if (bochaPendingTimer) {
     window.clearInterval(bochaPendingTimer)
     bochaPendingTimer = null
@@ -318,6 +455,7 @@ onUnmounted(() => {
 /* ---- Sidebar ---- */
 .sidebar {
   width: 246px;
+  box-sizing: border-box;
   flex-shrink: 0;
   padding: 26px 16px;
   position: fixed;
@@ -330,6 +468,30 @@ onUnmounted(() => {
   flex-direction: column;
   background: #f5f5f7;
   border-right: 1px solid #e8e8ed;
+  transition: width 0.2s ease, padding 0.2s ease;
+}
+.sidebar.collapsed {
+  width: 78px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.sidebar-toggle {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  margin-left: auto;
+  border: 1px solid #d2d2d7;
+  border-radius: 8px;
+  background: #fff;
+  color: #6e6e73;
+  font-size: 22px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.sidebar-toggle:hover {
+  background: #e8f1fd;
+  color: #0071e3;
 }
 .brand {
   display: flex;
@@ -363,6 +525,24 @@ onUnmounted(() => {
   color: #86868b;
   font-weight: 400;
 }
+.sidebar.collapsed .brand {
+  justify-content: flex-start;
+  gap: 0;
+  padding-top: 38px;
+  padding-left: 0;
+  padding-right: 0;
+}
+.sidebar.collapsed .brand-name,
+.sidebar.collapsed .nav-item > span:not(.ico),
+.sidebar.collapsed .u-meta {
+  display: none;
+}
+.sidebar.collapsed .sidebar-toggle {
+  position: absolute;
+  top: 18px;
+  right: 8px;
+  margin: 0;
+}
 
 /* ---- Nav ---- */
 .nav {
@@ -381,6 +561,12 @@ onUnmounted(() => {
   font-weight: 500;
   text-decoration: none;
   transition: background-color 0.15s ease, color 0.15s ease;
+}
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  gap: 0;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 .nav-item:hover {
   background: #e8e8ed;
@@ -420,6 +606,10 @@ onUnmounted(() => {
   margin: 8px 14px;
   background: #e8e8ed;
 }
+.sidebar.collapsed .nav-sep {
+  margin-left: 8px;
+  margin-right: 8px;
+}
 
 /* ---- User ---- */
 .nav-user {
@@ -432,9 +622,23 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
 }
+.nav-user.is-collapsed { cursor: pointer; }
+.sidebar.collapsed .nav-user {
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.sidebar.collapsed .nav-bell-wrap,
+.sidebar.collapsed .u-out {
+  margin-left: 0;
+}
 .avatar {
   width: 32px;
   height: 32px;
+  padding: 0;
+  border: none;
   border-radius: 50%;
   background: #e8f1fd;
   color: #0071e3;
@@ -443,6 +647,8 @@ onUnmounted(() => {
   justify-content: center;
   font-weight: 600;
   font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
 }
 .u-name { font-size: 13.5px; font-weight: 600; color: #1d1d1f; }
 .u-role { font-size: 11.5px; color: #86868b; }
@@ -521,6 +727,13 @@ onUnmounted(() => {
 }
 .msg-menu-item:hover { background: #f0f0f3; color: #1d1d1f; }
 .msg-menu-item.has { color: #1d1d1f; font-weight: 500; }
+.sidebar.collapsed .msg-menu {
+  position: fixed;
+  left: 90px;
+  bottom: 24px;
+  z-index: 300;
+  transform: none;
+}
 .mm-ico { font-size: 15px; }
 .mm-label { flex: 1; }
 .mm-count {
@@ -540,12 +753,15 @@ onUnmounted(() => {
 .main {
   flex: 1;
   min-width: 0;
-  max-width: 1440px;
   margin-left: 246px;
-  margin-right: auto;
+  margin-right: 0;
   margin-top: 0;
   margin-bottom: 0;
   padding: 34px 44px 60px;
+  transition: margin-left 0.2s ease;
+}
+.main--collapsed {
+  margin-left: 78px;
 }
 
 /* ---- Topbar ---- */
@@ -556,6 +772,13 @@ onUnmounted(() => {
   gap: 16px;
   margin-bottom: 26px;
 }
+.topbar-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.topbar-copy { min-width: 0; }
 .h-page-title {
   font-size: 28px;
   font-weight: 600;
@@ -572,6 +795,10 @@ onUnmounted(() => {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+.mobile-menu-toggle,
+.mobile-nav-layer {
+  display: none;
 }
 
 /* ---- Buttons ---- */
@@ -598,8 +825,132 @@ onUnmounted(() => {
 .btn-primary:disabled { opacity: 0.55; cursor: default; }
 
 /* ---- Responsive ---- */
-@media (max-width: 820px) {
+/*
+ * Keep a compact navigation rail available on small desktop/tablet widths.
+ * Hiding the fixed sidebar at 820px made a resized browser lose its primary
+ * navigation even though the page itself was still usable as a desktop view.
+ */
+@media (max-width: 1100px) and (min-width: 601px) {
+  .sidebar.collapsed {
+    width: 78px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .sidebar.collapsed .brand {
+    justify-content: flex-start;
+    gap: 0;
+    padding-top: 38px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .sidebar.collapsed .brand-name,
+  .sidebar.collapsed .nav-item > span:not(.ico),
+  .sidebar.collapsed .u-meta {
+    display: none;
+  }
+  .sidebar.collapsed .sidebar-toggle {
+    display: none;
+  }
+  .sidebar.collapsed .nav-item {
+    justify-content: center;
+    gap: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .sidebar.collapsed .nav-sep { margin-left: 8px; margin-right: 8px; }
+  .sidebar.collapsed .nav-user {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .main--collapsed {
+    margin-left: 78px;
+    padding: 28px 28px 48px;
+  }
+  .main:not(.main--collapsed) { padding: 28px 28px 48px; }
+  .h-page-title { font-size: 24px; }
+}
+
+@media (max-width: 600px) {
   .sidebar { display: none; }
   .main { margin-left: 0; padding: 24px 18px 48px; }
+  .topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .topbar-heading { flex: 1 1 auto; }
+  .actions { flex: 0 0 auto; }
+  .mobile-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 7px 11px;
+    border: 1px solid #d2d2d7;
+    border-radius: 10px;
+    background: #fff;
+    color: #1d1d1f;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .mobile-nav-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    display: block;
+    background: rgba(29, 29, 31, 0.32);
+  }
+  .mobile-nav-drawer {
+    width: min(300px, 84vw);
+    height: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 20px 14px 24px;
+    background: #f5f5f7;
+    box-shadow: 12px 0 32px rgba(0, 0, 0, 0.16);
+  }
+  .mobile-nav-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    margin-bottom: 20px;
+  }
+  .mobile-nav-header .brand-logo { width: 34px; height: 34px; font-size: 16px; }
+  .mobile-nav-header strong { flex: 1; min-width: 0; font-size: 14px; line-height: 1.35; }
+  .mobile-nav-close {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    border: 1px solid #d2d2d7;
+    border-radius: 9px;
+    background: #fff;
+    color: #6e6e73;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .mobile-nav-drawer .nav { flex: 1 1 auto; gap: 4px; }
+  .mobile-nav-drawer .nav-item { padding: 12px 14px; }
+  .mobile-nav-user {
+    flex: 0 0 auto;
+    margin-top: 20px;
+  }
 }
+.mobile-nav-enter-active,
+.mobile-nav-leave-active { transition: opacity 0.18s ease; }
+.mobile-nav-enter-active .mobile-nav-drawer,
+.mobile-nav-leave-active .mobile-nav-drawer { transition: transform 0.2s ease; }
+.mobile-nav-enter-from,
+.mobile-nav-leave-to { opacity: 0; }
+.mobile-nav-enter-from .mobile-nav-drawer,
+.mobile-nav-leave-to .mobile-nav-drawer { transform: translateX(-100%); }
 </style>

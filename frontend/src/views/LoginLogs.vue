@@ -41,9 +41,7 @@
         <el-table-column prop="user_agent" label="用户代理 / 设备" min-width="220" show-overflow-tooltip />
       </el-table>
       <div class="pagination">
-        <el-pagination
-          background
-          layout="total, prev, pager, next"
+        <Pager
           :total="total"
           :current-page="page"
           :page-size="size"

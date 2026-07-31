@@ -81,12 +81,22 @@ def dashboard_hot_keywords(
     _u: User = Depends(get_current_user),
     days: int = Query(default=7, ge=1, le=90, description="统计窗口天数"),
     limit: int = Query(default=10, ge=1, le=50, description="返回热词条数"),
+    category: str | None = Query(
+        default=None,
+        description="监测词分类过滤：'主题' 仅返回主题词（展示层排除元词「舆情」）；"
+        "不传时保持改造前行为（全部已启用监测词）；传入不存在的分类返回空列表，不 500",
+    ),
 ) -> HotKeywordsResponse:
     """指挥大屏热门关键词：基于监测关键词表对窗口内 title+content 的真实提及频次。
 
-    不读取 Opinion.keywords（敏感词命中集合）。空数据返回稳定空结构，不 500。
+    不读取 Opinion.keywords（敏感词命中集合）。支持 category 分类过滤（热点主题模式）。
+    空数据返回稳定空结构，不 500。
     """
-    return HotKeywordsResponse(**dashboard_service.get_hot_keywords(db, days=days, limit=limit))
+    return HotKeywordsResponse(
+        **dashboard_service.get_hot_keywords(
+            db, days=days, limit=limit, category=category
+        )
+    )
 
 
 @dashboard_router.get("/region-children", response_model=RegionChildrenResponse)
