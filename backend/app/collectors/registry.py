@@ -31,8 +31,16 @@ from typing import Collection, List, Optional
 from sqlalchemy.orm import Session
 
 from app.collectors.base import BaseCollector
+from app.collectors.source_config import STRATEGY_KEYS, DataSourceConfig
 
 logger = logging.getLogger(__name__)
+
+# 观测状态：最近一次数据源发现是否因 DB 异常而降级到 DEFAULT_SOURCES。
+# 供 /health 等健康检查读取，避免「静默降级」导致运维无法察觉
+# （Phase DataSource-Schedule-Fix-1：DB 查询失败时必须可观测，禁止静默）。
+# True = 上次发现时 DB 查询异常，已回退内置默认源（采集列表可能与 DB 配置不一致）。
+last_discovery_degraded: bool = False
+last_discovery_error: Optional[str] = None
 
 # ---------------------------------------------------------------------------
 # 内置默认源（灰度回退）：等价于「迁移前 if/else 装配」。一旦 data_sources 表
@@ -152,11 +160,28 @@ def _parse_config(config_json: Optional[str]) -> dict:
     return cfg
 
 
-def _attach_meta(collector: BaseCollector, meta: dict) -> BaseCollector:
-    """注入 scope_region_codes（区域绑定）与 data_source_key（审计）。"""
+def _split_strategy_keys(cfg: dict) -> dict:
+    """剥离策略键（Phase DataSource-Config-1），返回可安全用于 ``cls(**kwargs)`` 的配置。
+
+    ``max_items`` / ``filter_mode`` / ``keyword_scope`` 是**采集策略**参数，
+    不是采集器构造函数参数。专用型采集器（XinhuaCollector 等）的 ``__init__``
+    只接受 urls / keywords，若把策略键透传过去会直接 TypeError 导致该源装配失败。
+    因此这里先剥离，策略键改由 ``collector.source_config`` 承载（见 _attach_meta）。
+
+    注：``max_articles`` 等 GenericSiteCollector 既有键**不在剥离范围**，
+    继续按原路径进入构造函数，保证 27 个存量数据源零影响。
+    """
+    return {k: v for k, v in cfg.items() if k not in STRATEGY_KEYS}
+
+
+def _attach_meta(collector: BaseCollector, meta: dict, cfg: Optional[dict] = None) -> BaseCollector:
+    """注入 scope_region_codes（区域绑定）、data_source_key（审计）与 source_config（采集参数）。"""
     collector.scope_region_codes = parse_codes(meta.get("scope_region_codes"))
     if meta.get("key"):
         collector.data_source_key = meta["key"]
+    # 注入**完整** config_json（含 max_articles 等既有键），供采集器按需读取；
+    # 未注入时采集器沿用 BaseCollector.source_config 空配置 = 旧行为。
+    collector.source_config = DataSourceConfig(cfg or {}, source_key=meta.get("key"))
     return collector
 
 
@@ -178,6 +203,7 @@ def _resolve_core(
     装配失败的源不再被静默吞掉，而是记入 failures，交由调用方暴露
     （如写入 CollectorRun.status=failed，使其在采集日志中可见）。
     """
+    global last_discovery_degraded, last_discovery_error
     result = ResolvedCollectors()
 
     # mock 离线演示：直接返回单个 MockCollector（无失败风险）
@@ -189,21 +215,31 @@ def _resolve_core(
     rows = None
     if db is not None:
         try:
-            from app.models.data_source import DataSource
+            from app.collectors.data_source_repository import enabled_sources
 
-            rows = (
-                db.query(DataSource)
-                .filter(DataSource.enabled == True)  # noqa: E712
-                .order_by(DataSource.priority.asc(), DataSource.id.asc())
-                .all()
+            # 仅选取装配所需字段（禁止 SELECT *）：查询条件统一收敛到
+            # data_source_repository.enabled_sources，避免 scheduler 与 registry
+            # 两处重复维护 enabled 过滤（Phase DataSource-Schedule-Fix-2）。
+            rows = enabled_sources(db)
+            # DB 读取成功（无论是否有启用源），清除降级标记。
+            last_discovery_degraded = False
+            last_discovery_error = None
+        except Exception as exc:  # 表不存在/连接异常 -> 灰度回退（但必须可观测）
+            logger.error(
+                "DataSource registry DB load failed. "
+                "collector discovery degraded to DEFAULT_SOURCES. error=%s",
+                exc,
             )
-        except Exception as exc:  # 表不存在/连接异常 -> 灰度回退
-            logger.warning("读取 data_sources 失败，回退默认源: %s", exc)
+            last_discovery_degraded = True
+            last_discovery_error = f"{type(exc).__name__}: {exc}"
             rows = None
 
     if not rows:
-        # 灰度回退：内置默认源定义
-        logger.info("data_sources 为空/不可用，使用内置默认源定义（%d 个）", len(DEFAULT_SOURCES))
+        # 灰度回退：内置默认源定义（DB 为空或不可用时）
+        logger.warning(
+            "data_sources 为空/不可用，使用内置默认源定义（%d 个）。degraded=%s",
+            len(DEFAULT_SOURCES), last_discovery_degraded,
+        )
         rows = DEFAULT_SOURCES
 
     include_keys = set(include_data_source_keys or ())
@@ -238,8 +274,9 @@ def _resolve_core(
         try:
             cls = import_class(meta["class_path"])
             cfg = _parse_config(meta.get("config_json"))  # 非法 JSON -> ConfigParseError
-            collector = cls(**cfg)  # 未知/错误参数 -> TypeError 等
-            result.collectors.append(_attach_meta(collector, meta))
+            # 策略键不进构造函数，避免专用型采集器 TypeError（见 _split_strategy_keys）
+            collector = cls(**_split_strategy_keys(cfg))  # 未知/错误参数 -> TypeError 等
+            result.collectors.append(_attach_meta(collector, meta, cfg))
         except ConfigParseError as exc:
             logger.error(
                 "数据源配置解析失败 key=%s class=%s err=%s",

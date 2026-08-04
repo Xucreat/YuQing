@@ -33,6 +33,15 @@ class DataSource(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # 排序与兜底优先级（小在前）
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    # —— 自定义采集频率（Phase DataSource-Schedule-1）——
+    # 是否纳入自动调度（默认 true；false = 关闭该源自动采集，仅可手动触发）
+    schedule_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # 采集间隔（分钟），DB 层 CHECK(schedule_interval_minutes >= 5) 兜底最小间隔
+    schedule_interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    # 下次自动采集时间（NULL = 未调度；scheduler tick 据此派发）
+    next_collect_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # 上次自动采集时间（NULL = 从未自动采集）
+    last_collect_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # 覆盖区域 codes（CSV；空 / NULL / 'ALL' = 全国）。如 "130100"、"131028"
     scope_region_codes: Mapped[str | None] = mapped_column(String(256), nullable=True)
     # 站点专属配置（JSON）：urls / 选择器 / 关键词覆盖 / 限速 / 重试 等。

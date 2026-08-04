@@ -84,6 +84,7 @@ class OpinionAdmissionService:
         source_scope_codes: Iterable[str] | None = None,
         national_source: bool | None = None,
         region_hits: Iterable[Any] | None = None,
+        collection_mode: str | None = None,
     ) -> AdmissionResult:
         source_type = item.get("source_type")
         source = str(item.get("source") or collector_name or "")
@@ -107,6 +108,23 @@ class OpinionAdmissionService:
             )
 
         if source_type != "weibo_post":
+            # National-Mode-4：显式 national 模式不再要求地域相关性。
+            # 采集阶段已完成 topic_only 过滤（无主题稿已被 collector 前置拦截），
+            # 因此到达此处的 national 条目视为已通过主题相关性，直接准入。
+            # 仅 collection_mode=="national" 走此分支；regional / 隐式 national 路径不变。
+            if collection_mode == "national":
+                content_type = self._default_content_type(source, collector_name)
+                return AdmissionResult(
+                    accepted=True,
+                    relevance_score=100,
+                    content_type=content_type,
+                    admission_reason={
+                        "decision": "accepted",
+                        "policy": "national_mode_topic_accepted",
+                        "source": source,
+                        "region_hits": region_hit_list,
+                    },
+                )
             if is_national and not region_hit_list:
                 return AdmissionResult(
                     accepted=False,

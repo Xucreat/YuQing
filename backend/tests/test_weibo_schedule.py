@@ -74,6 +74,7 @@ def test_registry_source_filtering(seeded_region_id):
 
 
 def test_scheduler_registers_separate_filtered_jobs(monkeypatch):
+    """per_source 模式下：注册 collector_tick（每 60s）+ weibo_consumer（每小时 15 分）。"""
     import app.core.scheduler as scheduler_module
 
     jobs = []
@@ -89,7 +90,8 @@ def test_scheduler_registers_separate_filtered_jobs(monkeypatch):
     monkeypatch.setattr(scheduler_module, "_try_acquire_scheduler_lock", lambda: True)
     monkeypatch.setattr(scheduler_module.settings, "collector_schedule_enabled", True)
     monkeypatch.setattr(scheduler_module.settings, "alert_eval_enabled", False)
-    monkeypatch.setattr(scheduler_module.settings, "collector_schedule_cron", "*/30 * * * *")
+    monkeypatch.setattr(scheduler_module.settings, "collector_schedule_mode", "per_source")
+    monkeypatch.setattr(scheduler_module.settings, "collector_tick_interval_seconds", 60)
     monkeypatch.setattr(
         scheduler_module.settings, "weibo_consumer_schedule_cron", "15 * * * *"
     )
@@ -98,10 +100,71 @@ def test_scheduler_registers_separate_filtered_jobs(monkeypatch):
     scheduler_module.start_scheduler()
 
     assert len(jobs) == 2
-    assert jobs[0][0] == "_run_collector_job"
-    assert "minute='*/30'" in jobs[0][1]
+    assert jobs[0][0] == "_run_collector_tick"
+    assert "0:01:00" in jobs[0][1]
+    # 合并单次调用，禁止逐源分别触发
+    assert jobs[0][2].get("max_instances") == 1
+    assert jobs[0][2].get("coalesce") is True
     assert jobs[1][0] == "_run_weibo_consumer_job"
     assert "minute='15'" in jobs[1][1]
+
+
+def test_collector_tick_merges_due_sources_into_one_call(monkeypatch):
+    """验证 _run_collector_tick 把到期源「合并为一次」CollectorService 调用
+    （include=到期源 key 集合），而非逐源分别调用（规避政府源 5 秒防抖）。"""
+    import app.collectors.service as svc_mod
+    import app.core.scheduler as scheduler_module
+    from app.collectors.service import CollectorService
+
+    captured = []
+
+    class _FakeResult:
+        fetched_raw = created = analyzed = failed = 0
+
+    class SpyService(CollectorService):
+        def __init__(self, **kwargs):
+            captured.append(kwargs)
+            super().__init__(**kwargs)
+
+        def collect_and_analyze_concurrent(self, session_factory, trigger_type="scheduled"):
+            return _FakeResult()
+
+    # 用 FakeSession 驱动 tick 内的两步 SQL：选源(SELECT id,key) + claim(UPDATE)
+    class _FakeRows:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return self._rows
+
+    class FakeSession:
+        def execute(self, stmt, params=None):
+            sql = str(stmt)
+            if "SELECT id, key FROM data_sources" in sql:
+                return _FakeRows([(901, "gov_a"), (902, "gov_b")])
+            return _FakeRows([])
+
+        def commit(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(scheduler_module, "CollectorService", SpyService)
+    monkeypatch.setattr(scheduler_module, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(
+        scheduler_module, "auto_aggregate_after_collect", lambda *a, **k: {}
+    )
+    # 避免 SpyService 继承的采集逻辑触碰 FakeSession：resolve / 关键词查询走空
+    monkeypatch.setattr(svc_mod, "resolve_collectors_verbose", lambda *a, **k: type("R", (), {"collectors": [], "failures": []})())
+    monkeypatch.setattr(svc_mod, "get_monitoring_keywords", lambda db: [])
+    monkeypatch.setattr(svc_mod, "get_monitoring_keywords_grouped", lambda db: {"地域": [], "主题": []})
+
+    scheduler_module._run_collector_tick()
+
+    assert len(captured) == 1, "应只实例化一次 CollectorService（合并调用）"
+    assert captured[0].get("include_data_source_keys") == {"gov_a", "gov_b"}, captured
+    assert captured[0].get("exclude_data_source_keys") == set(), captured
 
 
 def test_scheduler_job_services_use_disjoint_source_filters(monkeypatch):

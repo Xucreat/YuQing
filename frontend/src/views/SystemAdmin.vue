@@ -22,14 +22,14 @@ import { usePermission } from '@/composables/usePermission'
 
 const route = useRoute()
 const router = useRouter()
-const { hasPermission } = usePermission()
+const { hasModulePermission } = usePermission()
 
 const TABS = ['users', 'roles', 'login-logs', 'operation-logs'] as const
 
-const canUsers = computed(() => hasPermission('users:read'))
-const canRoles = computed(() => hasPermission('roles:read'))
-const canLoginLogs = computed(() => hasPermission('login_logs:read'))
-const canOperationLogs = computed(() => hasPermission('audit_logs:read'))
+const canUsers = computed(() => hasModulePermission('users'))
+const canRoles = computed(() => hasModulePermission('roles'))
+const canLoginLogs = computed(() => hasModulePermission('login_logs'))
+const canOperationLogs = computed(() => hasModulePermission('audit_logs'))
 const hasAny = computed(
   () => canUsers.value || canRoles.value || canLoginLogs.value || canOperationLogs.value,
 )

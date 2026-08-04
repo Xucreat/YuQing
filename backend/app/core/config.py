@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     # P0: 预警自动评估（每 N 分钟执行一次，生成新预警记录供前端推送）
     alert_eval_enabled: bool = True
     alert_eval_interval_minutes: int = 30
+    # ===== Phase DataSource-Schedule-1：按源自定义采集频率 =====
+    # 调度模式：per_source（按 next_collect_time 逐源 tick 派发）/ cron（回滚为全局固定 cron）
+    collector_schedule_mode: str = "per_source"
+    # 全局默认采集间隔（分钟），作为 summary 兜底与新建源缺省
+    collector_default_interval_minutes: int = 30
+    # per_source 模式下的 tick 间隔（秒）
+    collector_tick_interval_seconds: int = 60
     # 监测关键词（兜底用）：keywords 表已成为采集过滤 + 预警匹配的唯一权威源
     # （见 app/services/keyword_service.py，表空时回退到此配置）。
     # 廊坊市全域视角（廊坊+大厂+三河+香河+固安）。现由 keywords 表驱动，此值仅作应急兜底。

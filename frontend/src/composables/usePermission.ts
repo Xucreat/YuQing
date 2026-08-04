@@ -35,18 +35,38 @@ export function usePermission() {
     return perms.every((p) => auth.permissions?.includes(p) || auth.permissions?.includes('*'))
   }
 
+  // 模块权限：命中 `prefix` 或 `prefix:*` 任一即视为拥有该模块权限。
+  // 用于把"页面门禁"从单一 `:read` 放宽为"拥有该模块任意权限即可进入页面"。
+  function hasModulePermission(prefix: string): boolean {
+    if (isSuperuser.value) return true
+    const perms = auth.permissions || []
+    return perms.includes('*') || perms.includes(prefix) || perms.some((p) => p.startsWith(prefix + ':'))
+  }
+
+  // 多模块：任一模块命中即放行（用于 /data 需 keywords|sources|collectors 任一）。
+  function hasAnyModulePermission(prefixes: string[]): boolean {
+    if (isSuperuser.value) return true
+    return (prefixes || []).some((p) => hasModulePermission(p))
+  }
+
   // 兼容旧调用：单权限判断
   function can(permission: string): boolean {
     return hasPermission(permission)
   }
 
   // 路由级权限判断。routeMeta 约定：
-  //   meta.permission  : 单个必需权限（满足即可）
-  //   meta.permissions : 权限数组；默认需全部满足（hasAll）
+  //   meta.module       : 模块前缀（string）或前缀数组（string[]）；命中任一即放行
+  //   meta.permission   : 单个必需权限（满足即可）
+  //   meta.permissions  : 权限数组；默认需全部满足（hasAll）
   //   meta.permissionAny: true 时 meta.permissions 改为"满足任一即可"
-  // 无 permission 相关 meta → 放行（仅依赖全局 requiresAuth）
+  // 优先级：meta.module > meta.permission > meta.permissions。
+  // 无上述 meta → 放行（仅依赖全局 requiresAuth）
   function canAccessRoute(meta: Record<string, any> | undefined): boolean {
     if (!meta) return true
+    if (meta.module) {
+      const mods = Array.isArray(meta.module) ? meta.module : [meta.module]
+      return hasAnyModulePermission(mods)
+    }
     if (meta.permission) return hasPermission(meta.permission as string)
     if (Array.isArray(meta.permissions)) {
       return meta.permissionAny ? hasAnyPermission(meta.permissions) : hasAllPermissions(meta.permissions)
@@ -54,5 +74,5 @@ export function usePermission() {
     return true
   }
 
-  return { role, isSuperuser, hasPermission, hasAnyPermission, hasAllPermissions, can, canAccessRoute }
+  return { role, isSuperuser, hasPermission, hasAnyPermission, hasAllPermissions, hasModulePermission, hasAnyModulePermission, can, canAccessRoute }
 }

@@ -436,6 +436,10 @@ export interface DataSourceItem {
   effective_keywords: string[]
   keyword_description: string
   health_summary?: DataSourceHealthSummary
+  schedule_enabled?: boolean
+  schedule_interval_minutes?: number
+  next_collect_time?: string | null
+  last_collect_time?: string | null
 }
 
 export interface DataSourceHealthSummary {
@@ -513,6 +517,23 @@ export interface DataSourceTestResult {
     verified?: boolean
     note?: string
   }
+}
+
+export interface DataSourceScheduleSummary {
+  mode: 'uniform' | 'mixed'
+  interval_minutes?: number
+  distribution?: Record<string, number>
+  enabled_auto_count?: number
+}
+
+export interface DataSourceScheduleBatchRequest {
+  scope: 'all' | 'enabled_only'
+  schedule_enabled: boolean
+  interval_minutes: number
+}
+
+export interface DataSourceScheduleBatchResponse {
+  affected_count: number
 }
 
 export interface CollectorRunItem {

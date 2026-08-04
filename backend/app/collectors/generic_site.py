@@ -35,6 +35,7 @@ from bs4 import BeautifulSoup
 
 from app.collectors.base_http import BaseHttpCollector
 from app.collectors.common import extract_links, extract_publish_time, matches_region_topic
+from app.collectors.source_config import apply_keyword_scope
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,14 @@ class GenericSiteCollector(BaseHttpCollector):
         keywords：来自 keywords 表的全局监测词；仅在未通过
         config_json 显式配置 keywords 时使用（逐源覆盖优先）。
         """
+        # 采集参数配置化（Phase DataSource-Config-1）：配置优先、代码默认兜底。
+        # 未配置时取值与改造前完全一致：max_items 默认 self.max_articles，
+        # filter_mode 默认 region_only（matches_region_topic 默认值）。
+        cfg = self.source_config
+        max_items = cfg.max_items(self.max_articles)
+        filter_mode = cfg.filter_mode("region_only")
+        region_kw, topic_kw = apply_keyword_scope(cfg.keyword_scope(), region_kw, topic_kw)
+
         results: List[dict[str, Any]] = []
         seen: set = set()
         # 逐源显式配置过 keywords（含空串=放行全部）→ 用 self.keywords（保持原 OR，不接地域前置）；
@@ -119,7 +128,7 @@ class GenericSiteCollector(BaseHttpCollector):
             if art["url"] in seen:
                 continue
             seen.add(art["url"])
-            if len(results) >= self.max_articles:
+            if len(results) >= max_items:
                 break
             detail = self._get(art["url"])
             self.rate_limit()
@@ -133,7 +142,9 @@ class GenericSiteCollector(BaseHttpCollector):
             if (not self.keywords_explicit) and use_region:
                 # 回退源（未显式配置 keywords）：地域前置过滤（新链路）
                 if not matches_region_topic(
-                    art["title"] + " " + content[:800], region_kw or [], topic_kw or []
+                    art["title"] + " " + content[:800],
+                    region_kw or [], topic_kw or [],
+                    match_mode=filter_mode,
                 ):
                     continue
             else:

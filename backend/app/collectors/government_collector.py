@@ -79,6 +79,11 @@ class GovernmentCollector(BaseCollector):
         - region_kw / topic_kw 仅为与统一 collector 接口（service.py 注入）兼容而保留，
           不参与任何过滤逻辑；government 维持 Option B 全量采集策略。
         """
+        # 采集参数改为「配置优先、代码默认兜底」（Phase DataSource-Config-1）；
+        # max_items 默认 MAX_ARTICLES，config_json 未配置时与改造前完全一致。
+        cfg = self.source_config
+        max_items = cfg.max_items(MAX_ARTICLES)
+
         if not self.urls:
             return []
 
@@ -95,7 +100,7 @@ class GovernmentCollector(BaseCollector):
                 candidates.append(art)
 
         results: list[dict[str, Any]] = []
-        for art in candidates[:MAX_ARTICLES]:
+        for art in candidates[:max_items]:
             detail_html = http_get(self.session, art["url"], TIMEOUT)
             # 请求间隔：避免连续请求政府网站（放在每次详情请求之后）。
             time.sleep(REQUEST_INTERVAL)

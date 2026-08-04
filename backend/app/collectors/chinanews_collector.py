@@ -21,6 +21,7 @@ from app.collectors.common import (
     parse_publish_date_from_url,
     parse_rss,
 )
+from app.collectors.source_config import apply_keyword_scope
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -40,16 +41,31 @@ class ChinanewsCollector(BaseCollector):
         self.keywords: list[str] = [k.strip() for k in kw.split(",") if k.strip()]
 
     def fetch(self, keywords=None, region_kw=None, topic_kw=None) -> list[dict[str, Any]]:
+        # 采集参数改为「配置优先、代码默认兜底」（Phase DataSource-Config-1）；
+        # max_items 默认 None = 不截断（与改造前一致，RSS 全量返回）；
+        # filter_mode 默认 region_or_topic（国家级媒体 = 全国主题雷达）。
+        cfg = self.source_config
+        max_items = cfg.max_items(None)
+        filter_mode = cfg.filter_mode("region_or_topic")
+        region_kw, topic_kw = apply_keyword_scope(cfg.keyword_scope(), region_kw, topic_kw)
+
         xml = http_get(self.session, RSS_URL, TIMEOUT)
         if not xml:
             return []
         items = parse_rss(xml)
         results: list[dict[str, Any]] = []
         for it in items:
+            if max_items is not None and len(results) >= max_items:
+                break
             text = (it["title"] or "") + " " + (it["content"] or "")
             if region_kw is not None:
-                # 与百度新闻一致：新链路只使用地域词；topic_kw 仅保留接口兼容。
-                if not matches_region_topic(text, region_kw or []):
+                # 国家级媒体（中国新闻网）= 全国主题雷达：地域命中 或 主题命中即通过。
+                if not matches_region_topic(
+                    text,
+                    region_kw or [],
+                    topic_kw or [],
+                    match_mode=filter_mode,
+                ):
                     continue
             else:
                 effective_kw = keywords if keywords is not None else self.keywords

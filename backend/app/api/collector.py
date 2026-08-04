@@ -22,8 +22,10 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Body, Depends, Request, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.collectors.service import (
     CollectorService,
@@ -34,6 +36,7 @@ from app.core.dependencies import get_current_user
 from app.core.permissions import require_admin
 from app.core.task_manager import start_task
 from app.db.session import SessionLocal, get_db
+from app.models.data_source import DataSource
 from app.models.user import User
 from app.schemas.collector import (
     CollectorStatusResponse,
@@ -71,7 +74,7 @@ def _audit_collect_run(session_factory, operator_id, operator_username, task_id,
         sdb.close()
 
 
-def _run_collect_task(task, session_factory, operator_id=None, operator_username=None):
+def _run_collect_task(task, session_factory, operator_id=None, operator_username=None, data_source_ids=None):
     """后台任务体：并发采集 → 自动增量聚合，并实时上报进度。"""
     def _on_progress(done: int, total: int, name: str) -> None:
         task.progress = int(done / total * 100) if total else 100
@@ -83,7 +86,26 @@ def _run_collect_task(task, session_factory, operator_id=None, operator_username
     task.batch_id = batch_id
 
     try:
-        service = CollectorService()
+        # Phase DataSource-Schedule-1：手动指定单源采集。
+        # data_source_ids 由 POST /collector/run 透传；解析为 key 集合后仅装配对应源。
+        # 不传（None）保持原有全量采集语义（向后兼容）。
+        include_keys = None
+        if data_source_ids:
+            sdb = session_factory()
+            try:
+                rows = sdb.execute(
+                    select(DataSource.key).where(DataSource.id.in_(data_source_ids))
+                ).scalars().all()
+            finally:
+                sdb.close()
+            include_keys = set(rows)
+        if include_keys is not None:
+            service = CollectorService(
+                include_data_source_keys=include_keys,
+                exclude_data_source_keys=set(),
+            )
+        else:
+            service = CollectorService()
         result = service.collect_and_analyze_concurrent(
             session_factory, on_progress=_on_progress, batch_id=batch_id
         )
@@ -130,6 +152,7 @@ def _run_collect_task(task, session_factory, operator_id=None, operator_username
 )
 def run_collector(
     request: Request,
+    data_source_ids: Optional[list[int]] = Body(None, embed=True),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> CollectorTaskResponse:
@@ -146,7 +169,7 @@ def run_collector(
 
     Phase 6 P1-4：记录手动触发审计（action=COLLECT）。
     """
-    task_id = start_task("collector", _run_collect_task, SessionLocal, current_user.id, current_user.username)
+    task_id = start_task("collector", _run_collect_task, SessionLocal, current_user.id, current_user.username, data_source_ids)
     # 触发审计（任务已接受即记为 success；真实采集结果由后台任务内 COLLECT_RUN 记录）
     log_operation(
         db, action="COLLECT", operator=current_user, request=request,

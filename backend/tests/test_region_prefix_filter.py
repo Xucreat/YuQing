@@ -3,7 +3,8 @@
 覆盖：
 1. matches_region_topic：地域命中 / 未命中 / 空地域 fail-safe / topic 不参与判定。
 2. get_monitoring_keywords_grouped：按 category 分组、禁用词排除、与扁平接口互不污染。
-3. 采集器端到端分支：国家级三源与 baidu_news 均仅使用 region_kw；
+3. 采集器端到端分支：国家级三源（xinhua/people/chinanews）使用 region_or_topic
+   （地域命中 或 主题命中均收录，即「全国主题雷达」）；baidu_news 仍仅使用 region_kw；
    baidu_news 空 region_kw 时跳过搜索。
 4. get_monitoring_keywords（扁平接口）保持不变 —— 预警/看板零回归。
 
@@ -84,8 +85,8 @@ def test_flat_function_unchanged() -> None:
 # ---------------------------------------------------------------------------
 # 3) 采集器端到端分支
 # ---------------------------------------------------------------------------
-def test_xinhua_region_only_branch(monkeypatch) -> None:
-    """新华网只按地域词过滤，并保留旧 keywords 兼容分支。"""
+def test_xinhua_region_or_topic_branch(monkeypatch) -> None:
+    """新华网按 地域 OR 主题 过滤（region_or_topic），并保留旧 keywords 兼容分支。"""
     from app.collectors.xinhua_collector import XinhuaCollector
 
     LIST = "https://www.xinhuanet.com/"
@@ -110,9 +111,9 @@ def test_xinhua_region_only_branch(monkeypatch) -> None:
     items = col.fetch(region_kw=["廊坊"], topic_kw=["消防"])
     assert len(items) == 1, items
 
-    # region_kw 未命中（北京），即使 topic（消防）命中也不抓
+    # 国家级 = 全国主题雷达：region_kw 未命中（北京），但 topic（消防）命中 → 仍收录
     items2 = col.fetch(region_kw=["北京"], topic_kw=["消防"])
-    assert len(items2) == 0, items2
+    assert len(items2) == 1, items2
 
     # region 与 topic 皆未中 → 0
     items3 = col.fetch(region_kw=["上海"], topic_kw=["教育"])
@@ -151,8 +152,8 @@ def test_match_mode_isolation() -> None:
     )
 
 
-def test_national_and_dedicated_are_region_only(monkeypatch) -> None:
-    """仅含主题词的内容，国家级源与区域专用源均不收录。"""
+def test_national_uses_region_or_topic_dedicated_stays_region_only(monkeypatch) -> None:
+    """仅含主题词（消防）的内容：国家级源（region_or_topic）收录；区域专用源（region_only）不收录。"""
     from app.collectors.xinhua_collector import XinhuaCollector
     from app.collectors.hebei_news_collector import HebeiNewsCollector
 
@@ -190,11 +191,11 @@ def test_national_and_dedicated_are_region_only(monkeypatch) -> None:
     # 非国家级专用源走默认 region_only（不传 match_mode），需给 effective_kw 以避免提前返回
     ded_items = dedicated.fetch(region_kw=region_kw, topic_kw=topic_kw, keywords=["placeholder"])
 
-    assert len(nat_items) == 0, nat_items  # 国家级：仅地域词，主题不兜底
-    assert len(ded_items) == 0, ded_items  # 非国家级：region_only，主题不抓
+    assert len(nat_items) == 1, nat_items  # 国家级：region_or_topic，主题命中兜底收录
+    assert len(ded_items) == 0, ded_items  # 区域专用源(河北新闻)：region_only，主题不抓
 
 
-def test_people_region_only_ignores_topic(monkeypatch) -> None:
+def test_people_region_or_topic_uses_topic(monkeypatch) -> None:
     from app.collectors.people_collector import PeopleCollector
 
     list_url = "https://www.people.com.cn/"
@@ -212,11 +213,13 @@ def test_people_region_only_ignores_topic(monkeypatch) -> None:
     monkeypatch.setattr("app.collectors.people_collector.http_get", fake_get)
     col = PeopleCollector()
 
-    assert col.fetch(region_kw=["廊坊"], topic_kw=["消防"]) == []
+    # 国家级 = region_or_topic：region(廊坊)未命中但 topic(消防)命中 → 收录
+    assert len(col.fetch(region_kw=["廊坊"], topic_kw=["消防"])) == 1
+    # region(全国)命中 → 收录
     assert len(col.fetch(region_kw=["全国"], topic_kw=[])) == 1
 
 
-def test_chinanews_region_only_ignores_topic(monkeypatch) -> None:
+def test_chinanews_region_or_topic_uses_topic(monkeypatch) -> None:
     from app.collectors.chinanews_collector import ChinanewsCollector
 
     items = [
@@ -231,7 +234,9 @@ def test_chinanews_region_only_ignores_topic(monkeypatch) -> None:
     monkeypatch.setattr("app.collectors.chinanews_collector.parse_rss", lambda xml: items)
     col = ChinanewsCollector()
 
-    assert col.fetch(region_kw=["廊坊"], topic_kw=["消防"]) == []
+    # 国家级 = region_or_topic：region(廊坊)未命中但 topic(消防)命中 → 收录
+    assert len(col.fetch(region_kw=["廊坊"], topic_kw=["消防"])) == 1
+    # region(全国)命中 → 收录
     assert len(col.fetch(region_kw=["全国"], topic_kw=[])) == 1
 
 

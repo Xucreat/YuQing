@@ -12,6 +12,7 @@ from typing import Any, Iterable
 
 from sqlalchemy.orm import Session
 
+from app.constants.region import NATIONAL_REGION_CODE
 from app.models.region import Region
 from app.services.keyword_filter_service import KeywordFilterService
 
@@ -73,6 +74,27 @@ def is_national_scope(scope_region_codes: Iterable[str] | None) -> bool:
     return not normalize_scope_codes(scope_region_codes)
 
 
+def resolve_national_region(db: Session) -> Region:
+    """Return the system-level "全国" sentinel Region (code = NATIONAL_REGION_CODE).
+
+    National-Mode-2 数据准备插入 code='000000' name='全国' 的哨兵 Region 行；
+    本函数为其唯一、只读的查询入口，供后续 National-Mode-4+ 准入逻辑作为
+    ``Opinion.region_id``（NOT NULL）的合法「全国兜底」承载来源。
+
+    行为约束（与 National-Mode-2 约束一致）：
+      - 纯只读查询，**绝不自动创建**该数据行；
+      - 若哨兵 Region 缺失，抛 ``RuntimeError``，让调用方「快速失败」而非静默写入
+        NULL 或脏数据（避免破坏 Event/Risk 聚合链路）。
+    """
+    region = db.query(Region).filter(Region.code == NATIONAL_REGION_CODE).first()
+    if region is None:
+        raise RuntimeError(
+            f"系统级「全国」哨兵 Region 不存在 (code={NATIONAL_REGION_CODE!r})，"
+            f"请先执行 National-Mode-2 数据准备（插入哨兵 Region 行）。"
+        )
+    return region
+
+
 class OpinionRegionService:
     """Resolve an item's factual monitoring region with deterministic rules."""
 
@@ -82,12 +104,15 @@ class OpinionRegionService:
         item: dict[str, Any],
         *,
         scope_region_codes: Iterable[str] | None = None,
+        collection_mode: str | None = None,
     ) -> RegionDecision:
         title = str(item.get("title") or "")
         content = str(item.get("content") or "")
         text = f"{title} {content}".strip()
         scope_codes = normalize_scope_codes(scope_region_codes)
-        national = not scope_codes
+        # National-Mode-4：collection_mode 显式优先；缺省回退「空 scope 推断」
+        # （向后兼容：未显式声明 national 的源保持原有隐式推断行为）。
+        national = (collection_mode == "national") or (not scope_codes)
         hits = self._region_hits(text, is_local_source=not national)
 
         if hits:
@@ -124,6 +149,19 @@ class OpinionRegionService:
                 )
 
         if national:
+            # National-Mode-4：显式 national 模式（collection_mode=="national"）下，
+            # 无地域命中时不再拒绝，而是使用「全国」哨兵 Region 作为合法 region_id 兜底，
+            # 从而在不放开 Opinion.region_id NOT NULL 的前提下完成全国主题稿入库。
+            # 隐式 national（仅空 scope、未显式声明 mode）保持原有拒绝行为，生产零变化。
+            if collection_mode == "national":
+                sentinel = resolve_national_region(db)
+                return RegionDecision(
+                    sentinel.id,
+                    hits,
+                    "accepted_national_sentinel",
+                    "national_mode_no_region_hit_uses_sentinel",
+                    True,
+                )
             return RegionDecision(
                 None,
                 hits,

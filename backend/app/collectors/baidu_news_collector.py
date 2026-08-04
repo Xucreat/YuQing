@@ -21,6 +21,7 @@ import requests
 
 from app.collectors.base import BaseCollector
 from app.collectors.common import extract_publish_time, parse_publish_date_from_url
+from app.collectors.source_config import apply_keyword_scope
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,12 @@ BAIDU_NEWS_SEARCH = "/s"
 MAX_ARTICLES = 15
 REQUEST_INTERVAL = 0.5
 TIMEOUT = 10
+# 默认过滤模式：百度新闻 = 地域雷达（改造前硬编码为「仅用地域词搜索」，即 region_only）。
+# 可由 config_json.filter_mode 覆盖（Phase DataSource-Filter-Config-2）；
+# 空配置时严格等同改造前行为，保证生产采集量零变化。
+DEFAULT_FILTER_MODE = "region_only"
+# 默认关键词范围：地域（与 region_only 语义一致）。
+DEFAULT_KEYWORD_SCOPE = "region"
 
 DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -48,18 +55,38 @@ class BaiduNewsCollector(BaseCollector):
         self.keywords: list[str] = [k.strip() for k in kw.split(",") if k.strip()]
 
     def fetch(self, keywords=None, region_kw=None, topic_kw=None) -> list[dict[str, Any]]:
-        # 新链路：region_kw 驱动搜索（暂不组合 topic_kw）。
-        # region_kw 为 None 时退回旧 keywords 行为（向后兼容）。
-        if region_kw is not None:
-            kws = region_kw
-        else:
-            kws = keywords if keywords is not None else self.keywords
-        if not kws:
-            if region_kw is not None:
-                # 配置异常：地域关键词为空 → fail-safe 跳过搜索，避免产出无地域数据。
-                logger.error(
-                    "baidu_news: region_kw 为空（配置异常），跳过搜索以避免产出无地域数据"
-                )
+        # 采集参数改为「配置优先、代码默认兜底」（Phase DataSource-Config-1）；
+        # max_items 默认 MAX_ARTICLES，config_json 未配置时与改造前完全一致。
+        cfg = self.source_config
+        max_items = cfg.max_items(MAX_ARTICLES)
+        # 过滤策略完全配置化（Phase DataSource-Filter-Config-2）：
+        # 读取 filter_mode / keyword_scope，缺省回退 DEFAULT_FILTER_MODE / DEFAULT_KEYWORD_SCOPE，
+        # 与改造前「仅地域词搜索」行为完全一致。
+        filter_mode = cfg.filter_mode(DEFAULT_FILTER_MODE)
+        region_kw, topic_kw = apply_keyword_scope(cfg.keyword_scope(), region_kw, topic_kw)
+
+        # 按 filter_mode 选择搜索关键词集（数据获取机制不变：仍是向百度新闻按关键词检索）。
+        if filter_mode == "topic_only":
+            selected = list(topic_kw or [])
+        elif filter_mode == "region_or_topic":
+            selected = list(region_kw or []) + list(topic_kw or [])
+        else:  # region_only（默认）
+            selected = list(region_kw or [])
+
+        # 去重保序，剔除空串
+        seen_kw: set[str] = set()
+        search_kws: list[str] = []
+        for k in selected:
+            if k and k not in seen_kw:
+                seen_kw.add(k)
+                search_kws.append(k)
+
+        if not search_kws:
+            # 配置异常：所选关键词集为空 → fail-safe 跳过搜索，
+            # 避免产出无地域 / 无主题数据（与改造前 region_kw 为空时的保护一致）。
+            logger.error(
+                "baidu_news: filter_mode=%s 下关键词集为空（配置异常），跳过搜索", filter_mode
+            )
             return []
 
         results: list[dict[str, Any]] = []
@@ -67,8 +94,8 @@ class BaiduNewsCollector(BaseCollector):
         session = requests.Session()
         session.headers.update({"User-Agent": DEFAULT_UA})
 
-        for kw in kws:
-            if len(results) >= MAX_ARTICLES:
+        for kw in search_kws:
+            if len(results) >= max_items:
                 break
             params = {
                 "wd": kw,
@@ -93,7 +120,7 @@ class BaiduNewsCollector(BaseCollector):
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(resp.text, "html.parser")
             for item in soup.select("div.result, div.result-op"):
-                if len(results) >= MAX_ARTICLES:
+                if len(results) >= max_items:
                     break
                 a_tag = item.select_one("h3 a")
                 if not a_tag:

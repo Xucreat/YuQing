@@ -173,7 +173,7 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const collectStore = useCollectStore()
-const { role, isSuperuser, hasPermission } = usePermission()
+const { role, isSuperuser, hasPermission, hasAnyModulePermission } = usePermission()
 const { redDot, unreadCount, openNotifications, start } = useAlertNotifier()
 const bochaPendingCount = ref(0)
 let bochaPendingTimer: number | null = null
@@ -217,14 +217,13 @@ const roleLabel = computed(() => {
   return map[role.value] || role.value || '未登录'
 })
 const hasSystemPerm = computed(() =>
-  hasPermission('users:read') || hasPermission('roles:read') ||
-  hasPermission('login_logs:read') || hasPermission('audit_logs:read'),
+  hasAnyModulePermission(['users', 'roles', 'login_logs', 'audit_logs']),
 )
 // RBAC-1：菜单可见性与路由 meta.permission / 后端权限保持一致，
 // 避免用户点进去后满屏 403（观察员无 ai:search、无 keywords:read）。
 const hasAiSearchPerm = computed(() => hasPermission('ai:search'))
 // 数据管理下含「关键词管理」(keywords:read) 与超管专属的数据源/采集日志/AI线索审核
-const hasDataPerm = computed(() => hasPermission('keywords:read') || isSuperuser.value)
+const hasDataPerm = computed(() => hasAnyModulePermission(['keywords', 'sources', 'collectors']))
 
 type MenuEntry = {
   to?: string

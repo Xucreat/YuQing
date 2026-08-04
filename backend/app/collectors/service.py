@@ -437,6 +437,12 @@ class CollectorService:
 
             # 按采集器声明的覆盖范围绑定区域（省/市/县）
             region_resolver = OpinionRegionService()
+            # National-Mode-4：从 registry 注入的 source_config 读取显式 collection_mode
+            # （缺省 None → decide/evaluate 回退原有隐式推断，生产行为零变化）。
+            _src_cfg = getattr(collector, "source_config", None)
+            _collection_mode = (
+                _src_cfg.collection_mode() if _src_cfg is not None else None
+            )
             # Phase X：「大厂」地域语义过滤（仅对 keyword="大厂" 生效；其余关键词零影响）。
             # 优先从 keywords.rule_config（id=30 已播种）加载；列缺失/未播种/异常时
             # 回退内置 DEFAULT_RULE，避免迁移时序问题。本地源在 is_valid_match 内豁免。
@@ -476,6 +482,7 @@ class CollectorService:
                     db,
                     item,
                     scope_region_codes=getattr(collector, "scope_region_codes", None),
+                    collection_mode=_collection_mode,
                 )
                 admission_result = admission.evaluate(
                     item,
@@ -485,6 +492,7 @@ class CollectorService:
                     source_scope_codes=getattr(collector, "scope_region_codes", None),
                     national_source=region_decision.national_source,
                     region_hits=region_decision.region_hits,
+                    collection_mode=_collection_mode,
                 )
                 if not admission_result.accepted or not region_decision.accepted:
                     admission_filtered += 1
@@ -744,7 +752,12 @@ class CollectorService:
         if not self._collectors_injected:
             resolve_db = session_factory()
             try:
-                resolved = resolve_collectors_verbose(resolve_db, self.collector_type)
+                resolved = resolve_collectors_verbose(
+                    resolve_db,
+                    self.collector_type,
+                    include_data_source_keys=self.include_data_source_keys,
+                    exclude_data_source_keys=self.exclude_data_source_keys,
+                )
                 self.collectors = resolved.collectors
                 for f in resolved.failures:
                     self._record_assembly_failure(resolve_db, f, run_start, batch_id, trigger_type)

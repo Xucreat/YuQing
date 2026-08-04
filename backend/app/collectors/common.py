@@ -247,14 +247,31 @@ def matches_region_topic(
         否则命中任一主题词（topic_kws）→ True；否则 → False。
         适用于 xinhua / people / chinanews 等全国性媒体：其本质是「全国主题雷达」，
         不应因严格地域前置而丢失全国范围内的廊坊相关主题召回。
+      - "topic_only"（Phase DataSource-Config-1 新增，仅在 config_json 显式配置
+        filter_mode 时启用）：纯主题过滤，不要求地域命中。命中任一主题词 → True；
+        否则 → False。面向「区域监测 → 全国主题监测」的扩展场景。
+        所有采集器的默认 filter_mode 均维持改造前取值，本模式默认无人使用。
 
     设计边界（明确，避免后续误用）：
       - region_kws 为空（配置异常，如地域词全部被禁用/未分类）：
         fail-safe 返回 False，**不降级**、不靠 topic 兜底，避免产出无地域数据。
-        此行为在两种 mode 下一致；调用方应记录该异常（见 service.py 运行记录标注）。
-      - topic_kws 仅在 match_mode="region_or_topic" 时参与判定；
+        此行为在 region_only / region_or_topic 下一致；调用方应记录该异常
+        （见 service.py 运行记录标注）。
+      - topic_only 是**显式声明不做地域约束**的场景，因此不适用上述地域 fail-safe；
+        改为对 topic_kws 施加同源的 fail-safe：主题词为空 → 返回 False，
+        避免退化成「无条件放行」造成全量入库。
+      - topic_kws 仅在 match_mode="region_or_topic" / "topic_only" 时参与判定；
         region_only 下忽略（保持不扩大范围）。
     """
+    if match_mode == "topic_only":
+        # 纯主题模式：不要求地域命中；主题词为空时 fail-safe 拦截（同样不放行全部）。
+        if not topic_kws:
+            logger.warning(
+                "matches_region_topic: match_mode=topic_only 但 topic_kws 为空"
+                "（配置异常），拦截全部以避免无条件放行"
+            )
+            return False
+        return any(bool(t) and t in text for t in topic_kws)
     if not region_kws:
         # 配置异常：地域关键词为空。fail-safe —— 拦截一切，交由调用方记录，
         # 避免表现为「普通零数据」。与 match_mode 无关。

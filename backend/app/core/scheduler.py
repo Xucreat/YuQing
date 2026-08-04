@@ -8,6 +8,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from app.collectors.service import CollectorService, CollectorThrottled
+from app.collectors.data_source_repository import (
+    due_scheduled_sources,
+    scheduled_enabled_sources,
+)
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.services.event.aggregator import auto_aggregate_after_collect
@@ -28,10 +32,48 @@ SCHEDULER_ADVISORY_LOCK_KEY = (
 )
 _scheduler_lock_conn = None
 
-def _run_collector_job():
+def _scheduler_discovery_ok() -> bool:
+    """dispatch 前确认数据源发现可用（DB 可读）。
+
+    Fix-3：registry 发现降级（DB 不可达）时禁止派发采集任务，避免 claim 了
+    next_collect_time 却因装配失败而漏采 / 产生悬空任务。每次实时探测
+    （复用 repository 的真实查询），DB 恢复后自动解除拦截，不会死锁。
+    失败仅 ERROR 日志 + 跳过，不生成假 CollectorRun、不推进周期数据。
+    """
+    from app.collectors.data_source_repository import enabled_sources
+
     db = SessionLocal()
     try:
-        service = CollectorService(exclude_data_source_keys={"weibo_octopus"})
+        enabled_sources(db)
+        return True
+    except Exception as exc:
+        logger.error(
+            "Scheduler dispatch skipped: data source discovery failed (DB unreachable). error=%s",
+            exc,
+        )
+        return False
+    finally:
+        db.close()
+
+
+def _run_collector_job():
+    """cron 模式：全量采集（受全局 CronTrigger 驱动）。
+
+    Fix-2：候选源必须遵守 enabled=true AND schedule_enabled=true，
+    与逐源 tick 模式语义一致，禁止 cron 模式绕过 schedule_enabled。
+    """
+    if not _scheduler_discovery_ok():
+        return
+    db = SessionLocal()
+    try:
+        due = scheduled_enabled_sources(db)
+        keys = [r["key"] for r in due]
+        if not keys:
+            return
+        service = CollectorService(
+            include_data_source_keys=set(keys),
+            exclude_data_source_keys={"weibo_octopus"},
+        )
         result = service.collect_and_analyze(db, trigger_type="scheduled")
         logger.info("Scheduled collect: type=%s fetched=%d created=%d analyzed=%d failed=%d", result.collector_type, result.fetched_raw, result.created, result.analyzed, result.failed)
         # 采集后自动增量聚合（异常安全，不阻断采集主流程）。
@@ -41,6 +83,65 @@ def _run_collector_job():
         logger.info("Scheduled collect skipped: throttled")
     except Exception:
         logger.exception("Scheduled collect failed")
+    finally:
+        db.close()
+
+
+def _run_collector_tick():
+    """Phase DataSource-Schedule-1：按源自定义频率的逐源 tick 派发。
+
+    流程（claim-then-dispatch，全部时间走 PG now()，规避时区偏差 R3）：
+      0. dispatch 前确认数据源发现可用（Fix-3：降级时不派发，避免悬空任务）；
+      1. 选出「启用 + 开启自动采集 + 非 weibo_octopus + 下次采集时间已到(NULL 视为待采集)」的源
+         （查询统一收敛到 data_source_repository.due_scheduled_sources）；
+      2. 一次性 UPDATE 占位（last_collect_time=now(), next_collect_time=now()+各自间隔），
+         避免本次 tick 后该源被重复选中；
+      3. 合并为「一次」CollectorService 调用（include=到期源 key 集合）：
+         - 规避政府源 5 秒防抖（M2/R1）：单次调用内 _GOV_LAST_RUN_AT 仅在批末更新，
+           同 tick 的多个政府源互不触发 Throttle；
+         - 禁止逐源分别调用，减少重复装配与重复入库。
+    """
+    if not _scheduler_discovery_ok():
+        return
+    db = SessionLocal()
+    try:
+        due = due_scheduled_sources(db)
+        if not due:
+            return
+        due_ids = [r["id"] for r in due]
+        due_keys = [r["key"] for r in due]
+        # claim：用各行自身 schedule_interval_minutes 计算下次时间，单次语句完成
+        db.execute(
+            text(
+                """
+                UPDATE data_sources
+                SET last_collect_time = now(),
+                    next_collect_time = now() + make_interval(mins => schedule_interval_minutes)
+                WHERE id = ANY(:ids)
+                """
+            ),
+            {"ids": due_ids},
+        )
+        db.commit()
+        logger.info("Collector tick: claimed %d sources, dispatching merged collect", len(due_ids))
+        service = CollectorService(
+            include_data_source_keys=set(due_keys),
+            exclude_data_source_keys=set(),
+        )
+        result = service.collect_and_analyze_concurrent(SessionLocal, trigger_type="scheduled")
+        logger.info(
+            "Collector tick collect: fetched=%d created=%d analyzed=%d failed=%d",
+            result.fetched_raw, result.created, result.analyzed, result.failed,
+        )
+        agg = auto_aggregate_after_collect(SessionLocal)
+        logger.info(
+            "Collector tick auto-aggregate: created=%d updated=%d linked=%d",
+            agg.get("created", 0), agg.get("updated", 0), agg.get("linked", 0),
+        )
+    except CollectorThrottled:
+        logger.info("Collector tick skipped: throttled")
+    except Exception:
+        logger.exception("Collector tick failed")
     finally:
         db.close()
 
@@ -151,12 +252,33 @@ def start_scheduler():
         return
     scheduler = AsyncIOScheduler()
     if settings.collector_schedule_enabled:
-        scheduler.add_job(_run_collector_job, trigger=CronTrigger.from_crontab(settings.collector_schedule_cron), id="collector_main", name="Main collector cycle", replace_existing=True)
+        if settings.collector_schedule_mode == "per_source":
+            # Phase DataSource-Schedule-1：按源自定义频率的逐源 tick
+            scheduler.add_job(
+                _run_collector_tick,
+                trigger=IntervalTrigger(seconds=settings.collector_tick_interval_seconds),
+                id="collector_tick",
+                name="Per-source collector tick",
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=30,
+                replace_existing=True,
+            )
+            logger.info(
+                "Scheduler: collector_schedule_mode=per_source, tick every %ds",
+                settings.collector_tick_interval_seconds,
+            )
+        else:
+            # 回滚模式：保留全局固定 cron 全量采集（兼容旧行为）
+            scheduler.add_job(_run_collector_job, trigger=CronTrigger.from_crontab(settings.collector_schedule_cron), id="collector_main", name="Main collector cycle", replace_existing=True)
         scheduler.add_job(_run_weibo_consumer_job, trigger=CronTrigger.from_crontab(settings.weibo_consumer_schedule_cron), id="weibo_consumer", name="Weibo hourly consumer", replace_existing=True)
     if settings.alert_eval_enabled:
         scheduler.add_job(_run_alert_eval_job, trigger=IntervalTrigger(minutes=settings.alert_eval_interval_minutes), id="alert_eval", name="Alert auto-evaluation", replace_existing=True)
     scheduler.start()
-    logger.info("Scheduler started (acquired advisory lock): collector_cron=%s alert_eval_minutes=%d", settings.collector_schedule_cron, settings.alert_eval_interval_minutes)
+    logger.info(
+        "Scheduler started (acquired advisory lock): mode=%s alert_eval_minutes=%d",
+        settings.collector_schedule_mode, settings.alert_eval_interval_minutes,
+    )
 
 def stop_scheduler():
     global scheduler

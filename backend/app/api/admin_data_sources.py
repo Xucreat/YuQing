@@ -20,11 +20,23 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, or_, select, case, String
+from sqlalchemy import func, or_, select, case, String, text
 from sqlalchemy.orm import Session
 
 from app.collectors.generic_site import GenericSiteCollector
 from app.collectors.registry import import_class
+from app.collectors.source_config import STRATEGY_KEYS
+from app.collectors.source_config import (
+    COLLECTION_MODES,
+    COLLECTOR_DEFAULT_STRATEGY,
+    DEFAULT_COLLECTION_MODE,
+    FILTER_MODES,
+    KEYWORD_SCOPES,
+    NON_FILTER_STRATEGY_CLASS_PATHS,
+    DataSourceConfig,
+    validate_data_source_config,
+)
+from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.core.permissions import require_admin, require_permission
 from app.db.session import get_db
@@ -63,9 +75,17 @@ GENERIC_CLASS_PATH = "app.collectors.generic_site.GenericSiteCollector"
 # GenericSiteCollector 实际支持的 config_json 顶层字段（含继承 BaseHttpCollector）。
 GENERIC_ALLOWED_KEYS = {
     "source_name", "list_urls", "link_rule", "content_selectors",
-    "keywords", "max_articles", "request_interval", "timeout",
+    "keywords", "max_articles", "max_items", "filter_mode", "keyword_scope",
+    "request_interval", "timeout",
     "max_retries", "retry_backoff",
+    # Phase DataSource-National-Mode-3：允许显式声明采集模式（regional/national）。
+    "collection_mode",
 }
+
+# 专用型采集器允许的「非数据」配置键：策略键 + 采集模式声明。
+# 专用型（xinhua/people/chinanews/baidu 等 national-scope 源）可借此声明 collection_mode，
+# 其余业务键仍禁止（保持专用型约束）。
+DEDICATED_ALLOWED_KEYS = set(STRATEGY_KEYS) | {"collection_mode"}
 # link_rule 子字段白名单。
 GENERIC_LINK_RULE_KEYS = {
     "href_contains", "href_regex", "href_exclude", "title_blacklist", "max_links",
@@ -84,12 +104,16 @@ _GLOBAL_REGION_CLASS_PATHS = {
 }
 
 
-def _is_config_empty(raw) -> bool:
+def _is_config_empty(raw, extra_allow: set = set()) -> bool:
     """判定 config_json 是否为「空配置」（专用型采集器允许的唯一状态）。
 
     与现有存储约定一致：None / 空字符串 / '{}' / {} 均视为空；
     非法 JSON 不视为「空」，交由后续校验报错。
+
+    ``extra_allow``：除 ``STRATEGY_KEYS`` 外，额外被计入「非数据键」的键（如
+    ``collection_mode``）——这些键存在不改变「空配置」判定，使专用型源可声明采集模式。
     """
+    allow = set(STRATEGY_KEYS) | set(extra_allow)
     if raw is None:
         return True
     if isinstance(raw, str):
@@ -100,10 +124,23 @@ def _is_config_empty(raw) -> bool:
             parsed = json.loads(s)
         except json.JSONDecodeError:
             return False
-        return isinstance(parsed, dict) and len(parsed) == 0
+        return isinstance(parsed, dict) and len({k: v for k, v in parsed.items() if k not in allow}) == 0
     if isinstance(raw, dict):
-        return len(raw) == 0
+        eff = {k: v for k, v in raw.items() if k not in allow}
+        return len(eff) == 0
     return False
+
+
+def _validate_collection_config(cfg: dict) -> str | None:
+    """校验 collection_mode 语义组合（National-Mode-3）。返回错误字符串；无错误返回 None。
+
+    明确拒绝矛盾组合（如 national + region_only），不静默修正。
+    """
+    try:
+        validate_data_source_config(cfg)
+    except ValueError as e:
+        return str(e)
+    return None
 
 
 def _is_generic(class_path: str) -> bool:
@@ -236,6 +273,44 @@ def _enabled_region_keywords(db: Session) -> list[str]:
         return []
 
 
+def _effective_filter_strategy(ds: DataSource) -> dict:
+    """只读解析某数据源「实际生效过滤策略」（Phase DataSource-Filter-Config-4）。
+
+    复用 source_config.DataSourceConfig.effective_filter_strategy，并据采集器类型
+    回退到其历史默认；不应用本策略的采集器标记为 not_applicable。
+    """
+    raw = ds.config_json
+    if raw is None or (isinstance(raw, str) and raw.strip() in ("", "{}")):
+        cfg: dict = {}
+    elif isinstance(raw, str):
+        try:
+            cfg = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            cfg = {}
+    elif isinstance(raw, dict):
+        cfg = raw
+    else:
+        cfg = {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+
+    if ds.class_path in NON_FILTER_STRATEGY_CLASS_PATHS:
+        dcfg = DataSourceConfig(cfg, source_key=ds.key)
+        return {
+            "configured_filter_mode": dcfg.get_str("filter_mode", None, allowed=FILTER_MODES),
+            "configured_keyword_scope": dcfg.get_str("keyword_scope", None, allowed=KEYWORD_SCOPES),
+            "effective_filter_mode": None,
+            "effective_keyword_scope": None,
+            "source": "not_applicable",
+        }
+
+    defaults = COLLECTOR_DEFAULT_STRATEGY.get(ds.class_path, ("region_only", None))
+    return DataSourceConfig(cfg, source_key=ds.key).effective_filter_strategy(
+        default_filter_mode=defaults[0],
+        default_keyword_scope=defaults[1],
+    )
+
+
 def _serialize(
     ds: DataSource,
     region_map: dict,
@@ -272,7 +347,14 @@ def _serialize(
         "latest_run_at": run.start_time.isoformat() if run and run.start_time else None,
         "updated_at": ds.updated_at.isoformat() if ds.updated_at else None,
         "health_summary": health_summary,
+        # Phase DataSource-Schedule-1：调度频率字段
+        "schedule_enabled": ds.schedule_enabled,
+        "schedule_interval_minutes": ds.schedule_interval_minutes,
+        "next_collect_time": ds.next_collect_time.isoformat() if ds.next_collect_time else None,
+        "last_collect_time": ds.last_collect_time.isoformat() if ds.last_collect_time else None,
         **strategy,
+        # Phase DataSource-Filter-Config-4：实际生效过滤策略透明化（只读解析，不改采集）
+        "effective_filter_strategy": _effective_filter_strategy(ds),
     }
 
 
@@ -297,9 +379,13 @@ def _parse_config_json(raw) -> tuple:
 
 def _build_test(class_path: str, config: dict) -> dict:
     """构建采集器并做一次轻量真实抓取校验。返回 {ok, error, verified, ...}。"""
+    # 策略键（max_items/filter_mode/keyword_scope）不是构造函数参数，装配时由
+    # registry 剥离后注入 source_config；此处若函数拿到的是完整 config_json，
+    # 需同样剥离，否则专用型采集器会因未知关键字参数 TypeError。
+    build_cfg = {k: v for k, v in (config or {}).items() if k not in STRATEGY_KEYS}
     try:
         cls = import_class(class_path)
-        collector = cls(**config)
+        collector = cls(**build_cfg)
     except Exception as exc:
         return {
             "ok": False,
@@ -350,11 +436,23 @@ def _validate_create(body) -> str | None:
         cfg, err = _parse_config_json(raw_cfg)
         if err:
             return err
-        return _validate_generic_config(cfg)
+        gerr = _validate_generic_config(cfg)
+        if gerr:
+            return gerr
+        # National-Mode-3：collection_mode 组合校验
+        return _validate_collection_config(cfg)
     else:
-        # 专用型：仅允许空配置
-        if not _is_config_empty(raw_cfg):
+        # 专用型：仅允许空配置 或 仅含策略键 / collection_mode
+        if not _is_config_empty(raw_cfg, extra_allow={"collection_mode"}):
             return DEDICATED_EMPTY_HINT
+        # 非空（含策略键/collection_mode）时仍需校验组合
+        if raw_cfg:
+            cfg, err = _parse_config_json(raw_cfg)
+            if err:
+                return err
+            cerr = _validate_collection_config(cfg)
+            if cerr:
+                return cerr
         return None
 
 
@@ -596,6 +694,94 @@ def create_data_source(
     }
 
 
+@admin_ds_router.post("/schedule/batch")
+def batch_update_schedule(
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """批量设置采集频率（仅 admin）。
+
+    scope: "all" | "enabled_only"
+    统一设置 schedule_enabled / schedule_interval_minutes，并按 PG now() 错峰重算
+    next_collect_time（按 id 分散 0~4 分钟，避免集体同刻触发）。
+    """
+    scope = body.get("scope")
+    if scope not in ("all", "enabled_only"):
+        raise HTTPException(status_code=422, detail="scope 必须为 all 或 enabled_only")
+    se = body.get("schedule_enabled")
+    iv = body.get("schedule_interval_minutes")
+    if iv is not None:
+        try:
+            iv = int(iv)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="schedule_interval_minutes 必须为整数")
+        if iv < 5:
+            raise HTTPException(status_code=422, detail="schedule_interval_minutes 必须大于等于 5")
+    if se is None and iv is None:
+        raise HTTPException(
+            status_code=422,
+            detail="至少提供 schedule_enabled 或 schedule_interval_minutes 之一",
+        )
+
+    stmt = select(DataSource)
+    if scope == "enabled_only":
+        stmt = stmt.where(DataSource.enabled == True)
+    targets = db.execute(stmt).scalars().all()
+    with audit_write(
+        db, action="UPDATE", operator=current_user, request=request,
+        resource_type="data_source_schedule",
+        details={"scope": scope, "schedule_enabled": se,
+                 "schedule_interval_minutes": iv, "count": len(targets)},
+    ):
+        for ds in targets:
+            if se is not None:
+                ds.schedule_enabled = bool(se)
+            if iv is not None:
+                ds.schedule_interval_minutes = iv
+                if ds.schedule_enabled:
+                    # 错峰：按 id 分散 0~4 分钟（与迁移初始化一致），规避集体同刻触发
+                    ds.next_collect_time = text(
+                        f"now() + make_interval(mins => {iv + (ds.id % 5)})"
+                    )
+        db.commit()
+    return {"affected_count": len(targets)}
+
+
+@admin_ds_router.get("/schedule/summary")
+def schedule_summary(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    """返回当前调度频率状态：统一（uniform）/ 混合（mixed）。
+
+    仅统计「启用且开启自动采集」的源；distribution 给出各间隔的源数量。
+    """
+    rows = db.execute(
+        select(DataSource.schedule_interval_minutes, DataSource.schedule_enabled)
+        .where(DataSource.enabled == True)
+    ).all()
+    enabled_auto = [r[0] for r in rows if r[1]]
+    if not enabled_auto:
+        return {
+            "mode": "uniform",
+            "interval_minutes": settings.collector_default_interval_minutes,
+            "enabled_auto_count": 0,
+        }
+    uniq = set(enabled_auto)
+    if len(uniq) == 1:
+        return {
+            "mode": "uniform",
+            "interval_minutes": next(iter(uniq)),
+            "enabled_auto_count": len(enabled_auto),
+        }
+    dist: dict = {}
+    for v in enabled_auto:
+        dist[v] = dist.get(v, 0) + 1
+    return {"mode": "mixed", "distribution": dist, "enabled_auto_count": len(enabled_auto)}
+
+
 @admin_ds_router.patch("/{ds_id}")
 def update_data_source(
     ds_id: int,
@@ -639,6 +825,9 @@ def update_data_source(
                     gerr = _validate_generic_config(cfg)
                     if gerr:
                         raise HTTPException(status_code=422, detail=gerr)
+                    cerr = _validate_collection_config(cfg)
+                    if cerr:
+                        raise HTTPException(status_code=422, detail=cerr)
                     ds.config_json = s
                 elif isinstance(raw, dict):
                     if not raw:
@@ -646,6 +835,9 @@ def update_data_source(
                     gerr = _validate_generic_config(raw)
                     if gerr:
                         raise HTTPException(status_code=422, detail=gerr)
+                    cerr = _validate_collection_config(raw)
+                    if cerr:
+                        raise HTTPException(status_code=422, detail=cerr)
                     try:
                         ds.config_json = json.dumps(raw, ensure_ascii=False)
                     except (TypeError, ValueError):
@@ -653,7 +845,9 @@ def update_data_source(
                 else:
                     raise HTTPException(status_code=422, detail="config_json 格式不支持")
             else:
-                # 专用型采集器：config_json 必须为空（null / "" / "{}" / {}）；非空一律拒绝
+                # 专用型采集器：config_json 仅允许「空配置」或「仅含策略键」
+                # （max_items / filter_mode / keyword_scope，Phase DataSource-Config-1）。
+                # 剥离策略键后若仍含其他非空键 → 拒绝（保持专用型约束）。
                 if raw is None:
                     ds.config_json = "{}"
                 elif isinstance(raw, str):
@@ -665,16 +859,50 @@ def update_data_source(
                             cfg = json.loads(s)
                         except json.JSONDecodeError:
                             raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
-                        if not isinstance(cfg, dict) or cfg:
+                        if not isinstance(cfg, dict):
                             raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
-                        ds.config_json = "{}"
+                        eff = {k: v for k, v in cfg.items() if k not in DEDICATED_ALLOWED_KEYS}
+                        if eff:
+                            raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
+                        cerr = _validate_collection_config(cfg)
+                        if cerr:
+                            raise HTTPException(status_code=422, detail=cerr)
+                        ds.config_json = s  # 保留含策略键/采集模式的原配置（供 registry 注入 source_config）
                 elif isinstance(raw, dict):
                     if not raw:
                         ds.config_json = "{}"
                     else:
-                        raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
+                        eff = {k: v for k, v in raw.items() if k not in DEDICATED_ALLOWED_KEYS}
+                        if eff:
+                            raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
+                        cerr = _validate_collection_config(raw)
+                        if cerr:
+                            raise HTTPException(status_code=422, detail=cerr)
+                        try:
+                            ds.config_json = json.dumps(raw, ensure_ascii=False)
+                        except (TypeError, ValueError):
+                            raise HTTPException(status_code=422, detail="config_json 序列化失败")
                 else:
                     raise HTTPException(status_code=422, detail=DEDICATED_EMPTY_HINT)
+
+        # —— Phase DataSource-Schedule-1：采集频率字段 ——
+        if "schedule_enabled" in body and body["schedule_enabled"] is not None:
+            ds.schedule_enabled = bool(body["schedule_enabled"])
+        if "schedule_interval_minutes" in body and body["schedule_interval_minutes"] is not None:
+            try:
+                iv = int(body["schedule_interval_minutes"])
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=422, detail="schedule_interval_minutes 必须为整数")
+            if iv < 5:
+                raise HTTPException(status_code=422, detail="schedule_interval_minutes 必须大于等于 5")
+            ds.schedule_interval_minutes = iv
+        # 修改周期 或 由关闭改为启用 时，基于 PG now() 重算下次采集时间（规避时区偏差 R3）
+        if "schedule_interval_minutes" in body or (
+            body.get("schedule_enabled") is True and ds.schedule_enabled
+        ):
+            ds.next_collect_time = text(
+                f"now() + make_interval(mins => {ds.schedule_interval_minutes})"
+            )
 
         db.commit()
     db.refresh(ds)

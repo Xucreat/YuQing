@@ -28,6 +28,7 @@ from app.collectors.common import (
     matches_keywords,
     matches_region_topic,
 )
+from app.collectors.source_config import apply_keyword_scope
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -35,9 +36,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_URLS = ["https://www.xinhuanet.com/"]
 # 新华网详情正文容器（经实测 div.main-left 命中真实正文）。
 CONTENT_SELECTORS = ["div.main-left", "div.main", "div.content", "article"]
+# 单次最大采集条数默认值。可由 data_sources.config_json.max_items 覆盖
+# （Phase DataSource-Config-1；未配置时严格等同改造前行为）。
 MAX_ARTICLES = 10
 REQUEST_INTERVAL = 0.3
 TIMEOUT = 10
+# 默认过滤模式：国家级媒体 = 全国主题雷达（地域命中 或 主题命中）。
+# 可由 config_json.filter_mode 覆盖。
+DEFAULT_FILTER_MODE = "region_or_topic"
 
 
 class XinhuaCollector(BaseCollector):
@@ -52,7 +58,14 @@ class XinhuaCollector(BaseCollector):
         self.keywords: list[str] = [k.strip() for k in kw.split(",") if k.strip()]
 
     def fetch(self, keywords=None, region_kw=None, topic_kw=None) -> list[dict[str, Any]]:
-        # 与百度新闻一致：新链路只使用地域词；topic_kw 仅保留接口兼容。
+        # 国家级媒体（新华网）= 全国主题雷达：地域命中 或 主题命中即通过。
+        # 采集参数改为「配置优先、代码默认兜底」（Phase DataSource-Config-1）：
+        # config_json 未配置这些键时，取值与改造前的硬编码常量完全一致。
+        cfg = self.source_config
+        max_items = cfg.max_items(MAX_ARTICLES)
+        filter_mode = cfg.filter_mode(DEFAULT_FILTER_MODE)
+        region_kw, topic_kw = apply_keyword_scope(cfg.keyword_scope(), region_kw, topic_kw)
+
         use_region = region_kw is not None
         effective_kw = keywords if keywords is not None else self.keywords
         results: list[dict[str, Any]] = []
@@ -74,7 +87,7 @@ class XinhuaCollector(BaseCollector):
                 if art["url"] in seen:
                     continue
                 seen.add(art["url"])
-                if len(results) >= MAX_ARTICLES:
+                if len(results) >= max_items:
                     break
                 detail = http_get(self.session, art["url"], TIMEOUT)
                 time.sleep(REQUEST_INTERVAL)
@@ -90,6 +103,8 @@ class XinhuaCollector(BaseCollector):
                     if not matches_region_topic(
                         title + " " + content[:800],
                         region_kw or [],
+                        topic_kw or [],
+                        match_mode=filter_mode,
                     ):
                         continue
                 else:

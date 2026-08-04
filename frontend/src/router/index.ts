@@ -74,14 +74,14 @@ const router = createRouter({
       component: () => import('@/views/Alerts.vue'),
       meta: { requiresAuth: true, permission: 'alerts:read' },
     },
-    // 数据管理聚合页：默认子页为「关键词管理」，故整页门槛取 keywords:read。
-    // 超管/持 keywords:read 的角色可进；观察者(viewer)无该权限 → 守卫提示并回退首页。
-    // 页内「数据源/采集日志/AI线索审核」仍受 isSuperuser 控制，行为不变。
+    // 数据管理聚合页：进入门槛放宽为「关键词/数据源/采集 任一模块权限」即可（module 门禁）。
+    // 超管或持 keywords:* / sources:* / collectors:* 任一的角色可进；页内各 tab 再按对应读权限/角色细分。
+    // 注：collectors:* 为权限目录中的 reserved 前缀，默认无角色绑定，不影响既有行为。
     {
       path: '/data',
       name: 'data',
       component: DataManagePage,
-      meta: { requiresAuth: true, permission: 'keywords:read' },
+      meta: { requiresAuth: true, module: ['keywords', 'sources', 'collectors'] },
     },
     // 旧路由重定向到数据管理聚合页的对应子页，保留已有书签
     { path: '/keywords', redirect: { name: 'data', query: { tab: 'keywords' } } },
@@ -95,11 +95,11 @@ const router = createRouter({
       meta: { requiresAuth: true },
       // 进入系统时按权限分流到首个可见子页；无系统权限则回退首页。
       redirect: (to) => {
-        const { hasPermission } = usePermission()
-        if (hasPermission('users:read')) return '/system/users'
-        if (hasPermission('roles:read')) return '/system/roles'
-        if (hasPermission('login_logs:read')) return '/system/login-logs'
-        if (hasPermission('audit_logs:read')) return '/system/operation-logs'
+        const { hasModulePermission } = usePermission()
+        if (hasModulePermission('users')) return '/system/users'
+        if (hasModulePermission('roles')) return '/system/roles'
+        if (hasModulePermission('login_logs')) return '/system/login-logs'
+        if (hasModulePermission('audit_logs')) return '/system/operation-logs'
         return { path: '/dashboard' }
       },
       children: [
@@ -107,25 +107,25 @@ const router = createRouter({
           path: 'users',
           name: 'users',
           component: () => import('@/views/Users.vue'),
-          meta: { requiresAuth: true, permission: 'users:read' },
+          meta: { requiresAuth: true, module: 'users' },
         },
         {
           path: 'roles',
           name: 'roles',
           component: () => import('@/views/Roles.vue'),
-          meta: { requiresAuth: true, permission: 'roles:read' },
+          meta: { requiresAuth: true, module: 'roles' },
         },
         {
           path: 'login-logs',
           name: 'login-logs',
           component: () => import('@/views/LoginLogs.vue'),
-          meta: { requiresAuth: true, permission: 'login_logs:read' },
+          meta: { requiresAuth: true, module: 'login_logs' },
         },
         {
           path: 'operation-logs',
           name: 'operation-logs',
           component: () => import('@/views/OperationLogs.vue'),
-          meta: { requiresAuth: true, permission: 'audit_logs:read' },
+          meta: { requiresAuth: true, module: 'audit_logs' },
         },
       ],
     },
@@ -159,11 +159,12 @@ router.beforeEach((to) => {
   if (to.path === '/login' && isLoggedIn) return { path: '/dashboard' }
 
   // 路由级权限（前端体验层，非安全边界）：已登录但无权限 → 回退首页并提示。
-  // RBAC 收口后已补齐：events / event 详情 → events:read；data（关键词管理）→ keywords:read；
-  // ai-search 及子路由 → ai:search；alerts → alerts:read；propagation → propagation:read。
+  // RBAC 收口后已补齐：events / event 详情 → events:read；data（数据管理）→ keywords|sources|collectors 任一模块；
+  // ai-search 及子路由 → ai:search；alerts → alerts:read；propagation → propagation:read；
+  // 系统管理子页（users/roles/login-logs/operation-logs）→ 对应模块任一权限即可。
   // 报告能力无独立路由（Dashboard 内导出抽屉），由 reports:export / reports:manage 控制按钮。
   // 提示文案与全局 403 拦截保持一致。
-  if (isLoggedIn && to.meta.permission) {
+  if (isLoggedIn && (to.meta.permission || to.meta.module || to.meta.permissions)) {
     const { canAccessRoute } = usePermission()
     if (!canAccessRoute(to.meta as Record<string, any>)) {
       ElMessage.warning('权限不足，请联系管理员')

@@ -61,7 +61,14 @@ def debug_static():
 
 @app.get("/health", tags=["health"])
 def health() -> dict:
-    return {"status": "ok"}
+    # 暴露数据源发现是否降级（DB 异常回退 DEFAULT_SOURCES 必须可观测，禁止静默）。
+    from app.collectors import registry as _registry
+    degraded = _registry.last_discovery_degraded
+    return {
+        "status": "ok",
+        "collector_discovery": "degraded" if degraded else "db_driven",
+        "collector_discovery_error": _registry.last_discovery_error if degraded else None,
+    }
 
 app.include_router(api_router, prefix="/api")
 

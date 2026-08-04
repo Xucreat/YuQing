@@ -4,67 +4,63 @@
       <button class="btn btn-ghost" @click="$router.back()">← 返回</button>
     </div>
 
-    <!-- Event header -->
-    <div class="event-header">
+    <!-- ① 事件概览卡：标题/标签/描述/关键元信息 + 当前态势指标 -->
+    <section class="overview-card">
       <div class="event-title-row">
         <h2 class="detail-title">{{ event.title }}</h2>
         <span class="pill" :class="riskPill(event.risk_level)"><span class="dot"></span>{{ riskText(event.risk_level) }}</span>
         <span v-if="isKeyEvent" class="focus-mark">重点关注</span>
         <button class="btn btn-primary handle-open-btn" @click="handleDialogVisible = true">处置</button>
       </div>
+      <div v-if="event.description" class="event-desc">{{ event.description }}</div>
       <div class="event-meta">
         <span>关联舆情：<b>{{ event.total_opinions }}</b> 条</span>
         <span>首次发现：{{ formatTime(event.first_time) }}</span>
         <span>最后更新：{{ formatTime(event.last_time) }}</span>
       </div>
-      <div v-if="event.description" class="event-desc">{{ event.description }}</div>
-    </div>
 
-    <div class="situation-strip">
-      <!-- 暂时隐藏影响区域展示，保留数据字段和组件结构，便于后续恢复。 -->
-      <div v-if="false" class="situation-item">
-        <span class="situation-label">影响区域</span>
-        <strong>{{ event.region_name || (event.region_id ? `地区 ${event.region_id}` : '未标注') }}</strong>
+      <div class="situation-strip">
+        <!-- 暂时隐藏影响区域展示，保留数据字段和组件结构，便于后续恢复。 -->
+        <div v-if="false" class="situation-item">
+          <span class="situation-label">影响区域</span>
+          <strong>{{ event.region_name || (event.region_id ? `地区 ${event.region_id}` : '未标注') }}</strong>
+        </div>
+        <div class="situation-item">
+          <span class="situation-label">事件主题</span>
+          <strong>{{ topicText(event.topic_category) }}</strong>
+        </div>
+        <div class="situation-item">
+          <span class="situation-label">处置状态</span>
+          <strong>{{ eventStatusLabel(event.status) }}</strong>
+        </div>
+        <div class="situation-item">
+          <span class="situation-label">当前风险</span>
+          <strong :style="{ color: riskColor(event.risk_score) }">{{ event.risk_score }} 分 · {{ riskText(event.risk_level) }}</strong>
+        </div>
+        <div class="situation-item">
+          <span class="situation-label">当前热度</span>
+          <strong>{{ event.heat_score }} 分</strong>
+        </div>
+        <div class="situation-item">
+          <span class="situation-label">发展趋势</span>
+          <strong>{{ trendText(event.trend) }}</strong>
+        </div>
       </div>
-      <div class="situation-item">
-        <span class="situation-label">事件主题</span>
-        <strong>{{ topicText(event.topic_category) }}</strong>
-      </div>
-      <div class="situation-item">
-        <span class="situation-label">处置状态</span>
-        <strong>{{ eventStatusLabel(event.status) }}</strong>
-      </div>
-      <div class="situation-item">
-        <span class="situation-label">当前风险</span>
-        <strong :style="{ color: riskColor(event.risk_score) }">{{ event.risk_score }} 分 · {{ riskText(event.risk_level) }}</strong>
-      </div>
-      <div class="situation-item">
-        <span class="situation-label">当前热度</span>
-        <strong>{{ event.heat_score }} 分</strong>
-      </div>
-      <div class="situation-item">
-        <span class="situation-label">发展趋势</span>
-        <strong>{{ trendText(event.trend) }}</strong>
-      </div>
-    </div>
+    </section>
 
-    <!-- Phase 2-E-3：运营统计（读 event.statistics，只读派生） -->
-    <section v-if="event.statistics" class="stat-panel">
-      <h3 class="section-title">运营统计</h3>
+    <!-- ② 研判与统计卡：合并原「运营统计」与「事件态势研判」的只读派生数据 -->
+    <section v-if="event.statistics || situation" class="stat-panel">
+      <h3 class="section-title">研判与统计</h3>
       <div class="stat-grid">
-        <div class="stat-item">
-          <span class="stat-label">关联舆情</span>
-          <strong>{{ event.statistics.opinion_count }} 条</strong>
-        </div>
-        <div class="stat-item">
+        <div class="stat-item" v-if="(event.statistics?.source_count != null) || (situation?.source_distribution?.length)">
           <span class="stat-label">来源数量</span>
-          <strong>{{ event.statistics.source_count }} 个</strong>
+          <strong>{{ event.statistics?.source_count ?? (situation?.source_distribution?.length || 0) }} 个</strong>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">最新时间</span>
-          <strong>{{ formatTime(event.statistics.latest_time) }}</strong>
+        <div class="stat-item" v-if="situation?.data_window?.first_time || situation?.data_window?.last_time">
+          <span class="stat-label">时间范围</span>
+          <strong>{{ formatTime(situation?.data_window?.first_time) }} - {{ formatTime(situation?.data_window?.last_time) }}</strong>
         </div>
-        <div class="stat-item">
+        <div class="stat-item" v-if="event.statistics">
           <span class="stat-label">风险分布</span>
           <span class="dist-pills">
             <span class="pill pill-red"><span class="dot"></span>高 {{ event.statistics.risk_distribution?.high ?? 0 }}</span>
@@ -72,31 +68,28 @@
             <span class="pill pill-green"><span class="dot"></span>低 {{ event.statistics.risk_distribution?.low ?? 0 }}</span>
           </span>
         </div>
+        <div class="stat-item" v-if="situation?.risk_shadow">
+          <span class="stat-label">影子风险</span>
+          <strong>{{ situation.risk_shadow?.score ?? '-' }} 分</strong>
+        </div>
+        <div class="stat-item" v-if="situation?.data_sufficiency">
+          <span class="stat-label">数据充分性</span>
+          <strong>{{ sufficiencyText(situation.data_sufficiency?.level) }}</strong>
+        </div>
       </div>
-    </section>
-
-    <section v-if="situation" class="situation-panel">
-      <div class="situation-panel-head">
-        <h3 class="section-title">事件态势（只读研判）</h3>
-        <span class="pill pill-gray">数据充分性：{{ sufficiencyText(situation.data_sufficiency?.level) }}</span>
-      </div>
-      <div class="situation-facts">
-        <span>来源 {{ situation.source_distribution?.length || 0 }} 个</span>
-        <span>时间范围 {{ formatTime(situation.data_window?.first_time) }} - {{ formatTime(situation.data_window?.last_time) }}</span>
-        <span>影子风险 {{ situation.risk_shadow?.score ?? '-' }} 分</span>
-      </div>
-      <div class="risk-factor-list">
+      <div class="risk-factor-list" v-if="(situation?.risk_factors || []).length">
         <span v-for="factor in (situation.risk_factors || [])" :key="factor.factor" class="risk-factor">
           {{ factor.description }}
         </span>
       </div>
     </section>
 
+    <!-- ③ 事件处置弹窗：内容/字段保持不变，仅改为页面垂直居中 -->
     <el-dialog
       v-model="handleDialogVisible"
       title="事件处置"
       width="820px"
-      top="6vh"
+      align-center
       :close-on-click-modal="true"
       class="op-dialog"
     >
@@ -173,70 +166,67 @@
       </template>
     </el-dialog>
 
-    <!-- Related opinions -->
+    <!-- ④ 关联内容：关联舆情 / 关联预警 用 Tab 切换 -->
     <div class="card table-card">
-      <div class="card-header">
-        <h3 class="section-title">关联舆情列表 ({{ event.total_opinions }})</h3>
-      </div>
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th style="width:70px">ID</th>
-            <th style="min-width:280px">标题</th>
-            <th style="width:160px">来源</th>
-            <th style="width:90px" class="col-center">情感</th>
-            <th style="width:90px" class="col-center">风险分</th>
-            <th style="width:100px" class="col-center">分析状态</th>
-            <th style="width:170px">发布时间</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in event.opinions" :key="row.id" @click="openOpinion(row.id)" style="cursor:pointer">
-            <td>{{ row.id }}</td>
-            <td><span class="t-title">{{ row.title }}</span></td>
-            <td>{{ row.source }}</td>
-            <td class="col-center">
-              <span class="pill" :class="sentimentPill(row.sentiment)"><span class="dot"></span>{{ sentimentText(row.sentiment) }}</span>
-            </td>
-            <td class="col-center risk-num" :style="{ color: riskColor(row.risk_score) }">{{ row.risk_score }}</td>
-            <td class="col-center">
-              <span class="pill" :class="row.analysis_status==='completed'?'pill-green':'pill-gray'">{{ row.analysis_status==='completed'?'已完成':row.analysis_status }}</span>
-            </td>
-            <td>{{ formatTime(row.publish_time) }}</td>
-          </tr>
-          <tr v-if="event.opinions.length===0 && !loading">
-            <td colspan="7" class="empty-row">暂无关联舆情</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      <el-tabs v-model="activeRelatedTab" class="related-tabs">
+        <el-tab-pane :label="`关联舆情 (${event.total_opinions})`" name="opinions">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th style="width:70px">ID</th>
+                <th style="min-width:280px">标题</th>
+                <th style="width:160px">来源</th>
+                <th style="width:90px" class="col-center">情感</th>
+                <th style="width:90px" class="col-center">风险分</th>
+                <th style="width:100px" class="col-center">分析状态</th>
+                <th style="width:170px">发布时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in event.opinions" :key="row.id" @click="openOpinion(row.id)" style="cursor:pointer">
+                <td>{{ row.id }}</td>
+                <td><span class="t-title">{{ row.title }}</span></td>
+                <td>{{ row.source }}</td>
+                <td class="col-center">
+                  <span class="pill" :class="sentimentPill(row.sentiment)"><span class="dot"></span>{{ sentimentText(row.sentiment) }}</span>
+                </td>
+                <td class="col-center risk-num" :style="{ color: riskColor(row.risk_score) }">{{ row.risk_score }}</td>
+                <td class="col-center">
+                  <span class="pill" :class="row.analysis_status==='completed'?'pill-green':'pill-gray'">{{ row.analysis_status==='completed'?'已完成':row.analysis_status }}</span>
+                </td>
+                <td>{{ formatTime(row.publish_time) }}</td>
+              </tr>
+              <tr v-if="event.opinions.length===0 && !loading">
+                <td colspan="7" class="empty-row">暂无关联舆情</td>
+              </tr>
+            </tbody>
+          </table>
+        </el-tab-pane>
 
-    <!-- Phase 2-E-3：关联预警（反查 alert_records.event_id） -->
-    <div class="card table-card">
-      <div class="card-header">
-        <h3 class="section-title">关联预警 ({{ event.alerts?.length || 0 }})</h3>
-      </div>
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th style="min-width:240px">标题</th>
-            <th style="width:110px" class="col-center">风险等级</th>
-            <th style="width:110px" class="col-center">状态</th>
-            <th style="width:170px">时间</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="a in (event.alerts || [])" :key="a.id">
-            <td><span class="t-title">{{ a.title }}</span></td>
-            <td class="col-center"><span class="pill" :class="riskPill(a.risk_level)"><span class="dot"></span>{{ riskText(a.risk_level) }}</span></td>
-            <td class="col-center">{{ alertStatusText(a.status) }}</td>
-            <td>{{ formatTime(a.created_at) }}</td>
-          </tr>
-          <tr v-if="(event.alerts?.length || 0)===0 && !loading">
-            <td colspan="4" class="empty-row">暂无关联预警</td>
-          </tr>
-        </tbody>
-      </table>
+        <el-tab-pane :label="`关联预警 (${event.alerts?.length || 0})`" name="alerts">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th style="min-width:240px">标题</th>
+                <th style="width:110px" class="col-center">风险等级</th>
+                <th style="width:110px" class="col-center">状态</th>
+                <th style="width:170px">时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="a in (event.alerts || [])" :key="a.id">
+                <td><span class="t-title">{{ a.title }}</span></td>
+                <td class="col-center"><span class="pill" :class="riskPill(a.risk_level)"><span class="dot"></span>{{ riskText(a.risk_level) }}</span></td>
+                <td class="col-center">{{ alertStatusText(a.status) }}</td>
+                <td>{{ formatTime(a.created_at) }}</td>
+              </tr>
+              <tr v-if="(event.alerts?.length || 0)===0 && !loading">
+                <td colspan="4" class="empty-row">暂无关联预警</td>
+              </tr>
+            </tbody>
+          </table>
+        </el-tab-pane>
+      </el-tabs>
     </div>
 
     <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
@@ -263,6 +253,9 @@ const noteContent = ref('')
 const handleDialogVisible = ref(false)
 const { hasPermission } = usePermission()
 const canUpdateEvent = computed(() => hasPermission('events:write'))
+
+// ④ 关联内容 Tab 当前选中项
+const activeRelatedTab = ref<'opinions' | 'alerts'>('opinions')
 
 type EventStatus = 'active' | 'verifying' | 'processing' | 'resolved' | 'closed' | 'deprecated'
 const nextStatus: Partial<Record<EventStatus, EventStatus>> = {
@@ -424,25 +417,25 @@ onMounted(loadData)
 .detail-title { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: #1d1d1f; line-height: 1.35; }
 .event-meta { display: flex; gap: 24px; font-size: 13px; color: #6e6e73; margin-bottom: 10px; }
 .event-meta b { font-weight: 600; color: #1d1d1f; }
-.event-desc { font-size: 14px; color: #6e6e73; background: #fafafc; padding: 14px 18px; border-radius: 12px; line-height: 1.65; }
-.situation-strip { display: flex; flex-wrap: wrap; gap: 1px; margin-bottom: 20px; background: #e8e8ed; border-radius: 12px; overflow: hidden; }
+.event-desc { font-size: 14px; color: #6e6e73; background: #fafafc; padding: 14px 18px; border-radius: 12px; line-height: 1.65; margin-bottom: 14px; }
+.situation-strip { display: flex; flex-wrap: wrap; gap: 1px; margin-top: 4px; background: #e8e8ed; border-radius: 12px; overflow: hidden; }
 .situation-item { flex: 1 1 150px; display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; background: #fff; }
 .situation-label { font-size: 12px; color: #86868b; }
 .situation-item strong { font-size: 16px; color: #1d1d1f; }
 .focus-mark { color: #c77700; font-size: 12px; font-weight: 600; }
-.situation-panel { margin-bottom: 20px; padding: 18px 20px; background: #fff; border: 1px solid #e8e8ed; border-radius: 12px; }
-.situation-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.situation-facts { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px; color: #6e6e73; font-size: 13px; }
-.risk-factor-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.risk-factor { padding: 5px 9px; border-radius: 6px; background: #f5f7fb; color: #3a3a3c; font-size: 12px; }
 
-/* Phase 2-E-3：运营统计面板 */
+/* ① 事件概览卡 */
+.overview-card { margin-bottom: 20px; padding: 22px 24px; background: #fff; border: 1px solid #e8e8ed; border-radius: 12px; }
+
+/* ② 研判与统计卡 */
 .stat-panel { margin-bottom: 20px; padding: 18px 20px; background: #fff; border: 1px solid #e8e8ed; border-radius: 12px; }
 .stat-grid { display: flex; flex-wrap: wrap; gap: 1px; margin-top: 14px; background: #e8e8ed; border-radius: 10px; overflow: hidden; }
 .stat-item { flex: 1 1 180px; display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; background: #fff; }
 .stat-label { font-size: 12px; color: #86868b; }
 .stat-item strong { font-size: 16px; color: #1d1d1f; }
 .dist-pills { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.risk-factor-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.risk-factor { padding: 5px 9px; border-radius: 6px; background: #f5f7fb; color: #3a3a3c; font-size: 12px; }
 
 .card {
   background: #ffffff;
@@ -504,7 +497,6 @@ onMounted(loadData)
 .timeline-meta strong { color: #1d1d1f; font-weight: 600; }
 .timeline-content { margin-top: 5px; color: #3a3a3c; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .timeline-empty { color: #86868b; padding: 10px 0 4px; font-size: 14px; }
-.card-header { padding: 20px 24px 14px; }
 .section-title { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: #1d1d1f; }
 
 table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -536,4 +528,9 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .btn { display: inline-flex; align-items: center; gap: 8px; border: none; border-radius: 980px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 0.18s ease; }
 .btn-ghost { background: #e8e8ed; color: #1d1d1f; }
 .btn-ghost:hover { background: #dededf; }
+
+/* ④ 关联内容 Tab */
+.related-tabs { padding: 4px 4px 0; }
+.related-tabs :deep(.el-tabs__header) { margin: 12px 0 4px; padding: 0 20px; }
+.related-tabs :deep(.el-tabs__nav-wrap)::after { display: none; }
 </style>
