@@ -1,0 +1,33 @@
+{
+  "key": "changcheng_langfang_lfyw",
+  "name": "长城网-廊坊-廊坊要闻",
+  "type": "news_site",
+  "enabled": true,
+  "priority": 57,
+  "scope_region_codes": "131000",
+  "schedule_enabled": true,
+  "schedule_interval_minutes": 30,
+  "config_json": {
+    "source_name": "长城网-廊坊-廊坊要闻",
+    "list_urls": [
+      "https://lf.hebccw.cn/lfyw/index.shtml"
+    ],
+    "link_rule": {
+      "href_regex": "lf\\.hebccw\\.cn/system/\\d{4}/\\d{2}/\\d{2}/\\d+\\.shtml$",
+      "href_exclude": ["index.shtml"],
+      "max_links": 40
+    },
+    "content_selectors": [
+      "div.detailMessage",
+      "div.content",
+      "div.article"
+    ],
+    "keywords": [
+      "廊坊", "广阳", "安次", "霸州", "三河", "香河",
+      "大厂", "永清", "固安", "文安", "大城", "燕郊"
+    ],
+    "max_articles": 5,
+    "timeout": 15,
+    "request_interval": 0.5
+  }
+}

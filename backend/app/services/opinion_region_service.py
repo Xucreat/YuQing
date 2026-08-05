@@ -112,8 +112,24 @@ class OpinionRegionService:
         scope_codes = normalize_scope_codes(scope_region_codes)
         # National-Mode-4：collection_mode 显式优先；缺省回退「空 scope 推断」
         # （向后兼容：未显式声明 national 的源保持原有隐式推断行为）。
-        national = (collection_mode == "national") or (not scope_codes)
+        if collection_mode in ("regional", "national"):
+            national = collection_mode == "national"
+        else:
+            national = not scope_codes
         hits = self._region_hits(text, is_local_source=not national)
+
+        # An explicit national collection has no factual monitoring county.
+        # Always persist the existing sentinel so Opinion.region_id remains a
+        # valid non-null foreign key, even when the text mentions a locality.
+        if collection_mode == "national":
+            sentinel = resolve_national_region(db)
+            return RegionDecision(
+                sentinel.id,
+                hits,
+                "accepted_national_sentinel",
+                "national_mode_uses_sentinel",
+                True,
+            )
 
         if hits:
             hit_codes = {h["code"] for h in hits}
@@ -153,15 +169,6 @@ class OpinionRegionService:
             # 无地域命中时不再拒绝，而是使用「全国」哨兵 Region 作为合法 region_id 兜底，
             # 从而在不放开 Opinion.region_id NOT NULL 的前提下完成全国主题稿入库。
             # 隐式 national（仅空 scope、未显式声明 mode）保持原有拒绝行为，生产零变化。
-            if collection_mode == "national":
-                sentinel = resolve_national_region(db)
-                return RegionDecision(
-                    sentinel.id,
-                    hits,
-                    "accepted_national_sentinel",
-                    "national_mode_no_region_hit_uses_sentinel",
-                    True,
-                )
             return RegionDecision(
                 None,
                 hits,

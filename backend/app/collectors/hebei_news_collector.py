@@ -63,6 +63,9 @@ class HebeiNewsCollector(BaseCollector):
         # region_kw 非空 → 走地域前置过滤；否则退回旧 OR（向后兼容）。
         use_region = region_kw is not None
         effective_kw = keywords if keywords is not None else self.keywords
+        # 单次抓取上限：可经 config_json.max_items 覆盖（默认 10，与原行为一致）
+        max_items = self.source_config.max_items(10)
+        candidate_cap = max(20, max_items * 2)
         if not self.urls:
             return []
         if not use_region and not effective_kw:
@@ -82,13 +85,13 @@ class HebeiNewsCollector(BaseCollector):
                     continue
                 seen.add(art["url"])
                 candidates.append(art)
-            if len(candidates) >= 20:
+            if len(candidates) >= candidate_cap:
                 break
 
         # 2) fetch detail pages and filter by keywords
         results: list[dict[str, Any]] = []
-        for art in candidates[:20]:
-            if len(results) >= 10:
+        for art in candidates[:candidate_cap]:
+            if len(results) >= max_items:
                 break
             detail_html = http_get(self.session, art["url"], TIMEOUT)
             time.sleep(REQUEST_INTERVAL)

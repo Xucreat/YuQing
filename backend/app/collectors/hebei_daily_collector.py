@@ -72,7 +72,7 @@ class HebeiDailyCollector(BaseCollector):
         )
 
         for sec in sections:
-            if len(results) >= TOTAL_CAP:
+            if len(results) >= self.source_config.max_items(TOTAL_CAP):
                 break
             shtml = http_get(self.session, sec["url"], TIMEOUT)
             time.sleep(REQUEST_INTERVAL)
@@ -83,7 +83,7 @@ class HebeiDailyCollector(BaseCollector):
                 ssoup, sec["url"], href_contains="content_", max_links=MAX_PER_SECTION
             )
             for art in arts:
-                if len(results) >= TOTAL_CAP:
+                if len(results) >= self.source_config.max_items(TOTAL_CAP):
                     break
                 dhtml = http_get(self.session, art["url"], TIMEOUT)
                 time.sleep(REQUEST_INTERVAL)

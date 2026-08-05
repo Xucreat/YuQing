@@ -82,6 +82,21 @@ def reset_gov_throttle() -> None:
     _GOV_LAST_RUN_AT = None
 
 
+def _update_media_crawler_metrics(collector: BaseCollector, **updates: int | str | None) -> None:
+    """Best-effort batch metrics update scoped to MediaCrawler only."""
+
+    if getattr(collector, "data_source_key", None) != "weibo_mediacrawler":
+        return
+    updater = getattr(collector, "update_batch_metrics", None)
+    if not callable(updater):
+        return
+    try:
+        updater(**updates)
+    except Exception:
+        # Metrics must never change CollectorService success/failure semantics.
+        logger.warning("MediaCrawler batch metrics update failed", exc_info=True)
+
+
 # resolve_collectors 已迁至 collectors/registry.py（表驱动装配 + 灰度回退）。
 # 此处重新导出，保持 app.collectors.service.resolve_collectors 可用（测试依赖）。
 
@@ -414,12 +429,25 @@ class CollectorService:
         fetched_raw = 0
         upstream_total = None
         upstream_returned = 0
+        c_created = c_analyzed = c_failed = 0
+        admission_filtered = 0
         try:
             # 向下兼容 keywords= 旧链路；region_kw/topic_kw 驱动地域前置过滤新链路。
             # 采集器依据 region_kw 是否为 None 选择新旧逻辑。
-            items = collector.fetch(
-                keywords=monitoring_kw, region_kw=region_kw, topic_kw=topic_kw
-            ) or []
+            if getattr(collector, "data_source_key", None) == "weibo_mediacrawler":
+                # MediaCrawler resolves source-local > explicit runtime > global.
+                items = collector.fetch(
+                    keywords=None,
+                    global_keywords=monitoring_kw,
+                    region_kw=region_kw,
+                    topic_kw=topic_kw,
+                    trigger_type=trigger_type,
+                    batch_id=batch_id,
+                ) or []
+            else:
+                items = collector.fetch(
+                    keywords=monitoring_kw, region_kw=region_kw, topic_kw=topic_kw
+                ) or []
             # 统计采集器实际抓取并完成基础解析的条数；微博展开评论行会在 Collector 内合并为主帖 item，
             # 因此优先读取采集器暴露的 last_fetched_raw，普通采集器仍回退为 len(items)。
             fetched_raw = int(getattr(collector, "last_fetched_raw", len(items)) or 0)
@@ -638,6 +666,14 @@ class CollectorService:
                         )[:2000]
                     db.commit()
 
+            _update_media_crawler_metrics(
+                collector,
+                created=c_created,
+                duplicate=duplicate_count,
+                admission_filtered=admission_filtered,
+                failed=c_failed,
+            )
+
             if is_weibo_consumer:
                 if run.ack_status == "deferred" and c_failed:
                     ack_reason = "processing_failed"
@@ -704,6 +740,13 @@ class CollectorService:
                 db.commit()
             except Exception:
                 db.rollback()
+            _update_media_crawler_metrics(
+                collector,
+                created=c_created,
+                duplicate=duplicate_count,
+                admission_filtered=admission_filtered,
+                failed=max(c_failed, 1),
+            )
             if is_weibo_consumer:
                 task_id = getattr(collector, "task_id", "")
                 duration = (datetime.now(timezone.utc) - run_start).total_seconds()

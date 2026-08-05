@@ -107,6 +107,25 @@ class Settings(BaseSettings):
     # 拉取成功后是否回调「确认数据已导出」（幂等由 external_id/url 去重兜底；
     # 置 False 时依赖去重、便于排障重放）。
     bazhu_mark_exported: bool = True
+
+    # ===== MediaCrawler Weibo Phase 1A =====
+    # Optional runtime boundary settings; no command is started implicitly.
+    media_crawler_root: str = ""
+    media_crawler_python: str = ""
+    media_crawler_timeout_seconds: int = 900
+    media_crawler_browser_data: str = ""
+    # Real MediaCrawler subprocesses require an explicit operator opt-in.
+    media_crawler_enable_real_run: bool = False
+    # Explicit Enable-phase gate. Keep false until an approved enablement step.
+    # Environment variable: MEDIA_CRAWLER_REAL_RUN_GATE.
+    media_crawler_real_run_gate: bool = False
+    # Optional entry file used only by the environment check/manual operator tooling.
+    media_crawler_entry: str = ""
+    # Deployment-only runtime isolation; never serialized into DataSource config.
+    media_crawler_profile_root: str = ""
+    media_crawler_login_type: str = "qrcode"
+    media_crawler_scheduler_login_type: str = "cookie"
+
     # 政府网站栏目页地址（.env 用逗号分隔字符串亦可，见下方 validator）。
     #   今日大厂 /jrdc.jhtml，公告公示 /gggs.jhtml
     gov_news_urls: List[str] = [

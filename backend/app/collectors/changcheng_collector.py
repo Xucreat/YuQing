@@ -65,7 +65,7 @@ class ChangchengCollector(BaseCollector):
                 if art["url"] in seen:
                     continue
                 seen.add(art["url"])
-                if len(results) >= MAX_ARTICLES:
+                if len(results) >= self.source_config.max_items(MAX_ARTICLES):
                     break
                 detail = http_get(self.session, art["url"], TIMEOUT)
                 time.sleep(REQUEST_INTERVAL)

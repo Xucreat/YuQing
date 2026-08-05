@@ -137,6 +137,9 @@ def test_collector_tick_merges_due_sources_into_one_call(monkeypatch):
         def all(self):
             return self._rows
 
+        def mappings(self):
+            return self
+
     class FakeSession:
         def execute(self, stmt, params=None):
             sql = str(stmt)
@@ -154,6 +157,12 @@ def test_collector_tick_merges_due_sources_into_one_call(monkeypatch):
     monkeypatch.setattr(scheduler_module, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(
         scheduler_module, "auto_aggregate_after_collect", lambda *a, **k: {}
+    )
+    monkeypatch.setattr(scheduler_module, "_scheduler_discovery_ok", lambda: True)
+    monkeypatch.setattr(
+        scheduler_module,
+        "due_scheduled_sources",
+        lambda _db: [{"id": 901, "key": "gov_a"}, {"id": 902, "key": "gov_b"}],
     )
     # 避免 SpyService 继承的采集逻辑触碰 FakeSession：resolve / 关键词查询走空
     monkeypatch.setattr(svc_mod, "resolve_collectors_verbose", lambda *a, **k: type("R", (), {"collectors": [], "failures": []})())
@@ -184,6 +193,10 @@ def test_scheduler_job_services_use_disjoint_source_filters(monkeypatch):
                 "created": 0,
                 "analyzed": 0,
                 "failed": 0,
+                "upstream_total": None,
+                "upstream_returned": 0,
+                "duplicate": 0,
+                "ack_status": "not_applicable",
             })()
 
     monkeypatch.setattr(scheduler_module, "CollectorService", FakeService)
@@ -193,14 +206,24 @@ def test_scheduler_job_services_use_disjoint_source_filters(monkeypatch):
     )
 
     class FakeDb:
+        def execute(self, *_args, **_kwargs):
+            class _Rows:
+                def mappings(self):
+                    return self
+
+                def all(self):
+                    return []
+
+            return _Rows()
+
         def close(self):
             pass
 
     monkeypatch.setattr(scheduler_module, "SessionLocal", lambda: FakeDb())
+    monkeypatch.setattr(scheduler_module, "_scheduler_discovery_ok", lambda: True)
+    monkeypatch.setattr(scheduler_module, "scheduled_enabled_sources", lambda _db: [])
     scheduler_module._run_collector_job()
     scheduler_module._run_weibo_consumer_job()
 
-    assert calls[0] == {"exclude_data_source_keys": {"weibo_octopus"}}
-    assert calls[1] == {"trigger_type": "scheduled"}
-    assert calls[2] == {"include_data_source_keys": {"weibo_octopus"}}
-    assert calls[3] == {"trigger_type": "weibo_scheduled"}
+    assert calls[0] == {"include_data_source_keys": {"weibo_octopus"}}
+    assert calls[1] == {"trigger_type": "weibo_scheduled"}

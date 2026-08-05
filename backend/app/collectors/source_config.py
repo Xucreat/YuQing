@@ -62,6 +62,7 @@ KEYWORD_SCOPES: frozenset = frozenset({"region", "region_topic", "topic"})
 # ---------------------------------------------------------------------------
 # 允许值：区域模式 / 全国模式。
 COLLECTION_MODES: frozenset = frozenset({"regional", "national"})
+COLLECTION_SCOPES: frozenset = COLLECTION_MODES
 # 缺省采集模式：区域（与历史行为一致；旧数据无 collection_mode 即按 regional 解释）。
 DEFAULT_COLLECTION_MODE: str = "regional"
 # 全国模式下，filter_mode 仅允许的取值（避免「全国 + 地域过滤」的矛盾组合）。
@@ -259,7 +260,15 @@ class DataSourceConfig:
         缺省（未配置 / 非法 / 空串）→ 回退 default（=regional），与历史行为一致。
         旧数据无 collection_mode 即按 regional 解释，**不回填数据库**。
         """
+        scope = self.get_str("collection_scope", None, allowed=COLLECTION_SCOPES)
+        if scope is not None:
+            return scope
         return self.get_str("collection_mode", default, allowed=COLLECTION_MODES) or default
+
+    def collection_scope(self, default: str = DEFAULT_COLLECTION_MODE) -> str:
+        """Return the normalized collection scope without mutating config."""
+
+        return self.collection_mode(default)
 
     def is_national(self, default: str = DEFAULT_COLLECTION_MODE) -> bool:
         """该数据源是否显式声明为全国模式（collection_mode == "national"）。
@@ -331,7 +340,7 @@ def apply_keyword_scope(
     return region_kw, topic_kw
 
 
-def validate_data_source_config(config: dict) -> dict:
+def _validate_legacy_collection_config(config: dict) -> dict:
     """校验 ``DataSource.config_json`` 中 collection_mode 的语义组合（National-Mode-3）。
 
     行为约定
@@ -397,4 +406,65 @@ def validate_data_source_config(config: dict) -> dict:
             "filter_mode=topic_only 与 keyword_scope=region 矛盾"
             "（纯主题过滤不应使用纯地域词范围），已拒绝"
         )
+    return config
+
+
+# MediaCrawler-2A contract override.  Kept at module scope so older callers
+# retain the same import while the validator now understands collection_scope.
+def validate_data_source_config(config: dict) -> dict:
+    if not isinstance(config, dict):
+        raise ValueError("config_json must be a JSON object")
+
+    scope = config.get("collection_scope")
+    legacy_mode = config.get("collection_mode")
+    if scope is not None and scope not in COLLECTION_SCOPES:
+        raise ValueError(f"collection_scope must be one of {sorted(COLLECTION_SCOPES)}")
+    if legacy_mode is not None and legacy_mode not in COLLECTION_MODES:
+        raise ValueError(f"collection_mode must be one of {sorted(COLLECTION_MODES)}")
+    if scope is not None and legacy_mode is not None and scope != legacy_mode:
+        raise ValueError("collection_scope and collection_mode must match")
+    mode = scope or legacy_mode or DEFAULT_COLLECTION_MODE
+
+    if "collector" in config and config["collector"] != "mediacrawler":
+        raise ValueError("collector must be 'mediacrawler'")
+    if "platform" in config and config["platform"] != "weibo":
+        raise ValueError("platform must be 'weibo'")
+    if "keywords" in config:
+        keywords = config["keywords"]
+        if not isinstance(keywords, list) or any(
+            not isinstance(item, str) or not item.strip() for item in keywords
+        ):
+            raise ValueError("keywords must be a list of non-empty strings")
+    if "max_items" in config:
+        max_items = config["max_items"]
+        if (
+            isinstance(max_items, bool)
+            or not isinstance(max_items, int)
+            or not 1 <= max_items <= 20
+        ):
+            raise ValueError("max_items must be between 1 and 20")
+
+    if mode == "national":
+        fm = config.get("filter_mode")
+        if fm is not None and fm not in NATIONAL_FILTER_MODES:
+            raise ValueError(
+                f"national collection only allows filter_mode={sorted(NATIONAL_FILTER_MODES)}"
+            )
+        ks = config.get("keyword_scope")
+        if ks is not None and ks not in NATIONAL_KEYWORD_SCOPES:
+            raise ValueError(
+                f"national collection only allows keyword_scope={sorted(NATIONAL_KEYWORD_SCOPES)}"
+            )
+        return config
+
+    fm = config.get("filter_mode")
+    ks = config.get("keyword_scope")
+    if fm is not None and fm not in FILTER_MODES:
+        raise ValueError(f"filter_mode must be one of {sorted(FILTER_MODES)}")
+    if ks is not None and ks not in KEYWORD_SCOPES:
+        raise ValueError(f"keyword_scope must be one of {sorted(KEYWORD_SCOPES)}")
+    if fm == "region_only" and ks == "topic":
+        raise ValueError("filter_mode=region_only conflicts with keyword_scope=topic")
+    if fm == "topic_only" and ks == "region":
+        raise ValueError("filter_mode=topic_only conflicts with keyword_scope=region")
     return config

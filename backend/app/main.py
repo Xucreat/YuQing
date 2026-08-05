@@ -74,6 +74,19 @@ app.include_router(api_router, prefix="/api")
 
 _static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
+# SPA 缓存策略（修复：前端发版后浏览器仍加载旧 index.html 导致新功能"消失"）
+# 背景：index.html 此前由 FileResponse 直出且不带任何 Cache-Control，浏览器会按
+# RFC 9111 的启发式规则(约 last-modified 距今时长的 10%)自行缓存；又因部署脚本
+# 只增量复制、不清理历史 chunk，旧 index.html 引用的旧 assets 仍可 200 命中，
+# 于是页面表现"正常"但功能停留在旧版本。
+# 规则：带内容 hash 的 /assets/* 可长期强缓存；index.html 等入口文件必须每次回源校验。
+_ENTRY_NO_CACHE = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+_HASHED_ASSET_CACHE = {"Cache-Control": "public, max-age=31536000, immutable"}
+
 if os.path.isdir(_static_dir):
     # Middleware: if a static file exists, serve it. Otherwise serve index.html (SPA fallback).
     @app.middleware("http")
@@ -85,9 +98,21 @@ if os.path.isdir(_static_dir):
         path = request.url.path.lstrip("/")
         fp = os.path.join(_static_dir, path)
         if path and os.path.isfile(fp):
-            return FileResponse(fp)
-        # Fallback: serve index.html for any other path (SPA routing)
+            # vite 产物文件名自带 content hash，内容变更必然换名，可安全长缓存
+            if path.startswith("assets/"):
+                return FileResponse(fp, headers=_HASHED_ASSET_CACHE)
+            return FileResponse(fp, headers=_ENTRY_NO_CACHE)
+        # 缺失的资源请求（带扩展名的静态文件，如 .js/.css/.json/.png）必须返回 404，
+        # 绝不能 fallback 到 index.html——否则浏览器会把 HTML 当 JS 解析导致模块崩溃
+        # （典型症状：清理旧 chunk 后，缓存旧 index.html 的浏览器加载驾驶舱等页面报渲染错误）。
+        # 仅对无扩展名的路由（SPA 前端路由如 /command-screen）做 index.html 回退。
+        last_segment = path.rsplit("/", 1)[-1]
+        if "." in last_segment:
+            from fastapi.responses import Response
+
+            return Response(status_code=404, headers=_ENTRY_NO_CACHE)
+        # Fallback: serve index.html for SPA client-side routes (no file extension)
         index = os.path.join(_static_dir, "index.html")
         if os.path.isfile(index):
-            return FileResponse(index)
+            return FileResponse(index, headers=_ENTRY_NO_CACHE)
         return await call_next(request)

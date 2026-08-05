@@ -31,7 +31,11 @@ from typing import Collection, List, Optional
 from sqlalchemy.orm import Session
 
 from app.collectors.base import BaseCollector
-from app.collectors.source_config import STRATEGY_KEYS, DataSourceConfig
+from app.collectors.source_config import (
+    STRATEGY_KEYS,
+    DataSourceConfig,
+    validate_data_source_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +278,10 @@ def _resolve_core(
         try:
             cls = import_class(meta["class_path"])
             cfg = _parse_config(meta.get("config_json"))  # 非法 JSON -> ConfigParseError
+            if getattr(cls, "data_source_key", None) == "weibo_mediacrawler":
+                # Reuse the API contract at the registry boundary so direct DB
+                # configuration cannot silently downgrade or reach the ctor.
+                validate_data_source_config(cfg)
             # 策略键不进构造函数，避免专用型采集器 TypeError（见 _split_strategy_keys）
             collector = cls(**_split_strategy_keys(cfg))  # 未知/错误参数 -> TypeError 等
             result.collectors.append(_attach_meta(collector, meta, cfg))

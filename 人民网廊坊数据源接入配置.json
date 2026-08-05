@@ -1,0 +1,33 @@
+{
+  "key": "people_hebei_langfang",
+  "name": "人民网-河北频道-廊坊",
+  "type": "news_site",
+  "enabled": true,
+  "priority": 56,
+  "scope_region_codes": "131000",
+  "schedule_enabled": true,
+  "schedule_interval_minutes": 30,
+  "config_json": {
+    "source_name": "人民网-河北频道-廊坊",
+    "list_urls": ["http://he.people.com.cn/GB/199886/index.html"],
+    "link_rule": {
+      "href_regex": "(?:/n1/|/n2/|c\\d+-\\d+)\\.html$",
+      "href_exclude": ["index.html"],
+      "max_links": 40
+    },
+    "content_selectors": [
+      "div.rm_txt_con",
+      "div.rm_txt",
+      "div.content",
+      "article",
+      "div.article"
+    ],
+    "keywords": [
+      "廊坊", "霸州", "永清", "大厂", "大城",
+      "燕郊", "香河", "三河", "文安", "固安", "广阳", "安次"
+    ],
+    "max_articles": 20,
+    "timeout": 15,
+    "request_interval": 0.5
+  }
+}

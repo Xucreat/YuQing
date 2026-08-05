@@ -1,0 +1,5 @@
+{"mid":"mc-1001","title":"廊坊突发消防事件","content":"廊坊突发消防事件。现场正在处置。","url":"https://weibo.com/1001/mc-1001","publish_time":"2026-08-04 10:00:00","nickname":"廊坊观察","like_count":"1.2万","comments_count":"3","repost_count":5}
+{"id":"mc-1002","content":"第二条微博正文首句。这里是后续内容。","url":"https://weibo.com/1002/mc-1002","publish_time":"2026-08-04T10:01:00","nickname":"本地居民","like_count":"","comments_count":null,"repost_count":"0"}
+{"mid":"mc-1001","content":"同一条微博的重复输出。","url":"https://weibo.com/1001/mc-1001","nickname":"重复记录","like_count":9,"comments_count":1,"repost_count":0}
+{"id":"mc-1003","title":"","content":"空字段容错样本。","url":"","publish_time":null,"nickname":"","like_count":null,"comments_count":"abc","repost_count":""}
+not-json

@@ -71,6 +71,13 @@ _TYPE_CLASS_PATH: dict = {
 # 等逻辑写在类内部，config_json 必须为空（{}）；通用型（GenericSiteCollector）
 # 依赖 config_json 驱动，需校验其支持的字段。
 GENERIC_CLASS_PATH = "app.collectors.generic_site.GenericSiteCollector"
+MEDIACRAWLER_CLASS_PATH = (
+    "app.collectors.media_crawler_weibo_collector.MediaCrawlerWeiboCollector"
+)
+MEDIACRAWLER_ALLOWED_KEYS = {
+    "collector", "platform", "keywords", "max_items", "collection_scope",
+    "collection_mode", "filter_mode", "keyword_scope",
+}
 
 # GenericSiteCollector 实际支持的 config_json 顶层字段（含继承 BaseHttpCollector）。
 GENERIC_ALLOWED_KEYS = {
@@ -145,6 +152,21 @@ def _validate_collection_config(cfg: dict) -> str | None:
 
 def _is_generic(class_path: str) -> bool:
     return (class_path or "") == GENERIC_CLASS_PATH
+
+
+def _is_mediacrawler(class_path: str) -> bool:
+    return (class_path or "") == MEDIACRAWLER_CLASS_PATH
+
+
+def _validate_mediacrawler_config(cfg: dict) -> str | None:
+    unknown = sorted(set(cfg) - MEDIACRAWLER_ALLOWED_KEYS)
+    if unknown:
+        return f"MediaCrawler config contains unsupported keys: {', '.join(unknown)}"
+    try:
+        validate_data_source_config(cfg)
+    except ValueError as exc:
+        return str(exc)
+    return None
 
 
 def _validate_generic_config(cfg: dict) -> str | None:
@@ -430,6 +452,11 @@ def _validate_create(body) -> str | None:
     class_path = body.get("class_path") or _TYPE_CLASS_PATH.get(
         (body.get("type") or "generic_site"), GENERIC_CLASS_PATH
     )
+    if _is_mediacrawler(class_path):
+        cfg, err = _parse_config_json(raw_cfg)
+        if err:
+            return err
+        return _validate_mediacrawler_config(cfg)
     if _is_generic(class_path):
         if _is_config_empty(raw_cfg):
             return "通用型采集器必须提供 config_json（至少包含 list_urls）"
@@ -808,7 +835,26 @@ def update_data_source(
                 raise HTTPException(status_code=422, detail="priority 必须为整数")
         if "config_json" in body:
             raw = body["config_json"]
-            if _is_generic(ds.class_path):
+            if _is_mediacrawler(ds.class_path):
+                if raw is None:
+                    ds.config_json = "{}"
+                elif isinstance(raw, str):
+                    s = raw.strip()
+                    cfg, err = _parse_config_json(s)
+                    if err:
+                        raise HTTPException(status_code=422, detail=err)
+                    merr = _validate_mediacrawler_config(cfg)
+                    if merr:
+                        raise HTTPException(status_code=422, detail=merr)
+                    ds.config_json = json.dumps(cfg, ensure_ascii=False)
+                elif isinstance(raw, dict):
+                    merr = _validate_mediacrawler_config(raw)
+                    if merr:
+                        raise HTTPException(status_code=422, detail=merr)
+                    ds.config_json = json.dumps(raw, ensure_ascii=False)
+                else:
+                    raise HTTPException(status_code=422, detail="config_json must be a JSON object")
+            elif _is_generic(ds.class_path):
                 # 通用型（GenericSiteCollector）：允许设置合法 config；禁止清空
                 if raw is None:
                     raise HTTPException(status_code=422, detail="通用型采集器不能清空 config_json")

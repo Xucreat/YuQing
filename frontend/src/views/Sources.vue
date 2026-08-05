@@ -3,15 +3,15 @@
     <!-- 筛选工具栏 -->
     <div class="toolbar">
       <div class="filters">
-        <el-select v-model="filterRegion" placeholder="全部区域" clearable class="f-select" @change="reload">
+        <el-select v-model="filterRegion" placeholder="全部区域" clearable class="f-select" @change="reload(true)">
           <el-option v-for="o in regionOptions" :key="o.code" :label="o.name" :value="o.code" />
         </el-select>
-        <el-select v-model="filterEnabled" placeholder="启用状态" clearable class="f-select" @change="reload">
+        <el-select v-model="filterEnabled" placeholder="启用状态" clearable class="f-select" @change="reload(true)">
           <el-option label="已启用" :value="true" />
           <el-option label="已停用" :value="false" />
         </el-select>
-        <el-input v-model="filterQ" placeholder="搜索名称 / key" clearable class="f-input" @keyup.enter="reload" @clear="reload" />
-        <button class="btn btn-ghost" @click="reload">刷新</button>
+        <el-input v-model="filterQ" placeholder="搜索名称 / key" clearable class="f-input" @keyup.enter="reload(true)" @clear="reload(true)" />
+        <button class="btn btn-ghost" @click="reload(true)">刷新</button>
       </div>
       <div class="toolbar-right">
         <span class="count-tip">共 {{ total }} 个数据源</span>
@@ -265,6 +265,11 @@
           />
         </el-select>
       </div>
+      <div class="cf-row">
+        <label class="cf-label">单次抓取条数 max_items</label>
+        <el-input-number v-model="maxItemsDraft" :min="1" :max="500" size="small" controls-position="right" />
+      </div>
+      <div class="cfg-hint">留空（默认）即按采集器内置上限；设置后单次最多抓取该条数。</div>
       <div v-if="illegalComboError(filterModeDraft, keywordScopeDraft)" class="cfg-err">
         {{ illegalComboError(filterModeDraft, keywordScopeDraft) }}
       </div>
@@ -389,6 +394,10 @@
             {{ illegalComboError(form.filter_mode, form.keyword_scope) }}
           </div>
           <div class="cf-hint">留空（默认）即按采集器内置默认过滤策略；专用型源可在下拉中指定过滤模式与关键词范围。</div>
+        <div class="cf-row">
+          <label class="cf-label">单次抓取条数 max_items（可选）</label>
+          <el-input-number v-model="form.max_items" :min="1" :max="500" size="small" controls-position="right" />
+        </div>
         </div>
       </div>
       <template #footer>
@@ -602,6 +611,7 @@ const savingConfig = ref(false)
 // 过滤策略下拉草稿（配置弹窗）
 const filterModeDraft = ref('')
 const keywordScopeDraft = ref('')
+const maxItemsDraft = ref(null)
 
 // —— 调度配置（单源 + 批量）——
 const scheduleVisible = ref(false)
@@ -661,6 +671,7 @@ const form = reactive({
   config_json: DEFAULT_CONFIG,
   filter_mode: '' as string,
   keyword_scope: '' as string,
+  max_items: null,
 })
 
 function runPill(s: string): string {
@@ -744,7 +755,8 @@ function effectiveKeywordsText(source: Row): string {
     : '当前无有效关键词'
 }
 
-async function reload() {
+async function reload(resetPage = false) {
+  if (resetPage) page.value = 1
   loading.value = true
   try {
     const params: Record<string, any> = { page: page.value, size: size.value }
@@ -834,6 +846,7 @@ function openConfig(row: Row) {
   }
   filterModeDraft.value = typeof cfg.filter_mode === 'string' ? cfg.filter_mode : ''
   keywordScopeDraft.value = typeof cfg.keyword_scope === 'string' ? cfg.keyword_scope : ''
+  maxItemsDraft.value = typeof cfg.max_items === 'number' ? cfg.max_items : null
   // 通用型保留原始 config_json 供高级编辑；专用型仅由下拉驱动策略
   configDraft.value = row.config_json || '{}'
   configVisible.value = true
@@ -879,6 +892,8 @@ async function saveConfig() {
   else delete cfg.filter_mode
   if (scope) cfg.keyword_scope = scope
   else delete cfg.keyword_scope
+  if (maxItemsDraft.value != null && maxItemsDraft.value >= 1) cfg.max_items = maxItemsDraft.value
+  else delete cfg.max_items
   const payload = JSON.stringify(cfg)
   savingConfig.value = true
   try {
@@ -977,6 +992,7 @@ function openCreate() {
   createConfigError.value = ''
   testMsg.value = ''
   testOk.value = false
+  if (form) form.max_items = null
   createVisible.value = true
 }
 
@@ -989,6 +1005,8 @@ function buildPayload(): DataSourceCreateRequest {
   else delete cfgObj.filter_mode
   if (form.keyword_scope) cfgObj.keyword_scope = form.keyword_scope
   else delete cfgObj.keyword_scope
+  if (form.max_items != null && form.max_items >= 1) cfgObj.max_items = form.max_items
+  else delete cfgObj.max_items
   return {
     name: form.name.trim(),
     key: form.key.trim(),
