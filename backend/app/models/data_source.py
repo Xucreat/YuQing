@@ -51,6 +51,9 @@ class DataSource(Base):
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    keyword_cursor: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )

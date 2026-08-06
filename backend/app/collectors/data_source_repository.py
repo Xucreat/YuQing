@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import List
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 
 from app.models.data_source import DataSource
@@ -53,7 +53,18 @@ def enabled_sources(db: Session) -> List[dict]:
     return [dict(r) for r in rows]
 
 
-def due_scheduled_sources(db: Session) -> List[dict]:
+def _normalize_include_keys(include_keys) -> tuple[str, ...] | None:
+    """Normalize an optional scheduler allowlist without changing defaults."""
+
+    if include_keys is None:
+        return None
+    return tuple(sorted({str(key).strip() for key in include_keys if str(key).strip()}))
+
+
+def due_scheduled_sources(
+    db: Session,
+    include_keys=None,
+) -> List[dict]:
     """逐源 tick 模式：已到采集时间的启用源。
 
     条件：``enabled AND schedule_enabled AND key != 'weibo_octopus'
@@ -65,26 +76,32 @@ def due_scheduled_sources(db: Session) -> List[dict]:
     调用方（scheduler._run_collector_tick）拿到 id 集合后自行 claim 推进
     next_collect_time（写操作不在此处）。
     """
-    rows = (
-        db.execute(
-            text(
-                """
-                SELECT id, key, schedule_enabled, schedule_interval_minutes, next_collect_time
-                FROM data_sources
-                WHERE enabled = true
-                  AND schedule_enabled = true
-                  AND key != 'weibo_octopus'
-                  AND (next_collect_time IS NULL OR next_collect_time <= now())
-                """
-            )
+    normalized_keys = _normalize_include_keys(include_keys)
+    if normalized_keys == ():
+        return []
+    sql = """
+        SELECT id, key, schedule_enabled, schedule_interval_minutes, next_collect_time
+        FROM data_sources
+        WHERE enabled = true
+          AND schedule_enabled = true
+          AND key != 'weibo_octopus'
+          AND (next_collect_time IS NULL OR next_collect_time <= now())
+    """
+    statement = text(sql)
+    params = {}
+    if normalized_keys is not None:
+        statement = text(f"{sql} AND key IN :include_keys").bindparams(
+            bindparam("include_keys", expanding=True)
         )
-        .mappings()
-        .all()
-    )
+        params["include_keys"] = normalized_keys
+    rows = db.execute(statement, params).mappings().all()
     return [dict(r) for r in rows]
 
 
-def scheduled_enabled_sources(db: Session) -> List[dict]:
+def scheduled_enabled_sources(
+    db: Session,
+    include_keys=None,
+) -> List[dict]:
     """cron 模式候选集：启用且开启自动采集的源（不考虑 next_collect_time）。
 
     cron 模式由全局 cron 表达式驱动采集节奏，next_collect_time 不参与选择，
@@ -94,19 +111,22 @@ def scheduled_enabled_sources(db: Session) -> List[dict]:
 
     返回行结构：``{id, key}``
     """
-    rows = (
-        db.execute(
-            text(
-                """
-                SELECT id, key
-                FROM data_sources
-                WHERE enabled = true
-                  AND schedule_enabled = true
-                  AND key != 'weibo_octopus'
-                """
-            )
+    normalized_keys = _normalize_include_keys(include_keys)
+    if normalized_keys == ():
+        return []
+    sql = """
+        SELECT id, key
+        FROM data_sources
+        WHERE enabled = true
+          AND schedule_enabled = true
+          AND key != 'weibo_octopus'
+    """
+    statement = text(sql)
+    params = {}
+    if normalized_keys is not None:
+        statement = text(f"{sql} AND key IN :include_keys").bindparams(
+            bindparam("include_keys", expanding=True)
         )
-        .mappings()
-        .all()
-    )
+        params["include_keys"] = normalized_keys
+    rows = db.execute(statement, params).mappings().all()
     return [dict(r) for r in rows]

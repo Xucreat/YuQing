@@ -117,6 +117,9 @@
       <el-form label-position="top">
         <el-form-item label="模板名称">
           <el-input v-model="templateForm.name" maxlength="128" show-word-limit placeholder="周报模板" />
+          <div v-if="templateNameConflict" class="form-hint warn">
+            模板名称已存在（本人或公共模板中已有同名），请更换后再保存。
+          </div>
         </el-form-item>
         <el-form-item label="描述">
           <el-input
@@ -133,7 +136,7 @@
       </el-form>
       <template #footer>
         <el-button @click="saveDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="savingTemplate" @click="saveAsTemplate">保存</el-button>
+        <el-button type="primary" :loading="savingTemplate" :disabled="templateNameConflict" @click="saveAsTemplate">保存</el-button>
       </template>
     </el-dialog>
   </el-drawer>
@@ -210,6 +213,14 @@ const canManageTemplate = computed(() => hasPermission('reports:manage'))
 const currentTemplateCanEdit = computed(() => {
   const t = templates.value.find((t) => t.id === selectedTemplateId.value)
   return !!t && t.can_edit && canManageTemplate.value
+})
+
+// 保存模板时「名称不能重复」：与已加载模板列表（本人 + 公共）比较，
+// 大小写/首尾空格不敏感。命中即视为冲突，禁用保存并提示。
+const templateNameConflict = computed(() => {
+  const name = templateForm.value.name.trim().toLowerCase()
+  if (!name) return false
+  return templates.value.some((t) => t.name.trim().toLowerCase() === name)
 })
 
 // 模块增删时同步 moduleParams：补齐新增模块的默认值，清理已移除模块
@@ -340,15 +351,21 @@ function openSaveDialog() {
 }
 
 async function saveAsTemplate() {
-  if (!templateForm.value.name.trim()) {
+  const name = templateForm.value.name.trim()
+  if (!name) {
     ElMessage.warning("请输入模板名称")
+    return
+  }
+  // 前端即时校验：与已加载模板（本人 + 公共）重名则拦截（后端 409 为兜底）
+  if (templates.value.some((t) => t.name.trim().toLowerCase() === name.toLowerCase())) {
+    ElMessage.warning(`模板名称已存在：${name}`)
     return
   }
   savingTemplate.value = true
   try {
     const config = buildConfigFromForm()
     const { data } = await createTemplate({
-      name: templateForm.value.name.trim(),
+      name,
       description: templateForm.value.description || null,
       is_public: templateForm.value.is_public,
       config_json: config,

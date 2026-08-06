@@ -1,0 +1,47 @@
+{
+  "key": "xinhua_hebei_news",
+  "name": "新华网-河北-要闻",
+  "type": "news_site",
+  "enabled": true,
+  "priority": 56,
+  "scope_region_codes": "131000",
+  "schedule_enabled": true,
+  "schedule_interval_minutes": 30,
+  "config_json": {
+    "source_name": "新华网-河北-要闻",
+    "list_urls": [
+      "http://he.news.cn/news/index.html"
+    ],
+    "link_rule": {
+      "href_regex": "\\d{8}/[0-9a-f]{32}/c\\.html$",
+      "href_exclude": ["index.html", "index.htm"],
+      "max_links": 40
+    },
+    "content_selectors": [
+      "div.article",
+      "div.content",
+      "div.detail"
+    ],
+    "keywords": [
+      "廊坊",
+      "大厂回族自治县",
+      "三河",
+      "香河",
+      "固安",
+      "广阳区",
+      "安次区",
+      "霸州市",
+      "永清县",
+      "大城县",
+      "文安县",
+      "文安",
+      "霸州",
+      "安次",
+      "广阳",
+      "大厂"
+    ],
+    "max_articles": 20,
+    "timeout": 15,
+    "request_interval": 0.5
+  }
+}

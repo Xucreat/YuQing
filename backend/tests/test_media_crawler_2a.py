@@ -12,6 +12,7 @@ from app.collectors.media_crawler_weibo_collector import (
     parse_publish_time,
 )
 from app.collectors.mediacrawler_runner import MediaCrawlerRunner
+from app.collectors.service import CollectorService, select_round_robin_keyword
 from app.collectors.source_config import DataSourceConfig, validate_data_source_config
 from app.services.opinion_region_service import OpinionRegionService
 
@@ -51,6 +52,60 @@ def test_collector_uses_source_config_max_items_before_constructor(tmp_path: Pat
 
     assert collector.effective_max_items == 1
     assert len(items) <= 1
+
+
+def test_round_robin_keyword_selection_is_fair_and_wraps() -> None:
+    assert select_round_robin_keyword(["A", "B", "C"], 0) == (["A"], 1)
+    assert select_round_robin_keyword(["A", "B", "C"], 1) == (["B"], 2)
+    assert select_round_robin_keyword(["A", "B", "C"], 2) == (["C"], 0)
+    assert select_round_robin_keyword(["A", "B", "C"], 99) == (["A"], 1)
+    assert select_round_robin_keyword([], 3) == ([], 0)
+
+
+def test_mediacrawler_turn_reads_persisted_cursor() -> None:
+    class _Query:
+        def __init__(self, row) -> None:
+            self.row = row
+
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def first(self):
+            return self.row
+
+    class _Db:
+        def __init__(self, row) -> None:
+            self.row = row
+
+        def query(self, _model):
+            return _Query(self.row)
+
+    collector = MediaCrawlerWeiboCollector(fixture_path=FIXTURE)
+    collector.source_config = DataSourceConfig(
+        {"keywords": ["source-a", "source-b", "source-c"]}
+    )
+    source = SimpleNamespace(keyword_cursor=1)
+
+    selected, next_cursor = CollectorService(
+        collectors=[collector]
+    )._mediacrawler_keyword_turn(_Db(source), collector, ["global-a"])
+
+    assert selected == ["source-b"]
+    assert next_cursor == 2
+
+
+def test_keyword_override_takes_precedence_for_round_robin_turn() -> None:
+    collector = MediaCrawlerWeiboCollector(fixture_path=FIXTURE, max_items=1)
+    collector.source_config = DataSourceConfig({"keywords": ["source-a", "source-b"]})
+
+    items = collector.fetch(
+        global_keywords=["global-a"],
+        keyword_override=["source-b"],
+    )
+
+    assert items
+    assert collector.effective_keywords == ["source-b"]
+    assert collector.effective_keywords_source == "round_robin"
 
 
 def test_runner_exposes_effective_max_items_and_preserves_raw(tmp_path: Path) -> None:

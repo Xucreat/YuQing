@@ -25,6 +25,7 @@ from app.collectors.mediacrawler_runner import (
     MediaCrawlerRunnerConfigurationError,
 )
 from app.core.config import settings
+from app.core.browser_profile_manager import BrowserProfileIsolationManager
 
 
 class MediaCrawlerRuntimeConfigurationError(MediaCrawlerRunnerConfigurationError):
@@ -50,6 +51,7 @@ class MediaCrawlerRuntimeConfig:
     timeout_seconds: int | float
     login_type: str
     real_run_gate: bool
+    runtime_profile_path: Path | None = None
 
     @property
     def enable_real_run(self) -> bool:
@@ -200,6 +202,7 @@ class MediaCrawlerRuntimeFactory:
         trigger_type: str = "manual",
         *,
         profile_path: str | Path | None = None,
+        batch_id: str | None = None,
         mock_command: bool = False,
     ) -> tuple[MediaCrawlerRunner, MediaCrawlerRunLock, MediaCrawlerRuntimeConfig]:
         config = self.config(trigger_type)
@@ -213,6 +216,22 @@ class MediaCrawlerRuntimeFactory:
             config.runtime_path,
             config.profile_path.parent,
         )
+        runtime_profile_manager: BrowserProfileIsolationManager | None = None
+        runtime_profile_path: Path | None = None
+        runner_profile_path = config.profile_path
+        if config.trigger_type == "scheduler" and batch_id is not None:
+            # Validate the persistent template before copying it. The
+            # template remains immutable; Chromium receives only this copy.
+            profile_manager.require(config.trigger_type)
+            runtime_profile_manager = BrowserProfileIsolationManager(
+                config.runtime_path
+            )
+            runtime_profile_path = runtime_profile_manager.create_runtime_profile(
+                config.profile_path,
+                batch_id,
+            )
+            runner_profile_path = runtime_profile_path
+            config = replace(config, runtime_profile_path=runtime_profile_path)
 
         def command_factory(keywords: Iterable[str], max_items: int, output_dir: Path) -> list[str]:
             if config.trigger_type == "scheduler" and not config.real_run_gate:
@@ -230,8 +249,8 @@ class MediaCrawlerRuntimeFactory:
         runner = MediaCrawlerRunner(
             root=config.runtime_path,
             python_executable=config.python_executable,
-            browser_data=str(config.profile_path),
-            profile_name=str(config.profile_path),
+            browser_data=str(runner_profile_path),
+            profile_name=str(runner_profile_path),
             command_factory=command_factory,
             # The upstream entry imports its config relative to the checkout.
             # Keep that checkout as cwd even when the configured entry is a
@@ -240,6 +259,10 @@ class MediaCrawlerRuntimeFactory:
             mock_command=mock_command,
             enable_real_run=config.real_run_gate,
         )
+        # Collector owns cleanup timing because it knows whether the runner
+        # and JSONL normalization completed successfully.
+        runner.runtime_profile_path = runtime_profile_path
+        runner.runtime_profile_manager = runtime_profile_manager
         lock = MediaCrawlerRunLock(
             config.runtime_path / "locks" / f"{self.source_key}.lock",
             timeout_seconds=1.0,

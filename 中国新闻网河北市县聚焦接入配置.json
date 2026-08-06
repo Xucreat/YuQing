@@ -1,0 +1,47 @@
+{
+  "key": "chinanews_hebei_sxjj",
+  "name": "中国新闻网-河北-市县聚焦",
+  "type": "news_site",
+  "enabled": true,
+  "priority": 56,
+  "scope_region_codes": "131000",
+  "schedule_enabled": true,
+  "schedule_interval_minutes": 30,
+  "config_json": {
+    "source_name": "中国新闻网-河北-市县聚焦",
+    "list_urls": [
+      "https://www.heb.chinanews.com.cn/more/sxjj.html"
+    ],
+    "link_rule": {
+      "href_regex": "sxjj/\\d{12,}\\.shtml$",
+      "href_exclude": ["sxjj.html"],
+      "max_links": 40
+    },
+    "content_selectors": [
+      "div.left_zw",
+      "div.content",
+      "div.article"
+    ],
+    "keywords": [
+      "廊坊",
+      "大厂回族自治县",
+      "三河",
+      "香河",
+      "固安",
+      "广阳区",
+      "安次区",
+      "霸州市",
+      "永清县",
+      "大城县",
+      "文安县",
+      "文安",
+      "霸州",
+      "安次",
+      "广阳",
+      "大厂"
+    ],
+    "max_articles": 20,
+    "timeout": 15,
+    "request_interval": 0.5
+  }
+}

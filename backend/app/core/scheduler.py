@@ -1,8 +1,10 @@
 ﻿from __future__ import annotations
 import logging
 import hashlib
+import os
+from collections.abc import Collection
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -13,6 +15,10 @@ from app.collectors.data_source_repository import (
     scheduled_enabled_sources,
 )
 from app.core.config import settings
+from app.core.runtime_fingerprint import (
+    build_scheduler_owner_fingerprint,
+    format_scheduler_owner_fingerprint,
+)
 from app.db.session import SessionLocal, engine
 from app.services.event.aggregator import auto_aggregate_after_collect
 from app.services.alert_service import AlertService
@@ -31,6 +37,30 @@ SCHEDULER_ADVISORY_LOCK_KEY = (
     & 0x7FFFFFFFFFFFFFFF  # 限制在 bigint 有符号范围内
 )
 _scheduler_lock_conn = None
+_scheduler_source_allowlist: frozenset[str] | None = None
+
+
+def _normalize_source_allowlist(
+    source_allowlist: Collection[str] | None,
+) -> frozenset[str] | None:
+    """Normalize an explicit source allowlist; ``None`` preserves all-source behavior."""
+
+    if source_allowlist is None:
+        return None
+    return frozenset(
+        str(key).strip()
+        for key in source_allowlist
+        if str(key).strip()
+    )
+
+
+def _configured_source_allowlist() -> frozenset[str] | None:
+    """Read a process-scoped CSV allowlist without changing ``.env`` or the DB."""
+
+    raw = os.getenv("SCHEDULER_SOURCE_ALLOWLIST", "").strip()
+    if not raw:
+        return None
+    return _normalize_source_allowlist(raw.split(","))
 
 def _scheduler_discovery_ok() -> bool:
     """dispatch 前确认数据源发现可用（DB 可读）。
@@ -66,7 +96,13 @@ def _run_collector_job():
         return
     db = SessionLocal()
     try:
-        due = scheduled_enabled_sources(db)
+        if _scheduler_source_allowlist is None:
+            due = scheduled_enabled_sources(db)
+        else:
+            due = scheduled_enabled_sources(
+                db,
+                include_keys=_scheduler_source_allowlist,
+            )
         keys = [r["key"] for r in due]
         if not keys:
             return
@@ -87,7 +123,9 @@ def _run_collector_job():
         db.close()
 
 
-def _run_collector_tick():
+def _run_collector_tick(
+    include_data_source_keys: Collection[str] | None = None,
+):
     """Phase DataSource-Schedule-1：按源自定义频率的逐源 tick 派发。
 
     流程（claim-then-dispatch，全部时间走 PG now()，规避时区偏差 R3）：
@@ -105,23 +143,34 @@ def _run_collector_tick():
         return
     db = SessionLocal()
     try:
-        due = due_scheduled_sources(db)
+        source_allowlist = (
+            _normalize_source_allowlist(include_data_source_keys)
+            if include_data_source_keys is not None
+            else _scheduler_source_allowlist
+        )
+        if source_allowlist is None:
+            due = due_scheduled_sources(db)
+        else:
+            due = due_scheduled_sources(db, include_keys=source_allowlist)
         if not due:
             return
         due_ids = [r["id"] for r in due]
         due_keys = [r["key"] for r in due]
         # claim：用各行自身 schedule_interval_minutes 计算下次时间，单次语句完成
-        db.execute(
-            text(
-                """
-                UPDATE data_sources
-                SET last_collect_time = now(),
-                    next_collect_time = now() + make_interval(mins => schedule_interval_minutes)
-                WHERE id = ANY(:ids)
-                """
-            ),
-            {"ids": due_ids},
-        )
+        claim_sql = """
+            UPDATE data_sources
+            SET last_collect_time = now(),
+                next_collect_time = now() + make_interval(mins => schedule_interval_minutes)
+            WHERE id = ANY(:ids)
+        """
+        claim_params = {"ids": due_ids}
+        claim_statement = text(claim_sql)
+        if source_allowlist is not None:
+            claim_statement = text(
+                f"{claim_sql} AND key IN :include_keys"
+            ).bindparams(bindparam("include_keys", expanding=True))
+            claim_params["include_keys"] = tuple(sorted(source_allowlist))
+        db.execute(claim_statement, claim_params)
         db.commit()
         logger.info("Collector tick: claimed %d sources, dispatching merged collect", len(due_ids))
         service = CollectorService(
@@ -236,8 +285,25 @@ def _release_scheduler_lock() -> None:
             pass
 
 
-def start_scheduler():
-    global scheduler
+def start_scheduler(
+    *,
+    source_allowlist: Collection[str] | None = None,
+):
+    global scheduler, _scheduler_source_allowlist
+    _scheduler_source_allowlist = (
+        _normalize_source_allowlist(source_allowlist)
+        if source_allowlist is not None
+        else _configured_source_allowlist()
+    )
+    fingerprint = build_scheduler_owner_fingerprint()
+    logger.info(
+        "[SchedulerFingerprint] %s source_allowlist=%s real_run_gate=%s",
+        format_scheduler_owner_fingerprint(fingerprint),
+        sorted(_scheduler_source_allowlist)
+        if _scheduler_source_allowlist is not None
+        else None,
+        bool(settings.media_crawler_real_run_gate),
+    )
     if scheduler is not None:
         return
     if not (settings.collector_schedule_enabled or settings.alert_eval_enabled):

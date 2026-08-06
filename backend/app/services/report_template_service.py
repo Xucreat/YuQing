@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import is_superuser_user
@@ -35,6 +35,32 @@ def _validate_module_keys(config: ReportTemplateConfig) -> None:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"未知报告模块：{key}",
             )
+
+
+def _assert_name_unique(
+    db: Session, user: User, name: str, exclude_id: Optional[int] = None
+) -> None:
+    """模板名称必须在「本人模板 + 公共模板」可见范围内唯一（大小写/首尾空格不敏感）。
+
+    可见范围与 list_templates 一致（own | public），避免下拉框出现同名两项。
+    exclude_id 用于更新场景，跳过自身。
+    """
+    norm = name.strip().lower()
+    stmt = (
+        select(ReportTemplate)
+        .where(
+            (ReportTemplate.owner_id == user.id)
+            | (ReportTemplate.is_public == True)  # noqa: E712
+        )
+        .where(func.lower(func.trim(ReportTemplate.name)) == norm)
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(ReportTemplate.id != exclude_id)
+    if db.scalars(stmt).first() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"模板名称已存在：{name.strip()}",
+        )
 
 
 def can_edit_template(tpl: ReportTemplate, user: User) -> bool:
@@ -66,6 +92,7 @@ def create_template(
     db: Session, user: User, payload: ReportTemplateCreate
 ) -> ReportTemplateResponse:
     _validate_module_keys(payload.config_json)
+    _assert_name_unique(db, user, payload.name)
     tpl = ReportTemplate(
         name=payload.name.strip(),
         description=payload.description,
@@ -107,7 +134,9 @@ def update_template(
             detail="无权修改该模板（仅创建者或管理员可操作）",
         )
     if payload.name is not None:
-        tpl.name = payload.name.strip()
+        new_name = payload.name.strip()
+        _assert_name_unique(db, user, new_name, exclude_id=tpl.id)
+        tpl.name = new_name
     if payload.description is not None:
         tpl.description = payload.description
     if payload.is_public is not None:

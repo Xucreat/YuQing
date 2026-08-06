@@ -42,6 +42,8 @@ from app.core.config import settings
 from app.models.opinion import Opinion
 from app.models.region import Region
 from app.models.collector_run import CollectorRun
+from app.models.data_source import DataSource
+from app.collectors.media_crawler_weibo_collector import normalize_keywords
 from app.services.ai.fallback import RuleFallbackProvider
 from app.services.keyword_service import (
     get_keyword_rules,
@@ -74,6 +76,18 @@ THROTTLE_SECONDS = 5.0
 
 class CollectorThrottled(Exception):
     """政府网站采集触发过于频繁（5 秒防抖），由 API 层转 429。"""
+
+
+def select_round_robin_keyword(
+    keywords: Collection[str], cursor: int
+) -> tuple[list[str], int]:
+    """Select one normalized keyword and return the next cursor."""
+
+    normalized = normalize_keywords(keywords)
+    if not normalized:
+        return [], 0
+    current = max(int(cursor or 0), 0) % len(normalized)
+    return [normalized[current]], (current + 1) % len(normalized)
 
 
 def reset_gov_throttle() -> None:
@@ -196,15 +210,21 @@ class CollectorService:
             if exclude_data_source_keys is not None
             else None
         )
-        self.collectors: List[BaseCollector] = (
-            collectors
-            if collectors is not None
-            else resolve_collectors(
+        if collectors is not None:
+            self.collectors: List[BaseCollector] = collectors
+        elif self.collector_type == "mock":
+            # Preserve the offline/mock contract used by tests and demos.
+            # Production collectors are intentionally not assembled here:
+            # execution must resolve them with a real DB/session.
+            self.collectors = resolve_collectors(
                 collector_type=self.collector_type,
                 include_data_source_keys=self.include_data_source_keys,
                 exclude_data_source_keys=self.exclude_data_source_keys,
             )
-        )
+        else:
+            # Fix-3: do not create a production collector from db=None.
+            # collect_and_analyze*() resolves against the execution DB below.
+            self.collectors = []
         self.region_id: Optional[int] = region_id
 
         # 并发抓取时，多个采集器线程各自持有独立 DB 会话，但「查重 + 新建 Opinion」
@@ -272,6 +292,48 @@ class CollectorService:
             .first()
         )
         return exists is not None
+
+    def _mediacrawler_keyword_turn(
+        self,
+        db: Session,
+        collector: BaseCollector,
+        monitoring_kw: List[str],
+    ) -> tuple[list[str], int | None]:
+        """Return this run's MediaCrawler keyword and the cursor to persist."""
+
+        all_keywords = collector.resolve_effective_keywords(None, monitoring_kw)
+        if not all_keywords:
+            return [], None
+
+        source_key = getattr(collector, "data_source_key", None)
+        source = (
+            db.query(DataSource).filter(DataSource.key == source_key).first()
+            if source_key
+            else None
+        )
+        # Injected collectors and legacy/manual callers may not have a DB row.
+        if source is None:
+            return all_keywords, None
+
+        selected, next_cursor = select_round_robin_keyword(
+            all_keywords, source.keyword_cursor
+        )
+        return selected, next_cursor
+
+    @staticmethod
+    def _persist_mediacrawler_cursor(
+        db: Session,
+        collector: BaseCollector,
+        next_cursor: int | None,
+    ) -> None:
+        if next_cursor is None:
+            return
+        source_key = getattr(collector, "data_source_key", None)
+        if not source_key:
+            return
+        source = db.query(DataSource).filter(DataSource.key == source_key).first()
+        if source is not None:
+            source.keyword_cursor = next_cursor
 
     # ------------------------------------------------------------------
     # 主流程
@@ -431,14 +493,19 @@ class CollectorService:
         upstream_returned = 0
         c_created = c_analyzed = c_failed = 0
         admission_filtered = 0
+        mediacrawler_next_cursor: int | None = None
         try:
             # 向下兼容 keywords= 旧链路；region_kw/topic_kw 驱动地域前置过滤新链路。
             # 采集器依据 region_kw 是否为 None 选择新旧逻辑。
             if getattr(collector, "data_source_key", None) == "weibo_mediacrawler":
                 # MediaCrawler resolves source-local > explicit runtime > global.
+                selected_keywords, mediacrawler_next_cursor = self._mediacrawler_keyword_turn(
+                    db, collector, monitoring_kw
+                )
                 items = collector.fetch(
                     keywords=None,
                     global_keywords=monitoring_kw,
+                    keyword_override=selected_keywords,
                     region_kw=region_kw,
                     topic_kw=topic_kw,
                     trigger_type=trigger_type,
@@ -619,6 +686,9 @@ class CollectorService:
                     "配置异常：地域关键词(region_kw)为空，已启用 fail-safe "
                     "拦截无地域数据（非普通零数据，请检查 keywords 表 category='地域' 是否启用）"
                 )
+            self._persist_mediacrawler_cursor(
+                db, collector, mediacrawler_next_cursor
+            )
             run.end_time = datetime.now(timezone.utc)
             db.commit()
 

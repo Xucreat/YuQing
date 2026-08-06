@@ -31,6 +31,7 @@ from typing import Collection, List, Optional
 from sqlalchemy.orm import Session
 
 from app.collectors.base import BaseCollector
+from app.collectors.mediacrawler_runtime import MediaCrawlerRuntimeFactory
 from app.collectors.source_config import (
     STRATEGY_KEYS,
     DataSourceConfig,
@@ -189,6 +190,23 @@ def _attach_meta(collector: BaseCollector, meta: dict, cfg: Optional[dict] = Non
     return collector
 
 
+def _build_collector(cls: type, meta: dict, cfg: dict) -> BaseCollector:
+    """Construct one collector with production-only runtime dependencies.
+
+    MediaCrawler is intentionally assembled at the registry boundary so every
+    caller (manual or scheduled) receives the same deployment runtime factory.
+    Fixture and explicit-runner test paths remain available through the
+    collector's public constructor.
+    """
+
+    kwargs = _split_strategy_keys(cfg)
+    if getattr(cls, "data_source_key", None) == "weibo_mediacrawler":
+        kwargs["runtime_factory"] = MediaCrawlerRuntimeFactory(
+            source_key=meta.get("key") or "weibo_mediacrawler"
+        )
+    return cls(**kwargs)
+
+
 @dataclass
 class ResolvedCollectors:
     """表驱动装配结果：成功实例 + 装配失败明细（用于暴露，不静默丢弃）。"""
@@ -283,7 +301,7 @@ def _resolve_core(
                 # configuration cannot silently downgrade or reach the ctor.
                 validate_data_source_config(cfg)
             # 策略键不进构造函数，避免专用型采集器 TypeError（见 _split_strategy_keys）
-            collector = cls(**_split_strategy_keys(cfg))  # 未知/错误参数 -> TypeError 等
+            collector = _build_collector(cls, meta, cfg)  # 未知/错误参数 -> TypeError 等
             result.collectors.append(_attach_meta(collector, meta, cfg))
         except ConfigParseError as exc:
             logger.error(

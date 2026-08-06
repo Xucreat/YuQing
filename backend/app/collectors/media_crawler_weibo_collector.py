@@ -12,7 +12,10 @@ from zoneinfo import ZoneInfo
 
 from app.collectors.base import BaseCollector
 from app.collectors.mediacrawler_runner import MediaCrawlerRunner, MediaCrawlerRunResult
-from app.collectors.mediacrawler_runtime import MediaCrawlerRuntimeFactory
+from app.collectors.mediacrawler_runtime import (
+    MediaCrawlerRuntimeError,
+    MediaCrawlerRuntimeFactory,
+)
 from app.collectors.source_config import DataSourceConfig
 
 logger = logging.getLogger(__name__)
@@ -174,9 +177,12 @@ class MediaCrawlerWeiboCollector(BaseCollector):
         runtime_factory: MediaCrawlerRuntimeFactory | None = None,
         **_: Any,
     ) -> None:
+        if runner is None and fixture_path is None and runtime_factory is None:
+            raise MediaCrawlerRuntimeError("MediaCrawler runtime factory missing")
         self.runtime_factory = runtime_factory if runner is None and fixture_path is None else None
         self._runtime_lock = None
         self._runtime_trigger_type = "manual"
+        self._runtime_batch_id: str | None = None
         if runner is not None:
             self.runner = runner
         elif fixture_path is not None:
@@ -190,15 +196,39 @@ class MediaCrawlerWeiboCollector(BaseCollector):
         self.effective_keywords_source = "global"
         self.last_run_result: MediaCrawlerRunResult | None = None
 
-    def _ensure_runtime(self, trigger_type: str):
+    def _ensure_runtime(self, trigger_type: str, batch_id: str | None = None):
         if self.runtime_factory is None:
             if self.runner is None:
-                self.runner = MediaCrawlerRunner()
+                raise MediaCrawlerRuntimeError("MediaCrawler runtime factory missing")
             return self.runner, None
         normalized_trigger = "scheduler" if trigger_type in {"scheduled", "scheduler"} else "manual"
-        if self.runner is None or normalized_trigger != self._runtime_trigger_type:
-            self.runner, self._runtime_lock, _ = self.runtime_factory.create_runner(normalized_trigger)
+        if (
+            normalized_trigger == "scheduler"
+            and batch_id is None
+            and isinstance(self.runtime_factory, MediaCrawlerRuntimeFactory)
+        ):
+            raise MediaCrawlerRuntimeError(
+                "scheduled MediaCrawler runtime requires a Collector batch_id"
+            )
+        runtime_batch_changed = (
+            normalized_trigger == "scheduler"
+            and batch_id is not None
+            and batch_id != self._runtime_batch_id
+        )
+        if self.runner is None or normalized_trigger != self._runtime_trigger_type or runtime_batch_changed:
+            if batch_id is None:
+                # Preserve the lightweight factory contract used by older
+                # fixtures and manual callers.
+                self.runner, self._runtime_lock, _ = self.runtime_factory.create_runner(
+                    normalized_trigger,
+                )
+            else:
+                self.runner, self._runtime_lock, _ = self.runtime_factory.create_runner(
+                    normalized_trigger,
+                    batch_id=batch_id,
+                )
             self._runtime_trigger_type = normalized_trigger
+            self._runtime_batch_id = batch_id if normalized_trigger == "scheduler" else None
         return self.runner, self._runtime_lock
 
     def resolve_effective_keywords(
@@ -223,12 +253,18 @@ class MediaCrawlerWeiboCollector(BaseCollector):
         region_kw: Optional[list[str]] = None,
         topic_kw: Optional[list[str]] = None,
         global_keywords: Optional[list[str]] = None,
+        keyword_override: Optional[list[str]] = None,
         trigger_type: str = "manual",
         batch_id: str | None = None,
     ) -> list[dict[str, Any]]:
         del region_kw, topic_kw
-        runner, run_lock = self._ensure_runtime(trigger_type)
-        normalized = self.resolve_effective_keywords(keywords, global_keywords)
+        runner, run_lock = self._ensure_runtime(trigger_type, batch_id)
+        if keyword_override is not None:
+            normalized = normalize_keywords(keyword_override)
+            self.effective_keywords = normalized
+            self.effective_keywords_source = "round_robin"
+        else:
+            normalized = self.resolve_effective_keywords(keywords, global_keywords)
         configured_max_items = self.source_config.max_items(
             self.max_items if self.max_items is not None else DEFAULT_MAX_ITEMS
         )
@@ -246,16 +282,30 @@ class MediaCrawlerWeiboCollector(BaseCollector):
                 crawler_config={
                     "max_items": configured_max_items,
                     "effective_keywords_source": self.effective_keywords_source,
+                    "selected_keywords": normalized,
                 },
             )
-        self.last_run_result = result
-        MediaCrawlerRunner.append_log(
-            result.log_path,
-            f"effective_keywords_source={self.effective_keywords_source} "
-            f"keywords_count={len(normalized)}",
-        )
-        items = self._read_jsonl(result)
-        return items
+        try:
+            self.last_run_result = result
+            MediaCrawlerRunner.append_log(
+                result.log_path,
+                f"effective_keywords_source={self.effective_keywords_source} "
+                f"keywords_count={len(normalized)}",
+            )
+            items = self._read_jsonl(result)
+        except Exception:
+            # Failure evidence is intentionally retained for audit.
+            raise
+        else:
+            runtime_profile_path = getattr(runner, "runtime_profile_path", None)
+            runtime_profile_manager = getattr(runner, "runtime_profile_manager", None)
+            if runtime_profile_path is not None and runtime_profile_manager is not None:
+                try:
+                    runtime_profile_manager.cleanup_runtime_profile(runtime_profile_path)
+                finally:
+                    runner.runtime_profile_path = None
+                    runner.runtime_profile_manager = None
+            return items
 
     def update_batch_metrics(self, **updates: int | str | None) -> Path | None:
         """Persist CollectorService counters beside this batch's JSONL output."""

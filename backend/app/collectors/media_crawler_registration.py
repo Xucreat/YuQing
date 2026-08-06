@@ -18,8 +18,8 @@ MEDIACRAWLER_CLASS_PATH = (
 MEDIACRAWLER_CONFIG = {
     "collector": "mediacrawler",
     "platform": "weibo",
-    "keywords": ["大厂县"],
-    "max_items": 10,
+    "keywords": [],
+    "max_items": 20,
     "collection_scope": "national",
 }
 
