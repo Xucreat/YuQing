@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import json
 from typing import List
 
 from sqlalchemy import bindparam, select, text
@@ -23,6 +24,14 @@ from app.models.data_source import DataSource
 
 # scheduler / registry 共用的排除项：八爪鱼微博消费由独立 job 负责。
 EXCLUDED_KEYS = ("weibo_octopus",)
+
+
+def _is_foreign_config(raw: str | None) -> bool:
+    try:
+        value = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return False
+    return isinstance(value, dict) and value.get("is_foreign") is True
 
 
 def enabled_sources(db: Session) -> List[dict]:
@@ -50,7 +59,9 @@ def enabled_sources(db: Session) -> List[dict]:
         .mappings()
         .all()
     )
-    return [dict(r) for r in rows]
+    # Domestic CollectorService and the existing scheduler must never consume
+    # the isolated foreign pipeline, even if an operator later enables a source.
+    return [dict(r) for r in rows if not _is_foreign_config(r.get("config_json"))]
 
 
 def _normalize_include_keys(include_keys) -> tuple[str, ...] | None:
@@ -85,6 +96,7 @@ def due_scheduled_sources(
         WHERE enabled = true
           AND schedule_enabled = true
           AND key != 'weibo_octopus'
+          AND COALESCE((config_json::jsonb ->> 'is_foreign'), 'false') <> 'true'
           AND (next_collect_time IS NULL OR next_collect_time <= now())
     """
     statement = text(sql)
@@ -120,6 +132,7 @@ def scheduled_enabled_sources(
         WHERE enabled = true
           AND schedule_enabled = true
           AND key != 'weibo_octopus'
+          AND COALESCE((config_json::jsonb ->> 'is_foreign'), 'false') <> 'true'
     """
     statement = text(sql)
     params = {}

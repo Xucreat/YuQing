@@ -39,6 +39,11 @@ opinions_router = APIRouter(
 
 MAX_SIZE = 100
 
+# ===== Phase Opinion-Visibility-1：展示治理 =====
+# 默认舆情列表隐藏的低价值内容类型（数据仍保留，仅不默认展示）。
+# 注意：entertainment 不在其中——部分娱乐内容可能演化为公共事件，保持展示。
+LOW_VALUE_CONTENT_TYPES = frozenset({"irrelevant", "advertising"})
+
 
 @opinions_router.get("", response_model=OpinionListResponse)
 def list_opinions(
@@ -56,6 +61,7 @@ def list_opinions(
     sentiment: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    include_low_value: bool = False,
     db: Session = Depends(get_db),
 ) -> OpinionListResponse:
     """分页列表，支持来源 / 风险等级 / 关键词 / 发布日期过滤。
@@ -64,6 +70,12 @@ def list_opinions(
     因 opinions 表无 risk_level 列，按用户约束不改动数据库结构）。
     keyword 对 keywords / title / content 做模糊匹配。
     date_from / date_to 为 YYYY-MM-DD 字符串，按 publish_time 的日期部分过滤。
+
+    展示治理（Phase Opinion-Visibility-1）：默认隐藏 content_type 属于
+    LOW_VALUE_CONTENT_TYPES（irrelevant / advertising）的条目——这些历史/低价值
+    数据仍保留在库中（可审计、可统计），仅不出现在默认列表。管理员/审计可传
+    include_low_value=true 查看完整数据。不删除数据、不改动历史准入结果
+    （decision / admission_reason / content_type / risk_score 均不变）。
     """
     page = max(page, 1)
     size = max(min(size, MAX_SIZE), 1)
@@ -83,6 +95,16 @@ def list_opinions(
         stmt = stmt.where(Opinion.risk_score <= risk_max)
     if content_type:
         stmt = stmt.where(Opinion.content_type == content_type)
+    # 展示治理：默认隐藏低价值类型（irrelevant / advertising）。
+    # 保留 NULL content_type（新闻/政府等历史/普通源）始终可见；
+    # 显式指定 content_type 时尊重用户意图，不做隐藏。
+    if not include_low_value and content_type is None:
+        stmt = stmt.where(
+            or_(
+                Opinion.content_type.is_(None),
+                Opinion.content_type.notin_(LOW_VALUE_CONTENT_TYPES),
+            )
+        )
     if relevance_min is not None:
         stmt = stmt.where(Opinion.relevance_score >= relevance_min)
     if relevance_max is not None:

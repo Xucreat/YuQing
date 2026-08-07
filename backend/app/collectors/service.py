@@ -57,6 +57,7 @@ from app.services.risk_engine import RISK_MODEL_VERSION, RiskEngine
 from app.services.opinion_admission_service import OpinionAdmissionService
 from app.services.opinion_region_service import OpinionRegionService, is_national_scope
 from app.services.keyword_filter_service import KeywordFilterService
+from app.collectors.source_config import apply_keyword_scope
 
 # ---------------------------------------------------------------------------
 # Phase 3A temporary implementation.
@@ -299,10 +300,31 @@ class CollectorService:
         db: Session,
         collector: BaseCollector,
         monitoring_kw: List[str],
+        region_kw: Optional[List[str]] = None,
+        topic_kw: Optional[List[str]] = None,
     ) -> tuple[list[str], int | None]:
         """Return this run's MediaCrawler keyword and the cursor to persist."""
 
+        source_config = getattr(collector, "source_config", None)
+        keyword_scope = (
+            source_config.keyword_scope()
+            if source_config is not None
+            else None
+        )
+        scoped_region_kw, scoped_topic_kw = apply_keyword_scope(
+            keyword_scope,
+            region_kw,
+            topic_kw,
+        )
         all_keywords = collector.resolve_effective_keywords(None, monitoring_kw)
+        if keyword_scope is not None:
+            scoped_pool = normalize_keywords(
+                [*(scoped_region_kw or []), *(scoped_topic_kw or [])]
+            )
+            allowed = set(scoped_pool)
+            all_keywords = [
+                keyword for keyword in all_keywords if keyword in allowed
+            ]
         if not all_keywords:
             return [], None
 
@@ -314,7 +336,9 @@ class CollectorService:
         )
         # Injected collectors and legacy/manual callers may not have a DB row.
         if source is None:
-            return all_keywords, None
+            if keyword_scope is None:
+                return all_keywords, None
+            return [all_keywords[0]], None
 
         selected, next_cursor = select_round_robin_keyword(
             all_keywords, source.keyword_cursor
@@ -435,6 +459,7 @@ class CollectorService:
             collector_name=name,
             batch_id=batch_id,
             trigger_type=trigger_type,
+            scope="domestic",
             start_time=run_start,
             end_time=datetime.now(timezone.utc),
             status="failed",
@@ -481,6 +506,7 @@ class CollectorService:
             collector_name=collector.source_name,
             batch_id=batch_id,
             trigger_type=trigger_type,
+            scope="domestic",
             start_time=run_start,
             status="running",
         )
@@ -501,7 +527,11 @@ class CollectorService:
             if getattr(collector, "collector_capability", None) == MEDIACRAWLER_CAPABILITY:
                 # MediaCrawler resolves source-local > explicit runtime > global.
                 selected_keywords, mediacrawler_next_cursor = self._mediacrawler_keyword_turn(
-                    db, collector, monitoring_kw
+                    db,
+                    collector,
+                    monitoring_kw,
+                    region_kw,
+                    topic_kw,
                 )
                 items = collector.fetch(
                     keywords=None,

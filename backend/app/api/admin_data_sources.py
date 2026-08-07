@@ -116,6 +116,7 @@ _TYPE_CLASS_PATH: dict = {
     "gov_site": "app.collectors.generic_site.GenericSiteCollector",
     "search": "app.collectors.generic_site.GenericSiteCollector",
     "rss": "app.collectors.generic_site.GenericSiteCollector",
+    "foreign_rss": "app.collectors.foreign_rss.ForeignRSSCollector",
     "social": (
         "app.collectors.media_crawler_platform_collector."
         "MediaCrawlerPlatformCollector"
@@ -215,6 +216,54 @@ def _validate_collection_config(cfg: dict) -> str | None:
 
 def _is_generic(class_path: str) -> bool:
     return (class_path or "") == GENERIC_CLASS_PATH
+
+
+def _is_foreign(class_path: str) -> bool:
+    return "foreign_rss" in (class_path or "")
+
+
+FOREIGN_ALLOWED_KEYS = {
+    "is_foreign", "collector", "source_name", "feeds", "proxy_env", "enabled",
+    "schedule_enabled", "keywords", "collection_mode", "collection_scope",
+    "filter_mode", "keyword_scope", "max_items", "timeout", "max_content_length",
+    "request_interval", "max_retries", "fetch_full_text",
+}
+
+
+def _validate_foreign_config(cfg: dict) -> str | None:
+    if not isinstance(cfg, dict):
+        return "foreign config_json must be a JSON object"
+    if cfg.get("is_foreign") is not True:
+        return "foreign data source requires config_json.is_foreign=true"
+    feeds = cfg.get("feeds")
+    if not isinstance(feeds, list) or not any(str(v).strip() for v in feeds):
+        return "foreign data source requires at least one RSS feed"
+    if any(
+        not isinstance(v, str) or not v.strip().lower().startswith(("http://", "https://"))
+        for v in feeds
+        if str(v).strip()
+    ):
+        return "foreign RSS feeds must use http:// or https:// URLs"
+    keywords = cfg.get("keywords")
+    if not isinstance(keywords, list) or not any(str(v).strip() for v in keywords):
+        return "foreign data source requires at least one keyword"
+    unknown = sorted(set(cfg) - FOREIGN_ALLOWED_KEYS)
+    if unknown:
+        return f"foreign config_json contains unsupported keys: {', '.join(unknown)}"
+    proxy_env = cfg.get("proxy_env")
+    if proxy_env is not None and (
+        not isinstance(proxy_env, str)
+        or not proxy_env
+        or not proxy_env[0].isalpha()
+        or not proxy_env.replace("_", "").isalnum()
+        or proxy_env.upper() != proxy_env
+    ):
+        return "proxy_env must be an environment variable name"
+    if cfg.get("collection_mode") not in (None, "foreign"):
+        return "foreign data source cannot use domestic collection_mode"
+    if cfg.get("collection_scope") not in (None, "foreign"):
+        return "foreign data source cannot use domestic collection_scope"
+    return None
 
 
 def _is_mediacrawler(class_path: str) -> bool:
@@ -369,6 +418,17 @@ def _generic_keyword_strategy(raw_config: Any, region_keywords: list[str]) -> di
 
 
 def _keyword_strategy(ds: DataSource, region_keywords: list[str]) -> dict:
+    if _is_foreign(ds.class_path):
+        cfg, err = _parse_config_json(ds.config_json)
+        words = cfg.get("keywords", []) if not err and isinstance(cfg, dict) else []
+        if isinstance(words, str):
+            words = [word.strip() for word in words.split(",") if word.strip()]
+        return {
+            "keyword_mode": "foreign_keywords",
+            "keyword_source": "外网关键词库",
+            "effective_keywords": [str(word).strip() for word in (words or []) if str(word).strip()],
+            "keyword_description": "仅使用 foreign_keywords，不读取国内关键词",
+        }
     if _is_generic(ds.class_path):
         return _generic_keyword_strategy(ds.config_json, region_keywords)
     if ds.class_path in _FULL_COLLECTION_CLASS_PATHS:
@@ -424,6 +484,14 @@ def _effective_filter_strategy(ds: DataSource) -> dict:
     if not isinstance(cfg, dict):
         cfg = {}
 
+    if _is_foreign(ds.class_path):
+        return {
+            "configured_filter_mode": None,
+            "configured_keyword_scope": None,
+            "effective_filter_mode": "foreign_or",
+            "effective_keyword_scope": "foreign_keywords",
+            "source": "foreign_pipeline",
+        }
     if ds.class_path in NON_FILTER_STRATEGY_CLASS_PATHS:
         dcfg = DataSourceConfig(cfg, source_key=ds.key)
         return {
@@ -466,9 +534,9 @@ def _serialize(
         "scope_region_codes": ds.scope_region_codes,
         "region_codes": codes,
         "region_names": names,
-        "scope_display": "全国" if not codes else "、".join(names),
+        "scope_display": "外网" if _is_foreign(ds.class_path) else ("全国" if not codes else "、".join(names)),
         "config_json": ds.config_json,
-        "collector_kind": "generic" if _is_generic(ds.class_path) else "dedicated",
+        "collector_kind": "foreign" if _is_foreign(ds.class_path) else ("generic" if _is_generic(ds.class_path) else "dedicated"),
         # 缓存列（当前未被采集流程写回，可能为空）
         "last_run_at": ds.last_run_at.isoformat() if ds.last_run_at else None,
         "last_status": ds.last_status,
@@ -514,6 +582,15 @@ def _build_test(
     data_source_key: str | None = None,
 ) -> dict:
     """构建采集器并做一次轻量真实抓取校验。返回 {ok, error, verified, ...}。"""
+    if _is_foreign(class_path):
+        # Foreign sources are intentionally kept in a dry-run/gray-rollout state.
+        # Creating or editing one must never make a live network request.
+        return {
+            "ok": True,
+            "verified": False,
+            "network_test_skipped": True,
+            "note": "外网数据源跳过实时网络校验，仅执行结构校验",
+        }
     # 策略键（max_items/filter_mode/keyword_scope）不是构造函数参数，装配时由
     # registry 剥离后注入 source_config；此处若函数拿到的是完整 config_json，
     # 需同样剥离，否则专用型采集器会因未知关键字参数 TypeError。
@@ -615,6 +692,13 @@ def _validate_create(body) -> str | None:
     class_path = body.get("class_path") or _TYPE_CLASS_PATH.get(
         (body.get("type") or "generic_site"), GENERIC_CLASS_PATH
     )
+    if _is_foreign(class_path):
+        if _scope_to_codes(body.get("scope_region_codes")):
+            return "foreign data source must not use region scope"
+        cfg, err = _parse_config_json(raw_cfg)
+        if err:
+            return err
+        return _validate_foreign_config(cfg)
     if _is_mediacrawler(class_path):
         cfg, err = _parse_config_json(raw_cfg)
         if err:
@@ -653,6 +737,7 @@ def list_data_sources(
     q: str | None = None,
     enabled: bool | None = None,
     region_code: str | None = None,
+    is_foreign: bool | None = Query(None, description="按 config_json.is_foreign 过滤"),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("sources:read")),
 ):
@@ -664,6 +749,11 @@ def list_data_sources(
         stmt = stmt.where(or_(DataSource.name.like(like), DataSource.key.like(like)))
     if enabled is not None:
         stmt = stmt.where(DataSource.enabled == enabled)
+    foreign_like = '%"is_foreign": true%'
+    if is_foreign is True:
+        stmt = stmt.where(func.coalesce(DataSource.config_json, "").like(foreign_like))
+    elif is_foreign is False:
+        stmt = stmt.where(~func.coalesce(DataSource.config_json, "").like(foreign_like))
     if region_code:  # 具体区域：命中该 code 或全国(空)源
         stmt = stmt.where(
             or_(
@@ -685,9 +775,19 @@ def list_data_sources(
     latest: dict = {}
     runs_by_name: dict[str, list[CollectorRun]] = {name: [] for name in names}
     if names:
+        foreign_names = {row.name for row in rows if _is_foreign(row.class_path)}
+        run_scope_filter = or_(
+            *[
+                (CollectorRun.collector_name == name)
+                & (
+                    CollectorRun.scope == ("foreign" if name in foreign_names else "domestic")
+                )
+                for name in names
+            ]
+        )
         runs = db.scalars(
             select(CollectorRun)
-            .where(CollectorRun.collector_name.in_(names))
+            .where(run_scope_filter)
             .order_by(CollectorRun.start_time.desc())
         ).all()
         for r in runs:
@@ -858,8 +958,12 @@ def create_data_source(
     # —— 保存前的真实抓取校验（核心需求）——
     test = _build_test(class_path, cfg, data_source_key=key)
     media_crawler_source = _is_mediacrawler(class_path)
+    foreign_source = _is_foreign(class_path)
     schedule_enabled = bool(
-        body.get("schedule_enabled", False if media_crawler_source else True)
+        body.get(
+            "schedule_enabled",
+            False if media_crawler_source or foreign_source else True,
+        )
     )
     schedule_interval_minutes = int(
         body.get("schedule_interval_minutes", 30)
@@ -883,7 +987,9 @@ def create_data_source(
             name=name,
             type=type_,
             class_path=class_path,
-            enabled=bool(body.get("enabled", True)),
+            enabled=bool(
+                body.get("enabled", False if foreign_source else True)
+            ),
             priority=int(body.get("priority", 50)),
             schedule_enabled=schedule_enabled,
             schedule_interval_minutes=schedule_interval_minutes,
@@ -946,6 +1052,12 @@ def batch_update_schedule(
                  "schedule_interval_minutes": iv, "count": len(targets)},
     ):
         for ds in targets:
+            if _is_foreign(ds.class_path) and se is True:
+                # Foreign collection has an isolated manual endpoint in Phase 1.
+                # Keep it out of the domestic scheduler even if a batch setting
+                # is applied from the existing domestic UI.
+                ds.schedule_enabled = False
+                continue
             if se is not None:
                 ds.schedule_enabled = bool(se)
             if iv is not None:
@@ -1012,15 +1124,33 @@ def update_data_source(
         scope_codes = _scope_to_codes(ds.scope_region_codes)
         if "scope_region_codes" in body:
             scope_codes = _validated_scope_codes(body["scope_region_codes"])
+            if _is_foreign(ds.class_path) and scope_codes:
+                raise HTTPException(
+                    status_code=422,
+                    detail="foreign data source must not use region scope",
+                )
             sync_region_codes(db, scope_codes)
             ds.scope_region_codes = ",".join(scope_codes) or None
             if _is_mediacrawler(ds.class_path) and "config_json" not in body:
                 cfg, err = _parse_config_json(ds.config_json or "{}")
                 if not err and isinstance(cfg, dict):
-                    ds.config_json = json.dumps(
-                        _align_mediacrawler_collection_mode(ds, cfg, scope_codes),
-                        ensure_ascii=False,
-                    )
+                    aligned = _align_mediacrawler_collection_mode(ds, cfg, scope_codes)
+                    # 与下方 config_json 分支共用同一道校验：_align 会在 regional/national
+                    # 之间翻转 collection_mode，若库中既有的 filter_mode/keyword_scope 与新
+                    # 模式矛盾（如 national + region_only），此处必须拒绝。否则非法配置会静默
+                    # 落库，直到下一次采集在 registry 装配阶段才抛 ValueError，表现为该源每个
+                    # 调度周期失败一次（小红书 2026-08-07 15:40 采集失败即由此产生）。
+                    merr = _validate_mediacrawler_config(aligned, ds.scope_region_codes)
+                    if merr:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=(
+                                f"{merr}；修改地域范围会同时把 collection_mode 切换为 "
+                                f"{aligned.get('collection_mode')}，请一并调整 config_json "
+                                "中的 filter_mode / keyword_scope"
+                            ),
+                        )
+                    ds.config_json = json.dumps(aligned, ensure_ascii=False)
         if "enabled" in body and body["enabled"] is not None:
             ds.enabled = bool(body["enabled"])
         if "priority" in body and body["priority"] is not None:
@@ -1051,6 +1181,19 @@ def update_data_source(
                     ds.config_json = json.dumps(raw, ensure_ascii=False)
                 else:
                     raise HTTPException(status_code=422, detail="config_json must be a JSON object")
+            elif _is_foreign(ds.class_path):
+                if raw is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="foreign data source requires config_json",
+                    )
+                cfg, err = _parse_config_json(raw)
+                if err:
+                    raise HTTPException(status_code=422, detail=err)
+                ferr = _validate_foreign_config(cfg)
+                if ferr:
+                    raise HTTPException(status_code=422, detail=ferr)
+                ds.config_json = json.dumps(cfg, ensure_ascii=False)
             elif _is_generic(ds.class_path):
                 # 通用型（GenericSiteCollector）：允许设置合法 config；禁止清空
                 if raw is None:
@@ -1130,7 +1273,17 @@ def update_data_source(
 
         # —— Phase DataSource-Schedule-1：采集频率字段 ——
         if "schedule_enabled" in body and body["schedule_enabled"] is not None:
-            ds.schedule_enabled = bool(body["schedule_enabled"])
+            requested_schedule = bool(body["schedule_enabled"])
+            if _is_foreign(ds.class_path) and requested_schedule:
+                cfg, err = _parse_config_json(ds.config_json or "{}")
+                ferr = err or _validate_foreign_config(cfg)
+                if ferr:
+                    raise HTTPException(status_code=422, detail=ferr)
+                # Foreign scheduling remains opt-in and is never enabled by
+                # domestic batch settings or legacy defaults.
+                ds.schedule_enabled = False
+            else:
+                ds.schedule_enabled = requested_schedule
         if "schedule_interval_minutes" in body and body["schedule_interval_minutes"] is not None:
             try:
                 iv = int(body["schedule_interval_minutes"])
@@ -1147,6 +1300,14 @@ def update_data_source(
                 f"now() + make_interval(mins => {ds.schedule_interval_minutes})"
             )
 
+        if _is_foreign(ds.class_path) and (
+            body.get("enabled") is True or ds.enabled and body.get("schedule_enabled") is True
+        ):
+            cfg, err = _parse_config_json(ds.config_json or "{}")
+            ferr = err or _validate_foreign_config(cfg)
+            if ferr:
+                raise HTTPException(status_code=422, detail=ferr)
+
         db.commit()
     db.refresh(ds)
     region_map = _region_map(db)
@@ -1162,6 +1323,8 @@ def _run_to_dict(r: CollectorRun) -> dict:
     return {
         "id": r.id,
         "collector_name": r.collector_name,
+        "scope": getattr(r, "scope", "domestic"),
+        "proxy_used": bool(getattr(r, "proxy_used", False)),
         "batch_id": r.batch_id,
         "trigger_type": r.trigger_type,
         "start_time": r.start_time.isoformat() if r.start_time else None,
@@ -1197,7 +1360,11 @@ def data_source_runs(
     if not ds:
         raise HTTPException(status_code=404, detail="Data source not found")
 
-    stmt = select(CollectorRun).where(CollectorRun.collector_name == ds.name)
+    run_scope = "foreign" if _is_foreign(ds.class_path) else "domestic"
+    stmt = select(CollectorRun).where(
+        CollectorRun.collector_name == ds.name,
+        CollectorRun.scope == run_scope,
+    )
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(
         stmt.order_by(CollectorRun.start_time.desc())
@@ -1215,6 +1382,7 @@ def collection_logs(
     status: str | None = Query(None, description="success / partial / failed / running"),
     from_: str | None = Query(None, alias="from", description="ISO 起始时间（含）"),
     to: str | None = Query(None, description="ISO 结束时间（含）"),
+    scope: str = Query("domestic", description="domestic / foreign"),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("sources:read")),
 ):
@@ -1223,32 +1391,38 @@ def collection_logs(
     批次键 = COALESCE(batch_id, start_time::text)。当前数据量小（百级批次），
     全量聚合后在 Python 侧做筛选与分页，逻辑更清晰。
     """
-    batch_key = func.coalesce(CollectorRun.batch_id, func.cast(CollectorRun.start_time, String)).label("batch_key")
+    if scope not in {"domestic", "foreign"}:
+        raise HTTPException(status_code=422, detail="scope must be domestic or foreign")
+    scoped_runs = select(CollectorRun).where(CollectorRun.scope == scope).subquery()
+    batch_key = func.coalesce(
+        scoped_runs.c.batch_id,
+        func.cast(scoped_runs.c.start_time, String),
+    ).label("batch_key")
     rows = db.execute(
         select(
             batch_key,
-            func.min(CollectorRun.start_time).label("started_at"),
-            func.max(CollectorRun.end_time).label("finished_at"),
-            func.count().label("source_count"),
-            func.sum(CollectorRun.fetched_raw).label("fetched_raw"),
-            func.sum(CollectorRun.upstream_total).label("upstream_total"),
-            func.sum(CollectorRun.upstream_returned).label("upstream_returned"),
-            func.sum(CollectorRun.created).label("created"),
-            func.sum(CollectorRun.duplicate).label("duplicate"),
-            func.sum(CollectorRun.analyzed).label("analyzed"),
-            func.sum(CollectorRun.acknowledged).label("acknowledged"),
-            func.sum(CollectorRun.unconfirmed).label("unconfirmed"),
-            func.sum(CollectorRun.comments_seen).label("comments_seen"),
-            func.sum(CollectorRun.comments_skipped).label("comments_skipped"),
-            func.sum(CollectorRun.admission_filtered).label("admission_filtered"),
-            func.max(CollectorRun.ack_status).label("ack_status"),
-            func.sum(case((CollectorRun.status == "success", 1), else_=0)).label("success_count"),
-            func.sum(case((CollectorRun.status == "partial", 1), else_=0)).label("partial_count"),
-            func.sum(case((CollectorRun.status == "warning", 1), else_=0)).label("warning_count"),
-            func.sum(case((CollectorRun.status.in_(["failed", "error"]), 1), else_=0)).label("failed_count"),
-            func.sum(case((CollectorRun.status == "running", 1), else_=0)).label("running_count"),
-            func.max(CollectorRun.trigger_type).label("trigger_type"),
-            func.max(CollectorRun.batch_id).label("batch_id"),
+            func.min(scoped_runs.c.start_time).label("started_at"),
+            func.max(scoped_runs.c.end_time).label("finished_at"),
+            func.count(scoped_runs.c.id).label("source_count"),
+            func.sum(scoped_runs.c.fetched_raw).label("fetched_raw"),
+            func.sum(scoped_runs.c.upstream_total).label("upstream_total"),
+            func.sum(scoped_runs.c.upstream_returned).label("upstream_returned"),
+            func.sum(scoped_runs.c.created).label("created"),
+            func.sum(scoped_runs.c.duplicate).label("duplicate"),
+            func.sum(scoped_runs.c.analyzed).label("analyzed"),
+            func.sum(scoped_runs.c.acknowledged).label("acknowledged"),
+            func.sum(scoped_runs.c.unconfirmed).label("unconfirmed"),
+            func.sum(scoped_runs.c.comments_seen).label("comments_seen"),
+            func.sum(scoped_runs.c.comments_skipped).label("comments_skipped"),
+            func.sum(scoped_runs.c.admission_filtered).label("admission_filtered"),
+            func.max(scoped_runs.c.ack_status).label("ack_status"),
+            func.sum(case((scoped_runs.c.status == "success", 1), else_=0)).label("success_count"),
+            func.sum(case((scoped_runs.c.status == "partial", 1), else_=0)).label("partial_count"),
+            func.sum(case((scoped_runs.c.status == "warning", 1), else_=0)).label("warning_count"),
+            func.sum(case((scoped_runs.c.status.in_(["failed", "error"]), 1), else_=0)).label("failed_count"),
+            func.sum(case((scoped_runs.c.status == "running", 1), else_=0)).label("running_count"),
+            func.max(scoped_runs.c.trigger_type).label("trigger_type"),
+            func.max(scoped_runs.c.batch_id).label("batch_id"),
         ).group_by(batch_key)
     ).all()
 
@@ -1330,6 +1504,7 @@ def collection_log_runs(
     batch_key: str,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    scope: str = Query("domestic", description="domestic / foreign"),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("sources:read")),
 ):
@@ -1338,8 +1513,13 @@ def collection_log_runs(
     batch_key 为 COALESCE(batch_id, start_time::text)：新数据用 batch_id，
     历史数据用 start_time 文本。前端传参需 encodeURIComponent（start_time 含空格）。
     """
+    if scope not in {"domestic", "foreign"}:
+        raise HTTPException(status_code=422, detail="scope must be domestic or foreign")
     key_expr = func.coalesce(CollectorRun.batch_id, func.cast(CollectorRun.start_time, String))
-    stmt = select(CollectorRun).where(key_expr == batch_key)
+    stmt = select(CollectorRun).where(
+        key_expr == batch_key,
+        CollectorRun.scope == scope,
+    )
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(
         stmt.order_by(CollectorRun.start_time.desc(), CollectorRun.id)

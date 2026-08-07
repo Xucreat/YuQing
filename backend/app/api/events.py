@@ -471,11 +471,6 @@ def delete_event(
     db.commit()
     return {"detail": "Event deleted", "id": event_id}
 
-@events_router.get(
-    "",
-    response_model=EventListResponse,
-    status_code=status.HTTP_200_OK,
-)
 def _parse_event_dt(raw: Optional[str], end_of_day: bool = False) -> Optional[datetime]:
     """将前端传入的时间字符串解析为 datetime。
 
@@ -498,6 +493,11 @@ def _parse_event_dt(raw: Optional[str], end_of_day: bool = False) -> Optional[da
     return None
 
 
+@events_router.get(
+    "",
+    response_model=EventListResponse,
+    status_code=status.HTTP_200_OK,
+)
 def list_events(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=MAX_SIZE),

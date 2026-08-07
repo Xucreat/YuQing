@@ -34,7 +34,10 @@ XHS_MEDIACRAWLER_CONFIG = {
     "platform": "xiaohongshu",
     "crawler_type": "search",
     "login_type": "qrcode",
-    "keywords": ["大厂", "廊坊大厂"],
+    # Empty means the enabled global monitoring keywords are resolved at run time.
+    # Keeping a private list here would bypass the shared keyword/cursor policy
+    # whenever this disabled-by-default registration is applied to a new DB.
+    "keywords": [],
     "max_items": 20,
     "get_comment": False,
     "get_sub_comment": False,

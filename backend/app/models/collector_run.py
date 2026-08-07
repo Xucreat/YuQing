@@ -1,5 +1,5 @@
 ﻿from datetime import datetime, timezone
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -12,6 +12,13 @@ class CollectorRun(Base):
     batch_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     # 触发方式：'manual'（手动采集）/ 'scheduled'（定时任务）。历史数据为 NULL。
     trigger_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Explicitly separates the domestic and foreign collection log streams.
+    scope: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="domestic", server_default="domestic", index=True
+    )
+    proxy_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     fetched_raw: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

@@ -698,7 +698,7 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 
 /* Phase 2-E-3：运营状态快捷筛选 chips（纯前端过滤） */
 .quick-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-.quick-filters-note { margin-left: auto; color: #86868b; font-size: 12px; }
+.quick-filters-note { margin-left: 10px; color: #86868b; font-size: 12px; }
 .chip {
   height: 32px; padding: 0 14px; border: 1px solid #d2d2d7; border-radius: 980px;
   background: #fff; color: #1d1d1f; font-size: 13px; font-weight: 500; cursor: pointer;

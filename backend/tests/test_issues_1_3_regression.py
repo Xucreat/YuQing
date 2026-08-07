@@ -75,7 +75,7 @@ def test_law_enforcement_harm_rule_chain_matches_2448_and_rejects_policy_copy() 
         assert not has_actual_harm_indicator(prevention, HARM_INDICATOR_KEYWORDS)
 
 
-def test_mediacrawler_weibo_region_contract_requires_langfang_regional_scope() -> None:
+def test_mediacrawler_weibo_region_contract_supports_explicit_national_scope() -> None:
     valid = {
         "collector": "mediacrawler",
         "platform": "weibo",
@@ -89,13 +89,7 @@ def test_mediacrawler_weibo_region_contract_requires_langfang_regional_scope() -
     national = dict(valid)
     national["collection_scope"] = "national"
     national["collection_mode"] = "national"
-    try:
-        validate_mediacrawler_region_contract(national, None)
-    except ValueError as exc:
-        assert "regional" in str(exc)
-        assert "131000" in str(exc) or "national" in str(exc)
-    else:
-        raise AssertionError("national + empty scope must be rejected")
+    assert validate_mediacrawler_region_contract(national, None) == national
 
 
 def test_weibo_round_robin_pool_keeps_langfang_county_keywords() -> None:

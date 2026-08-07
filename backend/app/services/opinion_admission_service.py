@@ -36,9 +36,14 @@ class AdmissionResult:
 class OpinionAdmissionService:
     """Pure rule-based admission service.
 
-    Non-weibo sources are allowed by compatibility policy. Weibo posts are scored
-    more strictly to prevent keyword recall pollution.
+    Social posts (weibo_post, xhs_note, …) enter the content-scoring/classification
+    path so their type and admission reason vary by content. Other sources are
+    allowed by a compatibility default-allow policy.
     """
+
+    # 进入「社交内容评分+分类」统一路径的 source_type 集合。
+    # 微博、小红书同款处理；后续可扩展抖音等社交平台。
+    SOCIAL_POST_TYPES = frozenset({"weibo_post", "xhs_note"})
 
     DEFAULT_REGION_WORDS = (
         "廊坊", "广阳", "安次", "固安", "永清", "香河", "大城", "文安", "大厂", "三河", "霸州",
@@ -107,7 +112,7 @@ class OpinionAdmissionService:
                 },
             )
 
-        if source_type != "weibo_post":
+        if source_type not in self.SOCIAL_POST_TYPES:
             # National-Mode-4：显式 national 模式不再要求地域相关性。
             # 采集阶段已完成 topic_only 过滤（无主题稿已被 collector 前置拦截），
             # 因此到达此处的 national 条目视为已通过主题相关性，直接准入。
@@ -257,7 +262,8 @@ class OpinionAdmissionService:
         if not isinstance(engagement, dict):
             return 0
         total = 0
-        for key in ("likes", "comments", "reposts"):
+        # 互动量包含微博的 likes/comments/reposts，以及小红书的 collections（收藏）。
+        for key in ("likes", "comments", "reposts", "collections"):
             try:
                 total += int(engagement.get(key) or 0)
             except (TypeError, ValueError):

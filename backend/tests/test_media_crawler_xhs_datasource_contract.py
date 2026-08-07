@@ -41,7 +41,7 @@ def test_xhs_registration_payload_is_formal_and_disabled_by_default() -> None:
         "media_crawler_platform_collector.MediaCrawlerPlatformCollector"
     )
     assert parse_mediacrawler_config(payload["config_json"]) == XHS_MEDIACRAWLER_CONFIG
-    assert payload["scope_region_codes"] == "131028"
+    assert payload["scope_region_codes"] is None
 
 
 def test_weibo_registration_payload_and_class_path_remain_unchanged() -> None:
@@ -107,7 +107,7 @@ def test_registry_resolves_xhs_through_generic_capability(monkeypatch) -> None:
             "app.collectors.media_crawler_platform_collector."
             "MediaCrawlerPlatformCollector"
         ),
-        "scope_region_codes": "131028",
+        "scope_region_codes": None,
         "config_json": json.dumps(XHS_MEDIACRAWLER_CONFIG, ensure_ascii=False),
     }
     monkeypatch.setattr(data_source_repository, "enabled_sources", lambda _db: [row])
@@ -128,7 +128,7 @@ def test_admin_contract_accepts_social_xhs_without_real_collection() -> None:
         "key": XHS_MEDIACRAWLER_DATA_SOURCE_KEY,
         "name": "小红书（MediaCrawler）",
         "type": "social",
-        "scope_region_codes": "131028",
+        "scope_region_codes": None,
         "schedule_enabled": False,
         "config_json": XHS_MEDIACRAWLER_CONFIG,
     }

@@ -24,6 +24,8 @@ from app.models.permission import Permission
 from app.models.audit import LoginLog, OperationLog
 from app.models.report_record import ReportRecord
 from app.models.report_template import ReportTemplate
+from app.models.foreign_keyword import ForeignKeyword
+from app.models.foreign_opinion import ForeignOpinion
 
 __all__ = [
     "Base",
@@ -49,4 +51,6 @@ __all__ = [
     "OperationLog",
     "ReportRecord",
     "ReportTemplate",
+    "ForeignKeyword",
+    "ForeignOpinion",
 ]

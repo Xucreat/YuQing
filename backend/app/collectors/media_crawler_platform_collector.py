@@ -8,10 +8,12 @@ from typing import Any, Iterable, Optional
 
 from app.collectors.base import BaseCollector
 from app.collectors.mediacrawler_normalizers import (
+    build_mediacrawler_filter_text,
     get_mediacrawler_normalizer,
     normalize_keywords,
     resolve_effective_keywords,
 )
+from app.collectors.common import matches_region_topic
 from app.collectors.mediacrawler_platform import (
     MEDIACRAWLER_CAPABILITY,
     MediaCrawlerConfigurationError,
@@ -23,7 +25,7 @@ from app.collectors.mediacrawler_runtime import (
     MediaCrawlerRuntimeError,
     MediaCrawlerRuntimeFactory,
 )
-from app.collectors.source_config import DataSourceConfig
+from app.collectors.source_config import FILTER_MODES, DataSourceConfig, apply_keyword_scope
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +145,7 @@ class MediaCrawlerPlatformCollector(BaseCollector):
         self.effective_max_items: int | None = None
         self.effective_keywords: list[str] = []
         self.effective_keywords_source = "global"
+        self.last_filter_skipped = 0
         self.last_run_result: MediaCrawlerRunResult | None = None
 
     def _ensure_runtime(self, trigger_type: str, batch_id: str | None = None):
@@ -190,11 +193,18 @@ class MediaCrawlerPlatformCollector(BaseCollector):
         self,
         runtime_keywords: Optional[Iterable[Any]] = None,
         global_keywords: Optional[Iterable[Any]] = None,
+        *,
+        keyword_scope: Optional[str] = None,
+        region_keywords: Optional[Iterable[Any]] = None,
+        topic_keywords: Optional[Iterable[Any]] = None,
     ) -> list[str]:
         keywords, source = resolve_effective_keywords(
             runtime_keywords,
             self.source_config,
             global_keywords,
+            keyword_scope=keyword_scope,
+            region_keywords=region_keywords,
+            topic_keywords=topic_keywords,
         )
         self.effective_keywords = keywords
         self.effective_keywords_source = source
@@ -210,14 +220,42 @@ class MediaCrawlerPlatformCollector(BaseCollector):
         trigger_type: str = "manual",
         batch_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        del region_kw, topic_kw
+        if keyword_override is not None and not normalize_keywords(keyword_override):
+            self.effective_keywords = []
+            self.effective_keywords_source = "round_robin_empty_scope"
+            self.last_filter_skipped = 0
+            logger.warning(
+                "MediaCrawler search skipped because the scoped keyword pool is empty "
+                "platform=%s source=%s",
+                self.platform,
+                self.data_source_key,
+            )
+            return []
+
         runner, run_lock = self._ensure_runtime(trigger_type, batch_id)
+        keyword_scope = self.source_config.keyword_scope()
+        scoped_region_kw, scoped_topic_kw = apply_keyword_scope(
+            keyword_scope,
+            region_kw,
+            topic_kw,
+        )
+        filter_mode = self.source_config.get_str(
+            "filter_mode",
+            None,
+            allowed=FILTER_MODES,
+        )
         if keyword_override is not None:
             normalized = normalize_keywords(keyword_override)
             self.effective_keywords = normalized
             self.effective_keywords_source = "round_robin"
         else:
-            normalized = self.resolve_effective_keywords(keywords, global_keywords)
+            normalized = self.resolve_effective_keywords(
+                keywords if keyword_override is None else None,
+                global_keywords,
+                keyword_scope=keyword_scope,
+                region_keywords=region_kw,
+                topic_keywords=topic_kw,
+            )
         configured_max_items = self.source_config.max_items(
             self.max_items if self.max_items is not None else DEFAULT_MAX_ITEMS
         )
@@ -263,7 +301,12 @@ class MediaCrawlerPlatformCollector(BaseCollector):
                 f"effective_keywords_source={self.effective_keywords_source} "
                 f"keywords_count={len(normalized)}",
             )
-            items = self._read_jsonl(result)
+            items = self._read_jsonl(
+                result,
+                region_kw=scoped_region_kw,
+                topic_kw=scoped_topic_kw,
+                filter_mode=filter_mode,
+            )
         except Exception:
             # Failure evidence is intentionally retained for audit.
             raise
@@ -297,11 +340,19 @@ class MediaCrawlerPlatformCollector(BaseCollector):
     def update_batch_metrics(self, **updates: int | str | None) -> Path | None:
         return self.runner.update_metrics(**updates)
 
-    def _read_jsonl(self, result: MediaCrawlerRunResult) -> list[dict[str, Any]]:
+    def _read_jsonl(
+        self,
+        result: MediaCrawlerRunResult,
+        *,
+        region_kw: Optional[list[str]] = None,
+        topic_kw: Optional[list[str]] = None,
+        filter_mode: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
         read_count = 0
         parsed_count = 0
         failed_count = 0
         duplicate_count = 0
+        filter_skipped = 0
         items: list[dict[str, Any]] = []
         seen: set[str] = set()
 
@@ -327,6 +378,17 @@ class MediaCrawlerPlatformCollector(BaseCollector):
                     item = self._normalize_row(row)
                     if item is None:
                         raise ValueError("content is empty")
+                    if (
+                        filter_mode is not None
+                        and not matches_region_topic(
+                            build_mediacrawler_filter_text(row, item),
+                            region_kw or [],
+                            topic_kw or [],
+                            match_mode=filter_mode,
+                        )
+                    ):
+                        filter_skipped += 1
+                        continue
                 except (json.JSONDecodeError, TypeError, ValueError) as exc:
                     failed_count += 1
                     MediaCrawlerRunner.append_log(
@@ -348,11 +410,15 @@ class MediaCrawlerPlatformCollector(BaseCollector):
             result.log_path,
             f"batch_id={result.batch_id} read_count={read_count} "
             f"success_count={parsed_count} failed_count={failed_count} "
-            f"duplicate_count={duplicate_count} returned_count={len(items)}",
+            f"duplicate_count={duplicate_count} filter_skipped={filter_skipped} "
+            f"returned_count={len(items)}",
         )
+        self.last_filter_skipped = filter_skipped
+        self.update_batch_metrics(filter_skipped=filter_skipped)
         logger.info(
             "MediaCrawler JSONL parsed platform=%s batch_id=%s jsonl_path=%s "
-            "read_count=%s success_count=%s failed_count=%s duplicate_count=%s",
+            "read_count=%s success_count=%s failed_count=%s duplicate_count=%s "
+            "filter_skipped=%s",
             self.platform,
             result.batch_id,
             result.output_path,
@@ -360,6 +426,7 @@ class MediaCrawlerPlatformCollector(BaseCollector):
             parsed_count,
             failed_count,
             duplicate_count,
+            filter_skipped,
         )
         return items
 

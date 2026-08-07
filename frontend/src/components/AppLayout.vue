@@ -236,6 +236,7 @@ type MenuEntry = {
 const menuItems = computed<MenuEntry[]>(() => [
   { to: '/dashboard', label: '驾驶舱', icon: '▤' },
   { to: '/opinions', label: '舆情列表', icon: '☰' },
+  { to: '/foreign', label: '外网舆情', icon: '◎', visible: hasDataPerm.value },
   { to: '/ai-search', label: 'AI检索', icon: 'AI', visible: hasAiSearchPerm.value },
   { to: '/events', label: '事件中心', icon: '⚠' },
   { to: '/alerts', label: '预警中心', icon: '🔔' },
@@ -266,6 +267,7 @@ const pageTitle = computed(() => {
   const m: Record<string, string> = {
     '/dashboard': '驾驶舱',
     '/opinions': '舆情列表',
+    '/foreign': '外网舆情',
     '/ai-search': 'AI检索',
     '/events': '事件中心',
     '/alerts': '预警中心',
@@ -292,6 +294,7 @@ const pageSub = computed(() => {
   const m: Record<string, string> = {
     '/dashboard': '互联网舆情监测总览',
     '/opinions': '查看和管理所有舆情信息',
+    '/foreign': '独立外网采集、去重、存储与展示',
     '/ai-search': '主动搜索外部舆情线索',
     '/events': '跟踪和管理舆情事件',
     '/alerts': '预警规则配置与预警记录',

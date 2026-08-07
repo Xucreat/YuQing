@@ -12,7 +12,7 @@ from app.collectors.mediacrawler_platform import (
     MediaCrawlerPlatformSpec,
     get_mediacrawler_platform_spec,
 )
-from app.collectors.source_config import DataSourceConfig
+from app.collectors.source_config import DataSourceConfig, apply_keyword_scope
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
@@ -44,6 +44,10 @@ def resolve_effective_keywords(
     runtime_keywords: Optional[Iterable[Any]],
     source_config: DataSourceConfig | dict[str, Any] | None,
     global_keywords: Optional[Iterable[Any]] = None,
+    *,
+    keyword_scope: Optional[str] = None,
+    region_keywords: Optional[Iterable[Any]] = None,
+    topic_keywords: Optional[Iterable[Any]] = None,
 ) -> tuple[list[str], str]:
     if isinstance(source_config, DataSourceConfig):
         raw_config = source_config.raw
@@ -54,19 +58,78 @@ def resolve_effective_keywords(
 
     source_keywords = normalize_keywords(raw_config.get("keywords"))
     if source_keywords:
-        return source_keywords, "datasource"
+        resolved = source_keywords
+        source = "datasource"
+    else:
+        explicit_keywords = normalize_keywords(runtime_keywords)
+        if explicit_keywords:
+            resolved = explicit_keywords
+            source = "runtime"
+        else:
+            resolved = normalize_keywords(global_keywords)
+            source = "global"
 
-    explicit_keywords = normalize_keywords(runtime_keywords)
-    if explicit_keywords:
-        return explicit_keywords, "runtime"
+    if keyword_scope is None:
+        return resolved, source
 
-    return normalize_keywords(global_keywords), "global"
+    scoped_region, scoped_topic = apply_keyword_scope(
+        keyword_scope,
+        normalize_keywords(region_keywords),
+        normalize_keywords(topic_keywords),
+    )
+    allowed = set(normalize_keywords([*(scoped_region or []), *(scoped_topic or [])]))
+    return [keyword for keyword in resolved if keyword in allowed], (
+        f"{source}:keyword_scope={keyword_scope}"
+    )
 
 
 def _text(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _flatten_filter_values(value: Any) -> list[str]:
+    """Extract searchable text from scalar, collection, or mapping values."""
+
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        values: list[str] = []
+        for nested in value.values():
+            values.extend(_flatten_filter_values(nested))
+        return values
+    if isinstance(value, (list, tuple, set)):
+        values: list[str] = []
+        for nested in value:
+            values.extend(_flatten_filter_values(nested))
+        return values
+    text = _text(value)
+    return [text] if text else []
+
+
+def build_mediacrawler_filter_text(
+    row: dict[str, Any],
+    normalized_item: dict[str, Any],
+) -> str:
+    """Build one filter text from normalized content and social metadata."""
+
+    parts: list[str] = []
+    for value in (normalized_item.get("title"), normalized_item.get("content")):
+        parts.extend(_flatten_filter_values(value))
+    for field in (
+        "title",
+        "content",
+        "desc",
+        "description",
+        "text",
+        "hashtags",
+        "tags",
+        "topic",
+        "comments",
+    ):
+        parts.extend(_flatten_filter_values(row.get(field)))
+    return " ".join(dict.fromkeys(parts))
 
 
 def first_sentence(content: str, limit: int = 100) -> str:

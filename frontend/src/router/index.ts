@@ -25,6 +25,12 @@ const router = createRouter({
       component: () => import('@/views/Opinions.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/foreign',
+      name: 'foreign',
+      component: () => import('@/views/ForeignWorkspace.vue'),
+      meta: { requiresAuth: true, module: ['keywords', 'sources'] },
+    },
     // AI 检索：需 ai:search（后端 /bocha/*、/anspire/* 已同步收敛为 ai:search）
     {
       path: '/ai-search',
@@ -175,4 +181,3 @@ router.beforeEach((to) => {
 })
 
 export default router
-

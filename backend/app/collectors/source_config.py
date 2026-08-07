@@ -58,6 +58,10 @@ FILTER_MODES: frozenset = frozenset({"region_only", "region_or_topic", "topic_on
 
 # 关键词范围合法取值。
 KEYWORD_SCOPES: frozenset = frozenset({"region", "region_topic", "topic"})
+KEYWORD_SCOPE_ALIASES: dict[str, str] = {
+    "region_only": "region",
+    "topic_only": "topic",
+}
 
 # ---------------------------------------------------------------------------
 # 采集模式（Phase DataSource-National-Mode-3）
@@ -71,9 +75,10 @@ COLLECTION_MODES: frozenset = frozenset({"regional", "national"})
 COLLECTION_SCOPES: frozenset = COLLECTION_MODES
 # 缺省采集模式：区域（与历史行为一致；旧数据无 collection_mode 即按 regional 解释）。
 DEFAULT_COLLECTION_MODE: str = "regional"
-# 全国模式下，filter_mode 仅允许的取值（避免「全国 + 地域过滤」的矛盾组合）。
+# 保留历史常量供兼容调用方使用；MediaCrawler national 不再用它们限制
+# keyword_scope/filter_mode。采集覆盖范围与过滤策略由不同配置键分别负责。
 NATIONAL_FILTER_MODES: frozenset = frozenset({"topic_only"})
-# 全国模式下，keyword_scope 仅允许的取值。
+# 历史 canonical national keyword scope。
 NATIONAL_KEYWORD_SCOPES: frozenset = frozenset({"topic"})
 
 # ---------------------------------------------------------------------------
@@ -257,7 +262,12 @@ class DataSourceConfig:
 
     def keyword_scope(self, default: Optional[str] = None) -> Optional[str]:
         """关键词范围：region / region_topic / topic。None = 不裁剪（旧行为）。"""
-        return self.get_str("keyword_scope", default, allowed=KEYWORD_SCOPES)
+        value = self.get_str(
+            "keyword_scope",
+            default,
+            allowed=(*KEYWORD_SCOPES, *KEYWORD_SCOPE_ALIASES),
+        )
+        return KEYWORD_SCOPE_ALIASES.get(value, value)
 
     # -- 采集模式（Phase DataSource-National-Mode-3） ----------------------
     def collection_mode(self, default: str = DEFAULT_COLLECTION_MODE) -> str:
@@ -303,7 +313,7 @@ class DataSourceConfig:
         纯读取：不改变任何采集行为，也不写入数据库。
         """
         cfg_fm = self.get_str("filter_mode", None, allowed=FILTER_MODES)
-        cfg_ks = self.get_str("keyword_scope", None, allowed=KEYWORD_SCOPES)
+        cfg_ks = self.keyword_scope()
         configured = cfg_fm is not None or cfg_ks is not None
         effective_fm = cfg_fm if cfg_fm is not None else default_filter_mode
         effective_ks = cfg_ks if cfg_ks is not None else default_keyword_scope
@@ -336,6 +346,7 @@ def apply_keyword_scope(
     注意：本函数只做「加载哪些词」的裁剪，**不决定匹配策略**——匹配策略由
     filter_mode 控制。两者可组合，互不隐含。
     """
+    scope = KEYWORD_SCOPE_ALIASES.get(scope, scope)
     if scope is None:
         return region_kw, topic_kw
     if scope == "region":
@@ -383,7 +394,8 @@ def _validate_legacy_collection_config(config: dict) -> dict:
                 f"当前为 {fm!r}（矛盾组合，已拒绝）"
             )
         ks = config.get("keyword_scope")
-        if ks is not None and ks not in NATIONAL_KEYWORD_SCOPES:
+        normalized_ks = KEYWORD_SCOPE_ALIASES.get(ks, ks)
+        if ks is not None and normalized_ks not in NATIONAL_KEYWORD_SCOPES:
             raise ValueError(
                 f"collection_mode=national 时 keyword_scope 仅允许 {sorted(NATIONAL_KEYWORD_SCOPES)}，"
                 f"当前为 {ks!r}（矛盾组合，已拒绝）"
@@ -493,26 +505,30 @@ def validate_data_source_config(config: dict) -> dict:
 
     if mode == "national":
         fm = config.get("filter_mode")
-        if fm is not None and fm not in NATIONAL_FILTER_MODES:
-            raise ValueError(
-                f"national collection only allows filter_mode={sorted(NATIONAL_FILTER_MODES)}"
-            )
+        if fm is not None and fm not in FILTER_MODES:
+            raise ValueError(f"filter_mode must be one of {sorted(FILTER_MODES)}")
         ks = config.get("keyword_scope")
-        if ks is not None and ks not in NATIONAL_KEYWORD_SCOPES:
-            raise ValueError(
-                f"national collection only allows keyword_scope={sorted(NATIONAL_KEYWORD_SCOPES)}"
-            )
+        allowed_scopes = (*KEYWORD_SCOPES, *KEYWORD_SCOPE_ALIASES)
+        if ks is not None and ks not in allowed_scopes:
+            raise ValueError(f"keyword_scope must be one of {sorted(allowed_scopes)}")
+        normalized_ks = KEYWORD_SCOPE_ALIASES.get(ks, ks)
+        if fm == "region_only" and normalized_ks == "topic":
+            raise ValueError("filter_mode=region_only conflicts with keyword_scope=topic")
+        if fm == "topic_only" and normalized_ks == "region":
+            raise ValueError("filter_mode=topic_only conflicts with keyword_scope=region")
         return config
 
     fm = config.get("filter_mode")
     ks = config.get("keyword_scope")
     if fm is not None and fm not in FILTER_MODES:
         raise ValueError(f"filter_mode must be one of {sorted(FILTER_MODES)}")
-    if ks is not None and ks not in KEYWORD_SCOPES:
-        raise ValueError(f"keyword_scope must be one of {sorted(KEYWORD_SCOPES)}")
-    if fm == "region_only" and ks == "topic":
+    allowed_scopes = (*KEYWORD_SCOPES, *KEYWORD_SCOPE_ALIASES)
+    if ks is not None and ks not in allowed_scopes:
+        raise ValueError(f"keyword_scope must be one of {sorted(allowed_scopes)}")
+    normalized_ks = KEYWORD_SCOPE_ALIASES.get(ks, ks)
+    if fm == "region_only" and normalized_ks == "topic":
         raise ValueError("filter_mode=region_only conflicts with keyword_scope=topic")
-    if fm == "topic_only" and ks == "region":
+    if fm == "topic_only" and normalized_ks == "region":
         raise ValueError("filter_mode=topic_only conflicts with keyword_scope=region")
     return config
 
@@ -527,14 +543,23 @@ def validate_mediacrawler_region_contract(
     regional scope remains available through the admin configuration screen.
     """
 
-    validate_data_source_config(config)
-    if config.get("platform") != "weibo":
-        return config
     mode = (
         config.get("collection_scope")
         or config.get("collection_mode")
         or DEFAULT_COLLECTION_MODE
     )
+    if mode == "national" and isinstance(scope_region_codes, str):
+        if any(part.strip() for part in scope_region_codes.split(",")):
+            raise ValueError(
+                "collection_mode=national requires empty scope_region_codes"
+            )
+    elif mode == "national" and scope_region_codes:
+        raise ValueError(
+            "collection_mode=national requires empty scope_region_codes"
+        )
+    validate_data_source_config(config)
+    if config.get("platform") != "weibo":
+        return config
     if mode == "national":
         return config
     if mode != "regional":

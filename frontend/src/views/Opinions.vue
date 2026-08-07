@@ -57,6 +57,10 @@
         </div>
         <button class="btn btn-ghost" @click="handleSearch">搜索</button>
         <button class="btn btn-ghost" @click="handleRefresh">刷新</button>
+        <label v-if="isSuperuser" class="low-value-toggle" title="默认列表隐藏 irrelevant / advertising 等低价值内容；勾选后可查看完整数据（含历史重算标定的低价值条目）">
+          <input type="checkbox" v-model="includeLowValue" @change="handleSearch" />
+          显示低价值内容
+        </label>
       </div>
     </div>
 
@@ -207,6 +211,8 @@ const total = ref(0)
 const page = ref(1)
 const size = ref(20)
 const sourceOptions = ref<string[]>([])
+// 展示治理：管理员可勾选查看低价值内容（irrelevant / advertising），默认隐藏。
+const includeLowValue = ref(false)
 
 const contentTypeOptions = [
   { value: 'complaint', label: '投诉举报' },
@@ -470,6 +476,7 @@ async function loadData() {
     if (relMax != null) params.relevance_max = relMax
     if (filters.date_from) params.date_from = filters.date_from
     if (filters.date_to) params.date_to = filters.date_to
+    if (includeLowValue.value) params.include_low_value = true
     const { data } = await api.get<OpinionListResponse>('/opinions', { params })
     rows.value = data.items
     total.value = data.total
@@ -551,6 +558,18 @@ onUnmounted(() => {
 .btn-primary:hover { background: #0077ed; }
 .btn-primary:disabled { opacity: 0.55; cursor: default; }
 .btn-block { width: 100%; justify-content: center; }
+.low-value-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  font-size: 13px;
+  color: #515154;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.low-value-toggle input { width: 15px; height: 15px; accent-color: #0071e3; }
 
 .card { background: #ffffff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05); }
 .table-card {

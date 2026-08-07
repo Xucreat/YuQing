@@ -196,6 +196,7 @@ class MediaCrawlerRunner:
             "created": 0,
             "duplicate": 0,
             "admission_filtered": 0,
+            "filter_skipped": 0,
             "failed": 0,
         }
         if self.last_metrics_path.is_file():
@@ -217,6 +218,7 @@ class MediaCrawlerRunner:
             "created",
             "duplicate",
             "admission_filtered",
+            "filter_skipped",
             "failed",
         ):
             payload[key] = int(payload.get(key) or 0)
