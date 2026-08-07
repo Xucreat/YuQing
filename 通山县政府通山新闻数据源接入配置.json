@@ -1,0 +1,33 @@
+{
+  "key": "tongshan_xw_tsxw",
+  "name": "通山县政府门户网站-通山新闻",
+  "type": "news_site",
+  "enabled": true,
+  "priority": 60,
+  "scope_region_codes": "421224",
+  "schedule_enabled": true,
+  "schedule_interval_minutes": 60,
+  "config_json": {
+    "source_name": "通山县政府门户网站-通山新闻",
+    "list_urls": [
+      "http://www.tongshan.gov.cn/xw/tsxw/"
+    ],
+    "link_rule": {
+      "href_regex": "t\\d{8}_\\d+\\.shtml$",
+      "href_exclude": [
+        "index.html"
+      ],
+      "max_links": 30
+    },
+    "content_selectors": [
+      "div.Article_Con",
+      "font#Zoom"
+    ],
+    "keywords": [
+      "通山"
+    ],
+    "max_articles": 20,
+    "timeout": 15,
+    "request_interval": 0.5
+  }
+}

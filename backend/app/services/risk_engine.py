@@ -28,6 +28,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from app.services.risk_terms import (
+    ALL_HARM_KEYWORDS,
+    LAW_ENFORCEMENT_HARM_SEVERITY_WEIGHTS,
+    SCHOOL_HARM_SEVERITY_WEIGHTS,
+    is_actual_harm_hit,
+    matches_harm_keyword,
+)
+
 # ---------------------------------------------------------------------------
 # 常量
 # ---------------------------------------------------------------------------
@@ -35,7 +43,7 @@ BASE_RISK = 20  # 与 fallback.py 的 BASE_RISK 同源，保留分数底座
 
 # Phase 2-A.1：风险模型版本号（随 opinion 写回，标记该条评分所用模型版本）。
 # 仅当评分公式/词典语义发生变化时递增；解释性字段的增加不改变评分，不递增。
-RISK_MODEL_VERSION = "risk-v2.0"
+RISK_MODEL_VERSION = "risk-v2.2"
 
 # 真实危害指标词 → 严重度权重（与 alert_service.HARM_INDICATOR_KEYWORDS 同源）。
 # 语境词（投诉/舆情/维权/群体）不入此表 → Severity 只计真实风险词。
@@ -54,6 +62,8 @@ DEFAULT_SEVERITY_KEYWORDS: Dict[str, int] = {
     "腐败": 50,
     "贪污": 50,
     "涉警": 55,
+    **SCHOOL_HARM_SEVERITY_WEIGHTS,
+    **LAW_ENFORCEMENT_HARM_SEVERITY_WEIGHTS,
 }
 
 # 事件状态单枚举 + 触发短语词典（可配置；Phase 2 后期可入库为 keywords type='state'）。
@@ -113,6 +123,22 @@ RISK_CATEGORY_MAP: Dict[str, str] = {
     "谣言": "political",
     "腐败": "political",
     "贪污": "political",
+    "霸凌": "social_security",
+    "欺凌": "social_security",
+    "校园暴力": "social_security",
+    "殴打": "social_security",
+    "扇耳光": "social_security",
+    "被打": "social_security",
+    "体罚": "social_security",
+    "暴力执法": "social_security",
+    "执法打人": "social_security",
+    "执法殴打": "social_security",
+    "辅警殴打": "social_security",
+    "警察殴打": "social_security",
+    "被辅警打": "social_security",
+    "被警察打": "social_security",
+    "执法致伤": "social_security",
+    "暴力执法乱象": "social_security",
 }
 # 同分决胜优先级（从高到低）
 CATEGORY_PRIORITY: List[str] = [
@@ -190,7 +216,14 @@ class RiskEngine:
         severity = 0
         severity_hits: List[Dict[str, Any]] = []
         for word, weight in self.severity_keywords.items():
-            if word and word in text:
+            if (
+                word
+                and matches_harm_keyword(text, word)
+                and (
+                    word not in ALL_HARM_KEYWORDS
+                    or is_actual_harm_hit(text, word)
+                )
+            ):
                 severity += weight
                 severity_hits.append({"keyword": word, "score": weight})
         severity = min(severity, 100)

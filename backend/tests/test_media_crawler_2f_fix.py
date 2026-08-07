@@ -13,6 +13,11 @@ from app.collectors.mediacrawler_runtime import (
     MediaCrawlerRuntimeError,
     MediaCrawlerRuntimeFactory,
 )
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_COMPATIBILITY_POLICY,
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 
 
 def _runtime_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, gate: bool) -> Path:
@@ -26,6 +31,7 @@ def _runtime_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, gate: 
     monkeypatch.setattr(settings, "media_crawler_entry", str(entry))
     monkeypatch.setattr(settings, "media_crawler_python", sys.executable)
     monkeypatch.setattr(settings, "media_crawler_real_run_gate", gate)
+    monkeypatch.setattr(settings, "media_crawler_login_type", "qrcode")
     return entry
 
 
@@ -54,7 +60,11 @@ def test_scheduler_gate_false_blocks_before_command_or_process(
     _runtime_settings(monkeypatch, tmp_path, gate=False)
     profile = tmp_path / "profiles" / "scheduler"
     profile.mkdir(parents=True)
-    runner, _, _ = MediaCrawlerRuntimeFactory().create_runner("scheduler")
+    runner, _, _ = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner("scheduler")
 
     with pytest.raises(MediaCrawlerRuntimeError, match="real-run gate is disabled"):
         runner.command_factory(["大厂县"], 10, tmp_path / "output")  # type: ignore[union-attr]
@@ -66,7 +76,11 @@ def test_scheduler_gate_true_allows_valid_mock_command_assembly(
     _runtime_settings(monkeypatch, tmp_path, gate=True)
     profile = tmp_path / "profiles" / "scheduler"
     profile.mkdir(parents=True)
-    runner, _, config = MediaCrawlerRuntimeFactory().create_runner("scheduler")
+    runner, _, config = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner("scheduler")
 
     command = runner.command_factory(["大厂县"], 10, tmp_path / "output")  # type: ignore[union-attr]
 
@@ -80,7 +94,11 @@ def test_manual_gate_false_can_construct_explicit_mock_runtime(
 ) -> None:
     _runtime_settings(monkeypatch, tmp_path, gate=False)
     (tmp_path / "profiles" / "manual").mkdir(parents=True)
-    runner, _, config = MediaCrawlerRuntimeFactory().create_runner("manual", mock_command=True)
+    runner, _, config = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner("manual", mock_command=True)
 
     command = runner.command_factory(["大厂县"], 10, tmp_path / "output")  # type: ignore[union-attr]
 
@@ -90,7 +108,10 @@ def test_manual_gate_false_can_construct_explicit_mock_runtime(
 
 
 def test_batch_locator_returns_all_paths_without_creating_legacy_batch(tmp_path: Path) -> None:
-    locator = MediaCrawlerBatchLocator(tmp_path / "runtime")
+    locator = MediaCrawlerBatchLocator(
+        tmp_path / "runtime",
+        platform_spec=WEIBO_PLATFORM_SPEC,
+    )
     paths = locator.locate("e62641b78a9449d0b9874c380a4aa8b5")
 
     assert paths.run_dir == tmp_path / "runtime" / "runs" / paths.batch_id
@@ -102,7 +123,10 @@ def test_batch_locator_returns_all_paths_without_creating_legacy_batch(tmp_path:
 
 
 def test_batch_locator_rejects_path_traversal(tmp_path: Path) -> None:
-    locator = MediaCrawlerBatchLocator(tmp_path / "runtime")
+    locator = MediaCrawlerBatchLocator(
+        tmp_path / "runtime",
+        platform_spec=WEIBO_PLATFORM_SPEC,
+    )
 
     with pytest.raises(ValueError, match="invalid MediaCrawler batch_id"):
         locator.locate("../legacy")

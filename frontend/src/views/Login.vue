@@ -2,7 +2,7 @@
   <div class="login-screen">
     <div class="login-card">
       <div class="login-badge">YQ</div>
-      <h1 class="login-title">大厂县公安互联网舆情监测研判平台</h1>
+      <h1 class="login-title">公安互联网舆情监测研判平台</h1>
       <p class="login-sub">Internet Public Opinion Monitoring Platform</p>
 
       <div class="field">

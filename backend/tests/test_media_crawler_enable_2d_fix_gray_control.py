@@ -11,6 +11,16 @@ from pathlib import Path
 
 import pytest
 
+from app.collectors.mediacrawler_runtime import (
+    MediaCrawlerRuntimeError,
+    MediaCrawlerRuntimeFactory,
+)
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_COMPATIBILITY_POLICY,
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
+
 
 class _Rows:
     def __init__(self, rows):
@@ -151,7 +161,11 @@ def test_gate_false_blocks_real_scheduled_command(monkeypatch, tmp_path: Path):
     )
 
     _settings(monkeypatch, tmp_path, gate=False)
-    runner, _, _ = MediaCrawlerRuntimeFactory().create_runner("scheduled")
+    runner, _, _ = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner("scheduled")
 
     with pytest.raises(MediaCrawlerRuntimeError, match="real-run gate is disabled"):
         runner.command_factory(["keyword"], 1, tmp_path / "output")  # type: ignore[union-attr]
@@ -161,7 +175,11 @@ def test_gate_true_preserves_batch_id_runtime_contract(monkeypatch, tmp_path: Pa
     from app.collectors.mediacrawler_runtime import MediaCrawlerRuntimeFactory
 
     root = _settings(monkeypatch, tmp_path, gate=True)
-    runner, _, config = MediaCrawlerRuntimeFactory().create_runner(
+    runner, _, config = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner(
         "scheduled",
         batch_id="gray-batch-001",
     )

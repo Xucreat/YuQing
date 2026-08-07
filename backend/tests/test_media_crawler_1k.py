@@ -11,6 +11,10 @@ from app.collectors.mediacrawler_runner import (
     MediaCrawlerRunner,
     MediaCrawlerRunnerConfigurationError,
 )
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from scripts.run_mediacrawler_real_verify import compute_jsonl_metrics
 
 REAL_1J_JSONL = (
@@ -42,6 +46,8 @@ def test_raw_count_above_limit_is_preserved_and_output_is_bounded(tmp_path: Path
         command=_native_command(5),
         mock_command=True,
         enable_real_run=True,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
     result = runner.run(
         ["大厂县"],
@@ -66,6 +72,8 @@ def test_raw_count_below_limit_is_complete(tmp_path: Path) -> None:
         command=_native_command(2),
         mock_command=True,
         enable_real_run=True,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
     result = runner.run(
         ["大厂县"],
@@ -80,7 +88,12 @@ def test_raw_count_below_limit_is_complete(tmp_path: Path) -> None:
 
 
 def test_max_items_boundaries_are_enforced(tmp_path: Path) -> None:
-    runner = MediaCrawlerRunner(root=tmp_path / "runtime", fixture_path=Path(__file__))
+    runner = MediaCrawlerRunner(
+        root=tmp_path / "runtime",
+        fixture_path=Path(__file__),
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    )
     for value in (0, 21):
         with pytest.raises(MediaCrawlerRunnerConfigurationError, match="max_items"):
             runner.run(["大厂县"], max_items=value, timeout_seconds=10)
@@ -91,6 +104,8 @@ def test_replay_1j_real_jsonl_is_bounded_without_modifying_raw(tmp_path: Path) -
     runner = MediaCrawlerRunner(
         root=tmp_path / "runtime",
         fixture_path=REAL_1J_JSONL,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
     result = runner.run(["大厂县"], max_items=10, timeout_seconds=10)
 

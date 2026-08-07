@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 
 from app.collectors.mediacrawler_runner import MediaCrawlerRunnerConfigurationError
 
@@ -44,9 +45,29 @@ class MediaCrawlerProfileManager:
 
     ALLOWED_TRIGGERS = frozenset({"manual", "scheduler"})
 
-    def __init__(self, runtime_root: str | Path, profile_root: str | Path | None = None):
+    def __init__(
+        self,
+        runtime_root: str | Path,
+        profile_root: str | Path | None = None,
+        profile_scope: str | None = None,
+    ):
         self.runtime_root = Path(runtime_root).resolve()
-        self.profile_root = Path(profile_root).resolve() if profile_root else self.runtime_root / "profiles"
+        self.profile_root = (
+            Path(profile_root).resolve() if profile_root else self.runtime_root / "profiles"
+        )
+        self.profile_scope = self._normalize_scope(profile_scope)
+
+    @staticmethod
+    def _normalize_scope(scope: str | None) -> tuple[str, ...]:
+        if not scope:
+            return ()
+        parts = [part for part in str(scope).replace("\\", "/").split("/") if part]
+        if not parts or any(
+            re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", part) is None
+            for part in parts
+        ):
+            raise ValueError("invalid MediaCrawler profile scope")
+        return tuple(parts)
 
     @classmethod
     def normalize_trigger(cls, trigger_type: str) -> str:
@@ -61,7 +82,10 @@ class MediaCrawlerProfileManager:
         return trigger
 
     def profile_path(self, trigger_type: str) -> Path:
-        return self.profile_root / self.normalize_trigger(trigger_type)
+        return self.profile_root.joinpath(
+            *self.profile_scope,
+            self.normalize_trigger(trigger_type),
+        )
 
     def check(self, trigger_type: str) -> MediaCrawlerProfileReadiness:
         trigger = self.normalize_trigger(trigger_type)

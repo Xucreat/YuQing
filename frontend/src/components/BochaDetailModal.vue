@@ -74,7 +74,9 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import type { BochaLead, LeadStatus, SearchResult } from '@/stores/bocha'
 
-type DetailItem = Partial<SearchResult & BochaLead>
+type DetailItem = Partial<Omit<SearchResult, 'result_index'> & BochaLead> & {
+  result_index?: number | null
+}
 
 const props = defineProps<{
   modelValue: boolean

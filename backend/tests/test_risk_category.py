@@ -134,7 +134,7 @@ def test_8_risk_category_consistency_engine_to_api(client: TestClient, auth_head
         body = resp.json()
         assert body["risk_category"] == "safety_accident"
         assert body["severity_score"] == 100
-        assert body["risk_model_version"] == "risk-v2.0"
+        assert body["risk_model_version"] == "risk-v2.1"
     finally:
         if opinion_ids:
             db.query(AlertRecord).filter(AlertRecord.opinion_id.in_(opinion_ids)).delete(synchronize_session=False)

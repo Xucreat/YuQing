@@ -17,6 +17,10 @@ from app.collectors.mediacrawler_runner import (
     MediaCrawlerRunnerError,
     MediaCrawlerTimeoutError,
 )
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from app.collectors.registry import import_class
 from app.core.config import settings
 
@@ -36,7 +40,12 @@ def test_engagement_count_supports_chinese_units_and_invalid_values() -> None:
 
 
 def test_fixture_jsonl_is_normalized_and_deduplicated(tmp_path: Path) -> None:
-    runner = MediaCrawlerRunner(root=tmp_path / "runtime", fixture_path=FIXTURE)
+    runner = MediaCrawlerRunner(
+        root=tmp_path / "runtime",
+        fixture_path=FIXTURE,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    )
     collector = MediaCrawlerWeiboCollector(runner=runner)
 
     items = collector.fetch(
@@ -82,6 +91,8 @@ def test_runner_mock_command_writes_jsonl(tmp_path: Path) -> None:
     runner = MediaCrawlerRunner(
         root=tmp_path / "runtime",
         command=[sys.executable, "-c", script],
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
     result = runner.run(["廊坊"], output_dir=None, timeout_seconds=5)
 
@@ -96,6 +107,8 @@ def test_runner_timeout_is_reported(tmp_path: Path) -> None:
     runner = MediaCrawlerRunner(
         root=tmp_path / "runtime",
         command=[sys.executable, "-c", "import time; time.sleep(1)"],
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
     with pytest.raises(MediaCrawlerTimeoutError):
         runner.run([], output_dir=None, timeout_seconds=0.05)
@@ -106,7 +119,11 @@ def test_runner_timeout_is_reported(tmp_path: Path) -> None:
 
 
 def test_no_command_does_not_start_real_mediacrawler(tmp_path: Path) -> None:
-    runner = MediaCrawlerRunner(root=tmp_path / "runtime")
+    runner = MediaCrawlerRunner(
+        root=tmp_path / "runtime",
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    )
     with pytest.raises(MediaCrawlerRunnerError, match="no MediaCrawler command"):
         runner.run([], output_dir=None, timeout_seconds=5)
 

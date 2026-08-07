@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     media_crawler_entry: str = ""
     # Deployment-only runtime isolation; never serialized into DataSource config.
     media_crawler_profile_root: str = ""
+    # Upstream MediaCrawler checkout root, used as the subprocess cwd. When unset
+    # it is derived from the configured entry's parent directory so checkout-
+    # relative imports (e.g. open('libs/douyin.js')) resolve. Never serialized.
+    media_crawler_checkout_root: str = ""
     media_crawler_login_type: str = "qrcode"
     media_crawler_scheduler_login_type: str = "cookie"
 

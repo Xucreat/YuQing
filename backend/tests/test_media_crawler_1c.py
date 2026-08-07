@@ -10,6 +10,10 @@ import pytest
 
 from app.collectors.media_crawler_weibo_collector import MediaCrawlerWeiboCollector
 from app.collectors.mediacrawler_runner import MediaCrawlerRunner
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from app.collectors.service import CollectorService
 from scripts.run_mediacrawler_real_verify import (
     compute_field_coverage,
@@ -59,6 +63,8 @@ def test_explicit_real_command_success_is_parsed_as_standard_payload(tmp_path: P
         command=[sys.executable, "-c", script],
         mock_command=False,
         enable_real_run=True,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
     collector = MediaCrawlerWeiboCollector(runner=runner, max_items=20)
 
@@ -85,7 +91,12 @@ def test_jsonl_metrics_and_field_coverage(tmp_path: Path) -> None:
         "output_count": 3,
     }
     collector = MediaCrawlerWeiboCollector(
-        runner=MediaCrawlerRunner(root=tmp_path / "runtime", fixture_path=FIXTURE)
+        runner=MediaCrawlerRunner(
+            root=tmp_path / "runtime",
+            fixture_path=FIXTURE,
+            platform_spec=WEIBO_PLATFORM_SPEC,
+            source_key=WEIBO_SOURCE_KEY,
+        )
     )
     items = collector.fetch([])
     coverage = compute_field_coverage(items)

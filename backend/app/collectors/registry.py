@@ -31,10 +31,16 @@ from typing import Collection, List, Optional
 from sqlalchemy.orm import Session
 
 from app.collectors.base import BaseCollector
+from app.collectors.mediacrawler_platform import (
+    MediaCrawlerConfigurationError,
+    get_mediacrawler_platform_spec,
+    is_mediacrawler_collector,
+)
 from app.collectors.mediacrawler_runtime import MediaCrawlerRuntimeFactory
 from app.collectors.source_config import (
     STRATEGY_KEYS,
     DataSourceConfig,
+    validate_mediacrawler_region_contract,
     validate_data_source_config,
 )
 
@@ -200,9 +206,28 @@ def _build_collector(cls: type, meta: dict, cfg: dict) -> BaseCollector:
     """
 
     kwargs = _split_strategy_keys(cfg)
-    if getattr(cls, "data_source_key", None) == "weibo_mediacrawler":
-        kwargs["runtime_factory"] = MediaCrawlerRuntimeFactory(
-            source_key=meta.get("key") or "weibo_mediacrawler"
+    if is_mediacrawler_collector(cls):
+        source_key = meta.get("key")
+        if not source_key:
+            raise MediaCrawlerConfigurationError(
+                "MediaCrawler data source key must be explicit"
+            )
+        platform_spec = get_mediacrawler_platform_spec(cfg.get("platform"))
+        kwargs["platform_spec"] = platform_spec
+        # The platform-neutral collector has no legacy source-key default.
+        # Weibo's compatibility facade consumes this explicit value while
+        # future platform collectors can use the same registry contract.
+        kwargs["data_source_key"] = source_key
+        # 命名对齐（Phase MediaCrawler 命名修复）：让写入 collector_runs.collector_name
+        # 直接等于数据源显示名（如「小红书（MediaCrawler）」），与列表/详情接口按
+        # ds.name == collector_name 关联的口径一致。微博子类已有类属性 source_name，
+        # 此处传入同名值无副作用；小红书基类此前回退到 MediaCrawler[{platform}]，现被显式覆盖。
+        kwargs["source_name"] = meta.get("name")
+        kwargs["runtime_factory"] = cls.build_runtime_factory(
+            source_key=source_key,
+            platform_spec=platform_spec,
+            login_type=cfg.get("login_type"),
+            factory_cls=MediaCrawlerRuntimeFactory,
         )
     return cls(**kwargs)
 
@@ -296,10 +321,12 @@ def _resolve_core(
         try:
             cls = import_class(meta["class_path"])
             cfg = _parse_config(meta.get("config_json"))  # 非法 JSON -> ConfigParseError
-            if getattr(cls, "data_source_key", None) == "weibo_mediacrawler":
+            if is_mediacrawler_collector(cls):
                 # Reuse the API contract at the registry boundary so direct DB
                 # configuration cannot silently downgrade or reach the ctor.
-                validate_data_source_config(cfg)
+                validate_mediacrawler_region_contract(
+                    cfg, meta.get("scope_region_codes")
+                )
             # 策略键不进构造函数，避免专用型采集器 TypeError（见 _split_strategy_keys）
             collector = _build_collector(cls, meta, cfg)  # 未知/错误参数 -> TypeError 等
             result.collectors.append(_attach_meta(collector, meta, cfg))

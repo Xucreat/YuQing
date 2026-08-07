@@ -11,6 +11,10 @@ from app.collectors.mediacrawler_runner import (
     MediaCrawlerRealRunDisabledError,
     MediaCrawlerRunner,
 )
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from scripts.check_mediacrawler_env import collect_checks
 
 
@@ -18,6 +22,7 @@ def test_native_command_builder_preserves_argument_order_and_defaults(tmp_path: 
     command = MediaCrawlerCommandBuilder(
         python_executable="python.exe",
         entry="D:/MediaCrawler/main.py",
+        platform_spec=WEIBO_PLATFORM_SPEC,
     ).build(
         keywords=["大厂县", "大厂县", "河北"],
         max_items=10,
@@ -54,6 +59,7 @@ def test_command_builder_does_not_shell_join_untrusted_values(tmp_path: Path) ->
     command = MediaCrawlerCommandBuilder(
         python_executable="python.exe",
         entry="main.py",
+        platform_spec=WEIBO_PLATFORM_SPEC,
     ).build(keywords=[keyword], max_items=1, output_dir=output_dir)
 
     assert command[command.index("--keywords") + 1] == keyword
@@ -74,6 +80,8 @@ def test_runner_discovers_and_normalizes_native_jsonl(tmp_path: Path) -> None:
         command=[sys.executable, "-c", code],
         mock_command=True,
         enable_real_run=True,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
 
     result = runner.run(
@@ -137,6 +145,8 @@ def test_real_gate_stops_before_subprocess(tmp_path: Path, monkeypatch) -> None:
         command=[sys.executable, "-c", "print('blocked')"],
         mock_command=False,
         enable_real_run=False,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
 
     with pytest.raises(MediaCrawlerRealRunDisabledError):

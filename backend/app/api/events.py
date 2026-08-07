@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -475,6 +476,28 @@ def delete_event(
     response_model=EventListResponse,
     status_code=status.HTTP_200_OK,
 )
+def _parse_event_dt(raw: Optional[str], end_of_day: bool = False) -> Optional[datetime]:
+    """将前端传入的时间字符串解析为 datetime。
+
+    支持 ``YYYY-MM-DD HH:MM:SS`` / ``YYYY-MM-DD HH:MM`` / ``YYYY-MM-DD``
+    （兼容 datetime-local 的 ``T`` 分隔符）。
+    对 ``_end`` 区间终点，若仅给了日期（时间为 00:00:00），自动补齐到当天 23:59:59，
+    使“选到某天”即包含当天全天。解析失败返回 None（该参数被忽略，不做过滤）。
+    """
+    if not raw:
+        return None
+    s = raw.strip().replace("T", " ")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+        if end_of_day and dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+            dt = dt.replace(hour=23, minute=59, second=59)
+        return dt
+    return None
+
+
 def list_events(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=MAX_SIZE),
@@ -501,6 +524,10 @@ def list_events(
     ),
     heat_min: Optional[int] = Query(None, ge=0, le=100),
     heat_max: Optional[int] = Query(None, ge=0, le=100),
+    first_time_start: Optional[str] = Query(None, alias="first_time_start", description="首次发现时间范围起点（ISO 8601，含）"),
+    first_time_end: Optional[str] = Query(None, alias="first_time_end", description="首次发现时间范围终点（ISO 8601，含，缺省时间按当天 23:59:59）"),
+    last_time_start: Optional[str] = Query(None, alias="last_time_start", description="最后更新时间范围起点（ISO 8601，含）"),
+    last_time_end: Optional[str] = Query(None, alias="last_time_end", description="最后更新时间范围终点（ISO 8601，含，缺省时间按当天 23:59:59）"),
     db: Session = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> EventListResponse:
@@ -526,6 +553,19 @@ def list_events(
         q = q.filter(Event.heat_score >= heat_min)
     if heat_max is not None:
         q = q.filter(Event.heat_score <= heat_max)
+    # 时间范围筛选：首次发现 / 最后更新（DateTime 列，区间含端点）
+    _fts = _parse_event_dt(first_time_start)
+    _fte = _parse_event_dt(first_time_end, end_of_day=True)
+    _lts = _parse_event_dt(last_time_start)
+    _lte = _parse_event_dt(last_time_end, end_of_day=True)
+    if _fts is not None:
+        q = q.filter(Event.first_time >= _fts)
+    if _fte is not None:
+        q = q.filter(Event.first_time <= _fte)
+    if _lts is not None:
+        q = q.filter(Event.last_time >= _lts)
+    if _lte is not None:
+        q = q.filter(Event.last_time <= _lte)
     candidate_rows = (
         q.add_columns(risk_score_expr.label("computed_risk_score"))
         .order_by(

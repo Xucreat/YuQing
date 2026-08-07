@@ -14,6 +14,11 @@ import pytest
 from app.collectors.media_crawler_weibo_collector import MediaCrawlerWeiboCollector
 from app.collectors.mediacrawler_runner import MediaCrawlerProcessError
 from app.collectors.mediacrawler_runtime import MediaCrawlerRuntimeFactory
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_COMPATIBILITY_POLICY,
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from app.core.browser_profile_manager import BrowserProfileIsolationManager
 
 
@@ -70,7 +75,11 @@ def test_runtime_profile_created(monkeypatch, tmp_path: Path) -> None:
 def test_scheduler_factory_uses_isolated_profile(monkeypatch, tmp_path: Path) -> None:
     root = _settings(monkeypatch, tmp_path)
     source = _source_profile(tmp_path)
-    runner, _, config = MediaCrawlerRuntimeFactory().create_runner(
+    runner, _, config = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner(
         "scheduled",
         batch_id="batch-002",
     )
@@ -96,7 +105,11 @@ def test_original_profile_immutable_when_fake_browser_writes(
         if path.is_file()
     }
     monkeypatch.setattr("app.collectors.mediacrawler_runner.subprocess.run", _fake_success)
-    runner, _, config = MediaCrawlerRuntimeFactory().create_runner(
+    runner, _, config = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner(
         "scheduled",
         batch_id="batch-003",
     )
@@ -119,7 +132,13 @@ def test_cleanup_success_path(monkeypatch, tmp_path: Path) -> None:
     root = _settings(monkeypatch, tmp_path)
     _source_profile(tmp_path)
     monkeypatch.setattr("app.collectors.mediacrawler_runner.subprocess.run", _fake_success)
-    collector = MediaCrawlerWeiboCollector(runtime_factory=MediaCrawlerRuntimeFactory())
+    collector = MediaCrawlerWeiboCollector(
+        runtime_factory=MediaCrawlerRuntimeFactory(
+            source_key=WEIBO_SOURCE_KEY,
+            platform_spec=WEIBO_PLATFORM_SPEC,
+            compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+        )
+    )
     collector.fetch(keywords=["keyword"], trigger_type="scheduled", batch_id="batch-004")
 
     assert not (root / "runtime_profiles" / "batch-004").exists()
@@ -133,7 +152,13 @@ def test_failure_path_retains_runtime_profile(monkeypatch, tmp_path: Path) -> No
         return subprocess.CompletedProcess(command, 7, stdout="", stderr="failure")
 
     monkeypatch.setattr("app.collectors.mediacrawler_runner.subprocess.run", fake_failure)
-    collector = MediaCrawlerWeiboCollector(runtime_factory=MediaCrawlerRuntimeFactory())
+    collector = MediaCrawlerWeiboCollector(
+        runtime_factory=MediaCrawlerRuntimeFactory(
+            source_key=WEIBO_SOURCE_KEY,
+            platform_spec=WEIBO_PLATFORM_SPEC,
+            compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+        )
+    )
     with pytest.raises(MediaCrawlerProcessError):
         collector.fetch(keywords=["keyword"], trigger_type="scheduled", batch_id="batch-005")
 
@@ -143,7 +168,11 @@ def test_failure_path_retains_runtime_profile(monkeypatch, tmp_path: Path) -> No
 def test_manual_behavior_unchanged(monkeypatch, tmp_path: Path) -> None:
     root = _settings(monkeypatch, tmp_path, gate=False)
     manual = _source_profile(tmp_path, trigger="manual")
-    runner, _, config = MediaCrawlerRuntimeFactory().create_runner(
+    runner, _, config = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner(
         "manual",
         mock_command=True,
     )

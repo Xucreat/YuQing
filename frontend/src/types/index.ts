@@ -435,6 +435,11 @@ export interface DataSourceItem {
   keyword_source: string
   effective_keywords: string[]
   keyword_description: string
+  effective_filter_strategy?: {
+    effective_filter_mode?: string | null
+    effective_keyword_scope?: string | null
+    source?: string | null
+  }
   health_summary?: DataSourceHealthSummary
   schedule_enabled?: boolean
   schedule_interval_minutes?: number
@@ -576,6 +581,7 @@ export interface CollectionLogItem {
   comments_seen?: number
   comments_skipped?: number
   admission_filtered?: number
+  running_count?: number
   status: string
 }
 

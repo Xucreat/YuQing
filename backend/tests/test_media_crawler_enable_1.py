@@ -16,6 +16,11 @@ from app.collectors.mediacrawler_runtime import (
     MediaCrawlerRuntimeError,
     MediaCrawlerRuntimeFactory,
 )
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_COMPATIBILITY_POLICY,
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 
 
 def _runtime_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, gate: bool) -> Path:
@@ -41,7 +46,11 @@ def test_scheduler_command_resolution(monkeypatch: pytest.MonkeyPatch, tmp_path:
     profile = tmp_path / "profiles" / "scheduler"
     profile.mkdir(parents=True)
 
-    runner, _, config = MediaCrawlerRuntimeFactory().create_runner("scheduled")
+    runner, _, config = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner("scheduled")
     command = runner.command_factory(["大厂县"], 10, tmp_path / "run" / "output")  # type: ignore[union-attr]
 
     assert command[:2] == [sys.executable, str(entry)]
@@ -60,7 +69,11 @@ def test_scheduler_profile_is_injected_into_subprocess_without_starting_it(
     _runtime_settings(monkeypatch, tmp_path, gate=True)
     profile = tmp_path / "profiles" / "scheduler"
     profile.mkdir(parents=True)
-    runner, _, config = MediaCrawlerRuntimeFactory().create_runner("scheduler")
+    runner, _, config = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner("scheduler")
     captured: dict[str, object] = {}
 
     def fake_run(command, **kwargs):
@@ -93,7 +106,11 @@ def test_scheduler_command_missing_fails_closed(
     monkeypatch.setattr(settings, "media_crawler_entry", str(missing_entry))
 
     with pytest.raises(MediaCrawlerRuntimeConfigurationError, match="entry does not exist"):
-        MediaCrawlerRuntimeFactory().create_runner("scheduler")
+        MediaCrawlerRuntimeFactory(
+            source_key=WEIBO_SOURCE_KEY,
+            platform_spec=WEIBO_PLATFORM_SPEC,
+            compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+        ).create_runner("scheduler")
 
 
 def test_scheduler_gate_false_fails_closed_without_process(
@@ -103,7 +120,11 @@ def test_scheduler_gate_false_fails_closed_without_process(
 
     _runtime_settings(monkeypatch, tmp_path, gate=False)
     (tmp_path / "profiles" / "scheduler").mkdir(parents=True)
-    runner, _, config = MediaCrawlerRuntimeFactory().create_runner("scheduler")
+    runner, _, config = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner("scheduler")
 
     with pytest.raises(MediaCrawlerRuntimeError, match="real-run gate is disabled"):
         runner.command_factory(["大厂县"], 10, tmp_path / "run" / "output")  # type: ignore[union-attr]

@@ -12,8 +12,16 @@ from app.collectors.media_crawler_weibo_collector import (
     parse_publish_time,
 )
 from app.collectors.mediacrawler_runner import MediaCrawlerRunner
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from app.collectors.service import CollectorService, select_round_robin_keyword
-from app.collectors.source_config import DataSourceConfig, validate_data_source_config
+from app.collectors.source_config import (
+    DataSourceConfig,
+    validate_data_source_config,
+    validate_mediacrawler_region_contract,
+)
 from app.services.opinion_region_service import OpinionRegionService
 
 
@@ -29,16 +37,27 @@ def test_collection_scope_contract_and_legacy_compatibility() -> None:
         "collection_scope": "regional",
     }
     assert validate_data_source_config(regional) == regional
+    assert validate_mediacrawler_region_contract(regional, "131000") == regional
     assert DataSourceConfig(regional).collection_mode() == "regional"
     assert DataSourceConfig({"collection_mode": "national"}).collection_scope() == "national"
     with pytest.raises(ValueError, match="collection_mode"):
         validate_data_source_config({"collection_mode": "manual"})
 
 
+def test_weibo_national_empty_scope_contract_is_allowed() -> None:
+    config = {
+        "collector": "mediacrawler",
+        "platform": "weibo",
+        "collection_scope": "national",
+        "collection_mode": "national",
+    }
+    assert validate_mediacrawler_region_contract(config, None) == config
+
+
 @pytest.mark.parametrize("value", [0, 21, True, "10"])
 def test_max_items_is_strictly_bounded(value: object) -> None:
     with pytest.raises(ValueError, match="max_items"):
-        validate_data_source_config({"max_items": value})
+        validate_data_source_config({"platform": "weibo", "max_items": value})
 
 
 def test_collector_uses_source_config_max_items_before_constructor(tmp_path: Path) -> None:
@@ -109,7 +128,12 @@ def test_keyword_override_takes_precedence_for_round_robin_turn() -> None:
 
 
 def test_runner_exposes_effective_max_items_and_preserves_raw(tmp_path: Path) -> None:
-    result = MediaCrawlerRunner(root=tmp_path, fixture_path=FIXTURE).run(
+    result = MediaCrawlerRunner(
+        root=tmp_path,
+        fixture_path=FIXTURE,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    ).run(
         [], max_items=1, timeout_seconds=10
     )
 

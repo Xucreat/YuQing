@@ -98,6 +98,19 @@
         <input v-model="regionFilter" class="compact-input" type="number" min="1" placeholder="地区 ID" title="按地区 ID 筛选" @change="applyFilters" />
         <input v-model="heatMin" class="compact-input heat-input" type="number" min="0" max="100" placeholder="热度 ≥" title="最低热度" @change="applyFilters" />
         <input v-model="heatMax" class="compact-input heat-input" type="number" min="0" max="100" placeholder="热度 ≤" title="最高热度" @change="applyFilters" />
+        <span class="filter-sep"></span>
+        <div class="time-range">
+          <label class="time-range-label">首次发现</label>
+          <input v-model="firstTimeStart" type="datetime-local" class="compact-input time-input" title="首次发现起始时间" @change="applyFilters" />
+          <span class="time-range-sep">~</span>
+          <input v-model="firstTimeEnd" type="datetime-local" class="compact-input time-input" title="首次发现截止时间" @change="applyFilters" />
+        </div>
+        <div class="time-range">
+          <label class="time-range-label">最后更新</label>
+          <input v-model="lastTimeStart" type="datetime-local" class="compact-input time-input" title="最后更新起始时间" @change="applyFilters" />
+          <span class="time-range-sep">~</span>
+          <input v-model="lastTimeEnd" type="datetime-local" class="compact-input time-input" title="最后更新截止时间" @change="applyFilters" />
+        </div>
       </div>
 
       <!-- RBAC 收口：手动聚合写库，需 events:write（后端 POST /events/aggregate 同权限） -->
@@ -108,7 +121,7 @@
       </span>
     </div>
 
-    <!-- Phase 2-E-3：运营状态快捷筛选（纯前端过滤当前页，不改 API） -->
+    <!-- 运营状态快捷筛选（纯前端过滤当前页，不改 API；选项与“全部处置状态”下拉一一对应，每个胶囊对应单一状态） -->
     <div class="quick-filters">
       <button
         v-for="g in statusGroups"
@@ -117,6 +130,7 @@
         :class="{ active: statusGroup === g.value }"
         @click="statusGroup = g.value"
       >{{ g.label }}</button>
+      <span class="quick-filters-note">（仅过滤当前页）</span>
     </div>
 
     <div class="card table-card">
@@ -290,24 +304,30 @@ const statusFilter = ref('')
 const trendFilter = ref('')
 const heatMin = ref('')
 const heatMax = ref('')
+// “更多操作”中的时间范围筛选（首次发现 / 最后更新），走 API 真实过滤
+const firstTimeStart = ref('')
+const firstTimeEnd = ref('')
+const lastTimeStart = ref('')
+const lastTimeEnd = ref('')
 const searchFocused = ref(false) // 搜索框聚焦态（驱动苹果蓝聚焦环）
 const riskOpen = ref(false)      // 风险下拉浮层开合
 const shadowRiskOpen = ref(false)
 const moreOpen = ref(false)
 
-// Phase 2-E-3：运营状态快捷筛选（纯前端过滤当前页，不改 API）
+// 运营状态快捷筛选（纯前端过滤当前页，不改 API；选项与“全部处置状态”下拉一一对应，每个胶囊对应单一状态）
 const statusGroups = [
   { value: '', label: '全部' },
-  { value: 'pending', label: '待关注', statuses: ['active', 'verifying'] },
-  { value: 'processing', label: '处理中', statuses: ['processing'] },
-  { value: 'resolved', label: '已解决', statuses: ['resolved', 'closed'] },
-  { value: 'deprecated', label: '已忽略', statuses: ['deprecated'] },
+  { value: 'active', label: '关注中' },
+  { value: 'verifying', label: '核查中' },
+  { value: 'processing', label: '处理中' },
+  { value: 'resolved', label: '已解决' },
+  { value: 'closed', label: '已关闭' },
+  { value: 'deprecated', label: '已忽略' },
 ]
 const statusGroup = ref('')
 const displayedRows = computed(() => {
   if (!statusGroup.value) return rows.value
-  const statuses = statusGroups.find((g) => g.value === statusGroup.value)?.statuses || []
-  return rows.value.filter((r) => statuses.includes(r.status))
+  return rows.value.filter((r) => r.status === statusGroup.value)
 })
 
 // 事件处置弹窗（点击列表“处置”按钮唤起）
@@ -386,6 +406,10 @@ async function loadData() {
     if (trendFilter.value) params.trend = trendFilter.value
     if (heatMin.value) params.heat_min = Number(heatMin.value)
     if (heatMax.value) params.heat_max = Number(heatMax.value)
+    if (firstTimeStart.value) params.first_time_start = firstTimeStart.value
+    if (firstTimeEnd.value) params.first_time_end = firstTimeEnd.value
+    if (lastTimeStart.value) params.last_time_start = lastTimeStart.value
+    if (lastTimeEnd.value) params.last_time_end = lastTimeEnd.value
     const { data } = await api.get<EventListResponse>('/events', { params })
     rows.value = data.items; total.value = data.total
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '加载事件列表失败') } finally { loading.value = false }
@@ -662,13 +686,19 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .t-title { font-weight: 500; color: #1d1d1f; }
 .risk-num { font-weight: 600; font-variant-numeric: tabular-nums; }
 .more-toggle.active { background: #e8f1fd; color: #0071e3; }
-.more-filters { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; }
+.more-filters { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; flex-wrap: wrap; }
+.filter-sep { width: 1px; height: 24px; background: rgba(0,0,0,0.12); margin: 0 4px; }
+.time-range { display: inline-flex; align-items: center; gap: 6px; }
+.time-range-label { font-size: 13px; color: #1d1d1f; white-space: nowrap; }
+.time-range-sep { color: #86868b; }
+.time-input { width: 168px; }
 .risk-source { display: block; margin-top: 4px; color: #86868b; font-size: 11px; }
 .legacy-risk { display: block; margin-top: 3px; color: #86868b; font-size: 10px; font-weight: 400; }
 .empty-row td { text-align: center; color: #86868b; padding: 40px 0; }
 
 /* Phase 2-E-3：运营状态快捷筛选 chips（纯前端过滤） */
 .quick-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.quick-filters-note { margin-left: auto; color: #86868b; font-size: 12px; }
 .chip {
   height: 32px; padding: 0 14px; border: 1px solid #d2d2d7; border-radius: 980px;
   background: #fff; color: #1d1d1f; font-size: 13px; font-weight: 500; cursor: pointer;

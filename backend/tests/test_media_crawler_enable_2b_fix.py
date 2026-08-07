@@ -9,6 +9,10 @@ from app.collectors import data_source_repository, registry
 from app.collectors.media_crawler_weibo_collector import MediaCrawlerWeiboCollector
 from app.collectors.mediacrawler_runner import MediaCrawlerRunner
 from app.collectors.mediacrawler_runtime import MediaCrawlerRuntimeError
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "media_crawler" / "weibo.jsonl"
@@ -22,13 +26,14 @@ def _row() -> dict[str, object]:
             "app.collectors.media_crawler_weibo_collector."
             "MediaCrawlerWeiboCollector"
         ),
-        "scope_region_codes": None,
+        "scope_region_codes": "131000",
         "config_json": {
             "collector": "mediacrawler",
             "platform": "weibo",
             "keywords": ["test"],
             "max_items": 10,
-            "collection_scope": "national",
+            "collection_scope": "regional",
+            "collection_mode": "regional",
         },
     }
 
@@ -38,10 +43,14 @@ class _StubRuntimeFactory:
 
     instances: list["_StubRuntimeFactory"] = []
 
-    def __init__(self, *, source_key: str = "weibo_mediacrawler") -> None:
+    def __init__(self, *, source_key: str = "weibo_mediacrawler", **_kwargs) -> None:
         self.source_key = source_key
         self.calls: list[str] = []
-        self.runner = MediaCrawlerRunner(fixture_path=FIXTURE)
+        self.runner = MediaCrawlerRunner(
+            fixture_path=FIXTURE,
+            platform_spec=WEIBO_PLATFORM_SPEC,
+            source_key=WEIBO_SOURCE_KEY,
+        )
         self.instances.append(self)
 
     def create_runner(self, trigger_type: str):

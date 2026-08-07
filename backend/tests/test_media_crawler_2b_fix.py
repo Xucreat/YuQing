@@ -11,6 +11,10 @@ from app.collectors.mediacrawler_runner import (
     MediaCrawlerEmptyOutputError,
     MediaCrawlerRunner,
 )
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from app.collectors.source_config import DataSourceConfig
 
 
@@ -54,7 +58,7 @@ def test_registry_rejects_invalid_mediacrawler_config(monkeypatch, config) -> No
             "app.collectors.media_crawler_weibo_collector.MediaCrawlerWeiboCollector"
         ),
         "scope_region_codes": None,
-        "config_json": config,
+        "config_json": {"platform": "weibo", **config},
     }
     monkeypatch.setattr(data_source_repository, "enabled_sources", lambda _db: [row])
 
@@ -70,7 +74,12 @@ def test_runner_preserves_raw_and_bounds_output(tmp_path: Path) -> None:
     source = tmp_path / "source.jsonl"
     source.write_text("\n".join((lines * 4)[:16]) + "\n", encoding="utf-8")
 
-    result = MediaCrawlerRunner(root=tmp_path, fixture_path=source).run(
+    result = MediaCrawlerRunner(
+        root=tmp_path,
+        fixture_path=source,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    ).run(
         [], max_items=10, timeout_seconds=10
     )
 
@@ -79,7 +88,12 @@ def test_runner_preserves_raw_and_bounds_output(tmp_path: Path) -> None:
 
 
 def test_runner_rejects_raw_records_with_empty_output(tmp_path: Path, monkeypatch) -> None:
-    runner = MediaCrawlerRunner(root=tmp_path, fixture_path=FIXTURE)
+    runner = MediaCrawlerRunner(
+        root=tmp_path,
+        fixture_path=FIXTURE,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    )
     monkeypatch.setattr(
         runner,
         "_write_bounded_jsonl",
@@ -91,7 +105,12 @@ def test_runner_rejects_raw_records_with_empty_output(tmp_path: Path, monkeypatc
 
 
 def test_runner_allows_no_data_empty_success(tmp_path: Path, monkeypatch) -> None:
-    runner = MediaCrawlerRunner(root=tmp_path, fixture_path=FIXTURE)
+    runner = MediaCrawlerRunner(
+        root=tmp_path,
+        fixture_path=FIXTURE,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    )
     monkeypatch.setattr(
         runner,
         "_write_bounded_jsonl",

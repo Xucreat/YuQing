@@ -13,9 +13,14 @@ MEDIA_CRAWLER_ROOT = Path.cwd()
 if str(MEDIA_CRAWLER_ROOT) not in sys.path:
     sys.path.insert(0, str(MEDIA_CRAWLER_ROOT))
 
+from mediacrawler_browser_wrapper import (  # noqa: E402
+    install_browser_channel_wrapper,
+)
+
 import config  # noqa: E402
 
 config.ENABLE_CDP_MODE = False
+install_browser_channel_wrapper()
 profile_name = os.getenv("MEDIA_CRAWLER_PROFILE_NAME", "").strip()
 if profile_name:
     class _FixedProfilePattern(str):

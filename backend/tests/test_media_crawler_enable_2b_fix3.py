@@ -9,6 +9,11 @@ from app.collectors.mediacrawler_runtime import (
     MediaCrawlerRuntimeError,
     MediaCrawlerRuntimeFactory,
 )
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_COMPATIBILITY_POLICY,
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from app.collectors.service import CollectorRunResult, CollectorService
 
 
@@ -23,13 +28,14 @@ def _row() -> dict[str, object]:
             "app.collectors.media_crawler_weibo_collector."
             "MediaCrawlerWeiboCollector"
         ),
-        "scope_region_codes": None,
+        "scope_region_codes": "131000",
         "config_json": {
             "collector": "mediacrawler",
             "platform": "weibo",
             "keywords": ["test"],
             "max_items": 10,
-            "collection_scope": "national",
+            "collection_scope": "regional",
+            "collection_mode": "regional",
         },
     }
 
@@ -60,7 +66,11 @@ def test_service_does_not_create_production_collectors_at_init() -> None:
 
 
 def test_scheduled_execution_resolves_factory_without_subprocess(monkeypatch) -> None:
-    factory = MediaCrawlerRuntimeFactory(source_key="weibo_mediacrawler")
+    factory = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    )
     collector = MediaCrawlerWeiboCollector(
         runtime_factory=factory,
         max_items=1,

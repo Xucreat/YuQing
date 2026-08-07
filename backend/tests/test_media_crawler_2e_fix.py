@@ -18,6 +18,11 @@ from app.collectors.mediacrawler_runtime import (
     MediaCrawlerRunLock,
     MediaCrawlerRuntimeFactory,
 )
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_COMPATIBILITY_POLICY,
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 
 
 def _settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -36,7 +41,11 @@ def _settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 def test_runtime_factory_isolates_manual_and_scheduler_profiles(monkeypatch, tmp_path: Path) -> None:
     _settings(monkeypatch, tmp_path)
-    factory = MediaCrawlerRuntimeFactory()
+    factory = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    )
 
     manual, _, manual_cfg = factory.create_runner("manual")
     scheduler, _, scheduler_cfg = factory.create_runner("scheduled")
@@ -50,7 +59,11 @@ def test_runtime_factory_isolates_manual_and_scheduler_profiles(monkeypatch, tmp
 
 def test_runtime_factory_does_not_read_runtime_values_from_datasource(monkeypatch, tmp_path: Path) -> None:
     _settings(monkeypatch, tmp_path)
-    factory = MediaCrawlerRuntimeFactory()
+    factory = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    )
     _, _, cfg = factory.create_runner("scheduler")
 
     # Runtime paths are deployment settings only; a business config is never an input.
@@ -60,7 +73,11 @@ def test_runtime_factory_does_not_read_runtime_values_from_datasource(monkeypatc
 
 def test_manual_and_scheduler_use_one_command_builder(monkeypatch, tmp_path: Path) -> None:
     _settings(monkeypatch, tmp_path)
-    builder = MediaCrawlerCommandBuilder(python_executable=sys.executable, entry="entry.py")
+    builder = MediaCrawlerCommandBuilder(
+        python_executable=sys.executable,
+        entry="entry.py",
+        platform_spec=WEIBO_PLATFORM_SPEC,
+    )
     manual = builder.build(keywords=["大厂县"], max_items=10, output_dir=tmp_path / "manual", login_type="qrcode")
     scheduler = builder.build(keywords=["大厂县"], max_items=10, output_dir=tmp_path / "scheduler", login_type="cookie")
 
@@ -92,7 +109,11 @@ def test_factory_rejects_qrcode_scheduler(monkeypatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(settings, "media_crawler_scheduler_login_type", "qrcode")
     with pytest.raises(Exception, match="non-interactive"):
-        MediaCrawlerRuntimeFactory().create_runner("scheduler")
+        MediaCrawlerRuntimeFactory(
+            source_key=WEIBO_SOURCE_KEY,
+            platform_spec=WEIBO_PLATFORM_SPEC,
+            compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+        ).create_runner("scheduler")
 
 
 def test_missing_profile_fails_closed_at_command_build(monkeypatch, tmp_path: Path) -> None:
@@ -100,7 +121,11 @@ def test_missing_profile_fails_closed_at_command_build(monkeypatch, tmp_path: Pa
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "media_crawler_real_run_gate", True)
-    runner, _, _ = MediaCrawlerRuntimeFactory().create_runner("scheduler")
+    runner, _, _ = MediaCrawlerRuntimeFactory(
+        source_key=WEIBO_SOURCE_KEY,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+    ).create_runner("scheduler")
     with pytest.raises(MediaCrawlerProfileUnavailableError, match="profile unavailable"):
         runner.command_factory(["大厂县"], 10, tmp_path / "output")  # type: ignore[union-attr]
 
@@ -108,7 +133,11 @@ def test_missing_profile_fails_closed_at_command_build(monkeypatch, tmp_path: Pa
 def test_no_command_is_a_failed_runner_path(tmp_path: Path) -> None:
     from app.collectors.mediacrawler_runner import MediaCrawlerRunner
 
-    runner = MediaCrawlerRunner(root=tmp_path)
+    runner = MediaCrawlerRunner(
+        root=tmp_path,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    )
     with pytest.raises(MediaCrawlerRunnerConfigurationError, match="no MediaCrawler command"):
         runner.run(["大厂县"], max_items=10, timeout_seconds=5)
 
@@ -119,6 +148,8 @@ def test_timeout_is_preserved_as_failure(tmp_path: Path) -> None:
     runner = MediaCrawlerRunner(
         root=tmp_path,
         command=[sys.executable, "-c", "import time; time.sleep(1)"],
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
     with pytest.raises(MediaCrawlerTimeoutError):
         runner.run(["大厂县"], max_items=10, timeout_seconds=0.05)

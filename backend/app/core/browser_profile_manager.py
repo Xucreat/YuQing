@@ -21,9 +21,17 @@ _BATCH_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 class BrowserProfileIsolationManager:
     """Create and clean batch-scoped browser profiles under ``runtime_profiles``."""
 
-    def __init__(self, runtime_root: str | Path):
+    def __init__(self, runtime_root: str | Path, profile_scope: str | None = None):
         self.runtime_root = Path(runtime_root).resolve()
         self.runtime_profiles_root = self.runtime_root / "runtime_profiles"
+        if profile_scope:
+            parts = [part for part in str(profile_scope).replace("\\", "/").split("/") if part]
+            if not parts or any(
+                re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", part) is None
+                for part in parts
+            ):
+                raise BrowserProfileIsolationError("invalid browser runtime profile scope")
+            self.runtime_profiles_root = self.runtime_profiles_root.joinpath(*parts)
 
     @staticmethod
     def _validate_batch_id(batch_id: str) -> str:

@@ -1,0 +1,29 @@
+{
+  "key": "xianning_gov_xnyw",
+  "name": "咸宁市人民政府门户网站-要闻动态",
+  "type": "gov_site",
+  "enabled": true,
+  "priority": 56,
+  "scope_region_codes": "421224",
+  "schedule_enabled": true,
+  "schedule_interval_minutes": 30,
+  "config_json": {
+    "source_name": "咸宁市人民政府门户网站-要闻动态",
+    "list_urls": ["http://www.xianning.gov.cn/xwzx/xnyw/"],
+    "link_rule": {
+      "href_regex": "t\\d{8}_\\d+\\.shtml$",
+      "href_exclude": ["index.html"],
+      "max_links": 30
+    },
+    "content_selectors": [
+      "div.article-con",
+      "div.article",
+      "div.content",
+      "article"
+    ],
+    "keywords": ["通山"],
+    "max_articles": 20,
+    "timeout": 15,
+    "request_interval": 0.5
+  }
+}

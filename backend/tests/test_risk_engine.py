@@ -23,6 +23,7 @@ from app.services.risk_engine import (
     RiskEngine,
     RiskRefinement,
 )
+from app.services.ai.fallback import RuleFallbackProvider
 
 
 def _ref(title, content, sentiment):
@@ -185,3 +186,30 @@ def test_returns_independent_risk_refinement_object():
         "risk_factors",
         "risk_category",
     }
+
+
+def test_school_bullying_incident_is_negative_social_security_and_severe():
+    text = "中学女生遭霸凌被连扇数个耳光"
+    fallback = RuleFallbackProvider()
+    analysis = fallback.analyze(text)
+    result = _ref(text, "学校正在调查处理", analysis.sentiment)
+
+    assert analysis.sentiment == "negative"
+    assert analysis.risk_score != BASE_RISK
+    assert result.severity_score == 100
+    assert result.final_risk_score == 100
+    assert result.risk_category == "social_security"
+    assert {item["keyword"] for item in result.risk_factors["severity"]} >= {
+        "霸凌",
+        "扇耳光",
+    }
+
+
+def test_school_bullying_prevention_language_is_not_an_incident():
+    for text in ("开展校园反霸凌宣传", "严禁校园暴力", "加强校园欺凌防范教育"):
+        analysis = RuleFallbackProvider().analyze(text)
+        result = _ref(text, "", analysis.sentiment)
+        assert analysis.sentiment == "neutral"
+        assert result.severity_score == 0
+        assert result.final_risk_score == BASE_RISK
+        assert result.risk_factors["severity"] == []

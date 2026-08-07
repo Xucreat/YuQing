@@ -1,0 +1,482 @@
+[
+  {
+    "key": "tongshan_tongyang",
+    "name": "通山县-通羊镇政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-通羊镇政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/tyz_22381/fdzdgknr_22386/jgjj_22387/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/tyz_22381/fdzdgknr_22386/czzj_22389/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/tyz_22381/fdzdgknr_22386/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "通羊镇",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_nanlinqiao",
+    "name": "通山县-南林桥镇政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-南林桥镇政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/nlqz_22391/fdzdgknr_22396/jgjj_22397/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/nlqz_22391/fdzdgknr_22396/czzj_22399/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/nlqz_22391/fdzdgknr_22396/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "南林桥镇",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_huangshapu",
+    "name": "通山县-黄沙铺镇政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-黄沙铺镇政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/hspz_22401/fdzdgknr_22406/jgjj_22407/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/hspz_22401/fdzdgknr_22406/czzj_22409/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/hspz_22401/fdzdgknr_22406/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "黄沙铺镇",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_xiapu",
+    "name": "通山县-厦铺镇政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-厦铺镇政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/spz_22411/fdzdgknr_22416/jgjj_22417/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/spz_22411/fdzdgknr_22416/czzj_22419/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/spz_22411/fdzdgknr_22416/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "厦铺镇",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_jiugongshan",
+    "name": "通山县-九宫山镇政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-九宫山镇政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/jgsz_22421/fdzdgknr_22426/jgjj_22427/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/jgsz_22421/fdzdgknr_22426/czzj_22429/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/jgsz_22421/fdzdgknr_22426/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "九宫山镇",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_chuangwang",
+    "name": "通山县-闯王镇政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-闯王镇政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/cwz_22431/fdzdgknr_22436/jgjj_22437/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/cwz_22431/fdzdgknr_22436/czzj_22439/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/cwz_22431/fdzdgknr_22436/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "闯王镇",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_honggang",
+    "name": "通山县-洪港镇政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-洪港镇政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/hgz_22441/fdzdgknr_22446/jgjj_22447/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/hgz_22441/fdzdgknr_22446/czzj_22449/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/hgz_22441/fdzdgknr_22446/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "洪港镇",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_dafan",
+    "name": "通山县-大畈镇政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-大畈镇政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/dfz_22451/fdzdgknr_22456/jgjj_22457/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/dfz_22451/fdzdgknr_22456/czzj_22459/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/dfz_22451/fdzdgknr_22456/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "大畈镇",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_dalu",
+    "name": "通山县-大路乡政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-大路乡政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/dlx_22461/fdzdgknr_22466/jgjj_22467/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/dlx_22461/fdzdgknr_22466/czzj_22469/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/dlx_22461/fdzdgknr_22466/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "大路乡",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_yanxia",
+    "name": "通山县-燕厦乡政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-燕厦乡政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/ysx_22471/fdzdgknr_22476/jgjj_22477/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/ysx_22471/fdzdgknr_22476/czzj_22479/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/ysx_22471/fdzdgknr_22476/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "燕厦乡",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_cikou",
+    "name": "通山县-慈口乡政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-慈口乡政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/ckx_22481/fdzdgknr_22487/jgjj_22489/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/ckx_22481/fdzdgknr_22487/czzj_22494/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/ckx_22481/fdzdgknr_22487/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "慈口乡",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  },
+  {
+    "key": "tongshan_yangfanglin",
+    "name": "通山县-杨芳林乡政府信息公开平台",
+    "type": "news_site",
+    "enabled": true,
+    "priority": 60,
+    "scope_region_codes": "421224",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 60,
+    "config_json": {
+      "source_name": "通山县-杨芳林乡政府信息公开平台",
+      "list_urls": [
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/yflx_22498/fdzdgknr_22509/jgjj_22511/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/yflx_22498/fdzdgknr_22509/czzj_22516/",
+        "http://www.tongshan.gov.cn/zc/dfbmptlj/xzxxgkpt/yflx_22498/fdzdgknr_22509/ghxx/"
+      ],
+      "link_rule": {
+        "href_regex": "t\\d{8}_\\d+\\.shtml$",
+        "href_exclude": [
+          "index.html",
+          "index.htm"
+        ],
+        "max_links": 40
+      },
+      "content_selectors": [
+        "#Zoom",
+        "font#Zoom",
+        "div.TRS_Editor",
+        "div.article",
+        "div.content"
+      ],
+      "keywords": [
+        "杨芳林乡",
+        "通山"
+      ],
+      "max_articles": 20,
+      "timeout": 15,
+      "request_interval": 0.5
+    }
+  }
+]

@@ -24,6 +24,11 @@ from sqlalchemy import func, or_, select, case, String, text
 from sqlalchemy.orm import Session
 
 from app.collectors.generic_site import GenericSiteCollector
+from app.collectors.mediacrawler_platform import (
+    MEDIACRAWLER_CONFIG_KEYS,
+    is_mediacrawler_collector,
+)
+from app.collectors.mediacrawler_runtime import MediaCrawlerRuntimeFactory
 from app.collectors.registry import import_class
 from app.collectors.source_config import STRATEGY_KEYS
 from app.collectors.source_config import (
@@ -34,7 +39,9 @@ from app.collectors.source_config import (
     KEYWORD_SCOPES,
     NON_FILTER_STRATEGY_CLASS_PATHS,
     DataSourceConfig,
+    validate_mediacrawler_region_contract,
     validate_data_source_config,
+    _validate_legacy_collection_config,
 )
 from app.core.config import settings
 from app.core.dependencies import get_current_user
@@ -47,8 +54,53 @@ from app.models.user import User
 from app.services.audit_service import audit_write
 from app.services.keyword_service import get_monitoring_keywords_grouped
 from app.services.data_source_health import DataSourceHealthSummaryService
+from app.services.region_catalog import (
+    region_catalog_items,
+    region_catalog_map,
+    sync_region_codes,
+)
+from app.schemas.region import RegionCatalogItemOut
 
 logger = logging.getLogger(__name__)
+
+# 全国省级行政区（GB/T 2260 6 位 adcode），用于新建采集源时下拉选择「全国区域」。
+# 与已有 Hebei 区域（DB regions 表 + 已用 scope_region_codes）合并，向后兼容。
+CHINA_REGIONS: dict[str, str] = {
+    "110000": "北京市",
+    "120000": "天津市",
+    "130000": "河北省",
+    "140000": "山西省",
+    "150000": "内蒙古自治区",
+    "210000": "辽宁省",
+    "220000": "吉林省",
+    "230000": "黑龙江省",
+    "310000": "上海市",
+    "320000": "江苏省",
+    "330000": "浙江省",
+    "340000": "安徽省",
+    "350000": "福建省",
+    "360000": "江西省",
+    "370000": "山东省",
+    "410000": "河南省",
+    "420000": "湖北省",
+    "430000": "湖南省",
+    "440000": "广东省",
+    "450000": "广西壮族自治区",
+    "460000": "海南省",
+    "500000": "重庆市",
+    "510000": "四川省",
+    "520000": "贵州省",
+    "530000": "云南省",
+    "540000": "西藏自治区",
+    "610000": "陕西省",
+    "620000": "甘肃省",
+    "630000": "青海省",
+    "640000": "宁夏回族自治区",
+    "650000": "新疆维吾尔自治区",
+    "710000": "中国台湾",
+    "810000": "中国香港",
+    "820000": "中国澳门",
+}
 
 admin_ds_router = APIRouter(
     prefix="/admin/data-sources",
@@ -64,6 +116,10 @@ _TYPE_CLASS_PATH: dict = {
     "gov_site": "app.collectors.generic_site.GenericSiteCollector",
     "search": "app.collectors.generic_site.GenericSiteCollector",
     "rss": "app.collectors.generic_site.GenericSiteCollector",
+    "social": (
+        "app.collectors.media_crawler_platform_collector."
+        "MediaCrawlerPlatformCollector"
+    ),
 }
 
 # —— 专用型 / 通用型 采集器区分与 config_json 校验（Phase 3 优化）——
@@ -74,10 +130,10 @@ GENERIC_CLASS_PATH = "app.collectors.generic_site.GenericSiteCollector"
 MEDIACRAWLER_CLASS_PATH = (
     "app.collectors.media_crawler_weibo_collector.MediaCrawlerWeiboCollector"
 )
-MEDIACRAWLER_ALLOWED_KEYS = {
-    "collector", "platform", "keywords", "max_items", "collection_scope",
-    "collection_mode", "filter_mode", "keyword_scope",
-}
+MEDIACRAWLER_PLATFORM_CLASS_PATH = (
+    "app.collectors.media_crawler_platform_collector.MediaCrawlerPlatformCollector"
+)
+MEDIACRAWLER_ALLOWED_KEYS = set(MEDIACRAWLER_CONFIG_KEYS)
 
 # GenericSiteCollector 实际支持的 config_json 顶层字段（含继承 BaseHttpCollector）。
 GENERIC_ALLOWED_KEYS = {
@@ -142,9 +198,16 @@ def _validate_collection_config(cfg: dict) -> str | None:
     """校验 collection_mode 语义组合（National-Mode-3）。返回错误字符串；无错误返回 None。
 
     明确拒绝矛盾组合（如 national + region_only），不静默修正。
+
+    注意：本函数仅做「采集模式语义组合」校验，复用于通用型与专用型源。
+    不能调用 ``validate_data_source_config``（MediaCrawler 专属校验器），
+    否则会把通用型 config_json 里的 source_name/list_urls/link_rule/
+    content_selectors/max_articles/timeout 等合法键误判成「MediaCrawler 不支持的
+    顶级键」而整体拒绝。MediaCrawler 源走独立的 ``_validate_mediacrawler_config``，
+    不经过本函数。
     """
     try:
-        validate_data_source_config(cfg)
+        _validate_legacy_collection_config(cfg)
     except ValueError as e:
         return str(e)
     return None
@@ -155,15 +218,20 @@ def _is_generic(class_path: str) -> bool:
 
 
 def _is_mediacrawler(class_path: str) -> bool:
-    return (class_path or "") == MEDIACRAWLER_CLASS_PATH
+    try:
+        return is_mediacrawler_collector(import_class(class_path))
+    except (ImportError, AttributeError, ValueError):
+        return (class_path or "") == MEDIACRAWLER_CLASS_PATH
 
 
-def _validate_mediacrawler_config(cfg: dict) -> str | None:
+def _validate_mediacrawler_config(
+    cfg: dict, scope_region_codes: str | None = None
+) -> str | None:
     unknown = sorted(set(cfg) - MEDIACRAWLER_ALLOWED_KEYS)
     if unknown:
         return f"MediaCrawler config contains unsupported keys: {', '.join(unknown)}"
     try:
-        validate_data_source_config(cfg)
+        validate_mediacrawler_region_contract(cfg, scope_region_codes)
     except ValueError as exc:
         return str(exc)
     return None
@@ -190,14 +258,54 @@ def _validate_generic_config(cfg: dict) -> str | None:
 
 
 def _region_map(db: Session) -> dict:
-    rows = db.execute(select(Region.code, Region.name)).all()
-    return {code: name for code, name in rows}
+    # 以全国省级行政区为基底，DB regions 表（如河北省/市/县）覆盖同名项，保证
+    # 新建源选了全国省份时列表也能正确显示名称（而非回退成 code）。
+    m = dict(CHINA_REGIONS)
+    m.update(region_catalog_map())
+    for code, name in db.execute(select(Region.code, Region.name)).all():
+        m[code] = name
+    return m
 
 
-def _scope_to_codes(csv: str | None) -> list:
-    if not csv:
+def _scope_to_codes(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if value is None:
         return []
-    return [c.strip() for c in csv.split(",") if c.strip()]
+    if isinstance(value, str):
+        return [c.strip() for c in value.split(",") if c.strip()]
+    if isinstance(value, (list, tuple)):
+        return [str(c).strip() for c in value if str(c).strip()]
+    raise ValueError("scope_region_codes must be a comma-separated string or list")
+
+
+def _validated_scope_codes(value) -> list[str]:
+    try:
+        codes = _scope_to_codes(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    catalog_codes = {item["code"] for item in region_catalog_items()}
+    unknown = [code for code in codes if code not in catalog_codes]
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown region codes: {', '.join(unknown)}",
+        )
+    return list(dict.fromkeys(codes))
+
+
+def _align_mediacrawler_collection_mode(
+    ds: DataSource, config: dict, scope_codes: list[str] | None = None
+) -> dict:
+    if not _is_mediacrawler(ds.class_path):
+        return config
+    codes = (
+        _scope_to_codes(ds.scope_region_codes)
+        if scope_codes is None
+        else scope_codes
+    )
+    mode = "regional" if codes else "national"
+    config["collection_scope"] = mode
+    config["collection_mode"] = mode
+    return config
 
 
 def _split_source_keywords(raw: Any) -> list[str] | None:
@@ -399,7 +507,12 @@ def _parse_config_json(raw) -> tuple:
     return None, "config_json 格式不支持"
 
 
-def _build_test(class_path: str, config: dict) -> dict:
+def _build_test(
+    class_path: str,
+    config: dict,
+    *,
+    data_source_key: str | None = None,
+) -> dict:
     """构建采集器并做一次轻量真实抓取校验。返回 {ok, error, verified, ...}。"""
     # 策略键（max_items/filter_mode/keyword_scope）不是构造函数参数，装配时由
     # registry 剥离后注入 source_config；此处若函数拿到的是完整 config_json，
@@ -407,6 +520,45 @@ def _build_test(class_path: str, config: dict) -> dict:
     build_cfg = {k: v for k, v in (config or {}).items() if k not in STRATEGY_KEYS}
     try:
         cls = import_class(class_path)
+        if is_mediacrawler_collector(cls):
+            from app.collectors.mediacrawler_platform import get_mediacrawler_platform_spec
+
+            platform_spec = get_mediacrawler_platform_spec(
+                (config or {}).get("platform")
+            )
+            declared_spec = getattr(cls, "platform_spec", None)
+            if (
+                declared_spec is not None
+                and declared_spec.platform != platform_spec.platform
+            ):
+                return {
+                    "ok": False,
+                    "verified": False,
+                    "error": (
+                        "MediaCrawler class_path 与 config_json.platform 不匹配："
+                        f"{declared_spec.platform} != {platform_spec.platform}"
+                    ),
+                }
+            collector = cls(
+                **build_cfg,
+                platform_spec=platform_spec,
+                data_source_key=data_source_key
+                or f"admin_validation_{platform_spec.platform}",
+                runtime_factory=MediaCrawlerRuntimeFactory(
+                    source_key=data_source_key
+                    or f"admin_validation_{platform_spec.platform}",
+                    platform_spec=platform_spec,
+                ),
+            )
+            return {
+                "ok": True,
+                "verified": False,
+                "note": (
+                    "MediaCrawler source contract validated without starting "
+                    "a real subprocess"
+                ),
+                "platform": platform_spec.platform,
+            }
         collector = cls(**build_cfg)
     except Exception as exc:
         return {
@@ -447,6 +599,17 @@ def _validate_create(body) -> str | None:
             return "priority 必须为整数"
     if body.get("enabled") is not None and not isinstance(body.get("enabled"), bool):
         return "enabled 必须为布尔值"
+    if body.get("schedule_enabled") is not None and not isinstance(
+        body.get("schedule_enabled"), bool
+    ):
+        return "schedule_enabled 必须为布尔值"
+    if body.get("schedule_interval_minutes") is not None:
+        try:
+            interval = int(body["schedule_interval_minutes"])
+        except (TypeError, ValueError):
+            return "schedule_interval_minutes 必须为整数"
+        if interval < 5:
+            return "schedule_interval_minutes 必须大于等于 5"
     # —— 配置校验：专用型禁止非空；通用型校验字段 ——
     raw_cfg = body.get("config_json")
     class_path = body.get("class_path") or _TYPE_CLASS_PATH.get(
@@ -456,7 +619,7 @@ def _validate_create(body) -> str | None:
         cfg, err = _parse_config_json(raw_cfg)
         if err:
             return err
-        return _validate_mediacrawler_config(cfg)
+        return _validate_mediacrawler_config(cfg, body.get("scope_region_codes"))
     if _is_generic(class_path):
         if _is_config_empty(raw_cfg):
             return "通用型采集器必须提供 config_json（至少包含 list_urls）"
@@ -543,8 +706,9 @@ def list_data_sources(
         for r in rows
     ]
 
-    # 区域筛选项（基于全量去重 code + Region 名称）
-    all_codes = set()
+    # 区域筛选项：在「已使用 code」基础上补全全国省级行政区，
+    # 使新建采集源弹窗的下拉菜单可选全国任意省份（不再仅限河北相关区域）。
+    all_codes = set(CHINA_REGIONS.keys())
     for code_csv, in db.execute(select(DataSource.scope_region_codes)).all():
         all_codes.update(_scope_to_codes(code_csv))
     region_options = [{"code": c, "name": region_map.get(c, c)} for c in sorted(all_codes)]
@@ -557,6 +721,15 @@ def list_data_sources(
         "size": size,
         "region_options": region_options,
     }
+
+
+@admin_ds_router.get("/regions", response_model=list[RegionCatalogItemOut])
+def list_data_source_regions(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Return the full province -> city -> county -> township directory."""
+    return region_catalog_items(db)
 
 
 @admin_ds_router.get("/quality")
@@ -657,7 +830,7 @@ def test_data_source(
     type_ = body.get("type") or "generic_site"
     class_path = body.get("class_path") or _TYPE_CLASS_PATH.get(type_, _TYPE_CLASS_PATH["generic_site"])
     cfg, _ = _parse_config_json(body.get("config_json"))
-    test = _build_test(class_path, cfg)
+    test = _build_test(class_path, cfg, data_source_key=body.get("key"))
     return {"ok": test.get("ok", False), "error": test.get("error"), "test": test}
 
 
@@ -683,7 +856,14 @@ def create_data_source(
     cfg, _ = _parse_config_json(body.get("config_json"))
 
     # —— 保存前的真实抓取校验（核心需求）——
-    test = _build_test(class_path, cfg)
+    test = _build_test(class_path, cfg, data_source_key=key)
+    media_crawler_source = _is_mediacrawler(class_path)
+    schedule_enabled = bool(
+        body.get("schedule_enabled", False if media_crawler_source else True)
+    )
+    schedule_interval_minutes = int(
+        body.get("schedule_interval_minutes", 30)
+    )
     if not test.get("ok"):
         raise HTTPException(
             status_code=422,
@@ -697,6 +877,7 @@ def create_data_source(
         resource_type="data_source",
         details={"key": key, "name": name, "type": type_, "class_path": class_path},
     ) as ctx:
+        sync_region_codes(db, _scope_to_codes(body.get("scope_region_codes")))
         ds = DataSource(
             key=key,
             name=name,
@@ -704,6 +885,8 @@ def create_data_source(
             class_path=class_path,
             enabled=bool(body.get("enabled", True)),
             priority=int(body.get("priority", 50)),
+            schedule_enabled=schedule_enabled,
+            schedule_interval_minutes=schedule_interval_minutes,
             scope_region_codes=body.get("scope_region_codes") or None,
             config_json=config_json_str,
         )
@@ -826,6 +1009,18 @@ def update_data_source(
         resource_type="data_source", resource_id=str(ds_id),
         details={"changes": list(body.keys())},
     ):
+        scope_codes = _scope_to_codes(ds.scope_region_codes)
+        if "scope_region_codes" in body:
+            scope_codes = _validated_scope_codes(body["scope_region_codes"])
+            sync_region_codes(db, scope_codes)
+            ds.scope_region_codes = ",".join(scope_codes) or None
+            if _is_mediacrawler(ds.class_path) and "config_json" not in body:
+                cfg, err = _parse_config_json(ds.config_json or "{}")
+                if not err and isinstance(cfg, dict):
+                    ds.config_json = json.dumps(
+                        _align_mediacrawler_collection_mode(ds, cfg, scope_codes),
+                        ensure_ascii=False,
+                    )
         if "enabled" in body and body["enabled"] is not None:
             ds.enabled = bool(body["enabled"])
         if "priority" in body and body["priority"] is not None:
@@ -843,12 +1038,14 @@ def update_data_source(
                     cfg, err = _parse_config_json(s)
                     if err:
                         raise HTTPException(status_code=422, detail=err)
-                    merr = _validate_mediacrawler_config(cfg)
+                    cfg = _align_mediacrawler_collection_mode(ds, cfg, scope_codes)
+                    merr = _validate_mediacrawler_config(cfg, ds.scope_region_codes)
                     if merr:
                         raise HTTPException(status_code=422, detail=merr)
                     ds.config_json = json.dumps(cfg, ensure_ascii=False)
                 elif isinstance(raw, dict):
-                    merr = _validate_mediacrawler_config(raw)
+                    raw = _align_mediacrawler_collection_mode(ds, raw, scope_codes)
+                    merr = _validate_mediacrawler_config(raw, ds.scope_region_codes)
                     if merr:
                         raise HTTPException(status_code=422, detail=merr)
                     ds.config_json = json.dumps(raw, ensure_ascii=False)

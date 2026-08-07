@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 from app.collectors.base import BaseCollector
 from app.collectors.government_collector import GovernmentCollector
+from app.collectors.mediacrawler_platform import MEDIACRAWLER_CAPABILITY
 from app.collectors.registry import resolve_collectors, resolve_collectors_verbose
 from app.core.config import settings
 from app.models.opinion import Opinion
@@ -99,7 +100,7 @@ def reset_gov_throttle() -> None:
 def _update_media_crawler_metrics(collector: BaseCollector, **updates: int | str | None) -> None:
     """Best-effort batch metrics update scoped to MediaCrawler only."""
 
-    if getattr(collector, "data_source_key", None) != "weibo_mediacrawler":
+    if getattr(collector, "collector_capability", None) != MEDIACRAWLER_CAPABILITY:
         return
     updater = getattr(collector, "update_batch_metrics", None)
     if not callable(updater):
@@ -497,7 +498,7 @@ class CollectorService:
         try:
             # 向下兼容 keywords= 旧链路；region_kw/topic_kw 驱动地域前置过滤新链路。
             # 采集器依据 region_kw 是否为 None 选择新旧逻辑。
-            if getattr(collector, "data_source_key", None) == "weibo_mediacrawler":
+            if getattr(collector, "collector_capability", None) == MEDIACRAWLER_CAPABILITY:
                 # MediaCrawler resolves source-local > explicit runtime > global.
                 selected_keywords, mediacrawler_next_cursor = self._mediacrawler_keyword_turn(
                     db, collector, monitoring_kw

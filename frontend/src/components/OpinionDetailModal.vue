@@ -122,7 +122,7 @@
               <div class="card card-pad ai-card">
                 <div class="ai-header">
                   <span class="section-title">AI 研判报告</span>
-                  <span class="pill" :class="statusPill(detail.ai_analysis_status)">{{ statusText(detail.ai_analysis_status) }}</span>
+                  <span class="pill" :class="statusPill(detail.ai_analysis_status || 'pending')">{{ statusText(detail.ai_analysis_status || 'pending') }}</span>
                 </div>
 
                 <div class="detail-divider"></div>
@@ -132,7 +132,7 @@
                   <span class="meta-sep">·</span>
                   <span class="meta-item">级别 <b>{{ levelText(detail.ai_risk_score ?? 0) }}</b></span>
                   <span class="meta-sep">·</span>
-                  <span class="meta-item">情感 <b>{{ sentimentText(detail.ai_sentiment) }}</b></span>
+                  <span class="meta-item">情感 <b>{{ sentimentText(detail.ai_sentiment || 'unknown') }}</b></span>
                 </div>
 
                 <div class="report-body">

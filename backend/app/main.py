@@ -38,7 +38,7 @@ async def lifespan(app):
 
 
 app = FastAPI(
-    title="大厂县公安互联网舆情监测研判平台",
+    title="公安互联网舆情监测研判平台",
     version="0.1.0",
     lifespan=lifespan,
     description="MVP - Phase 2B 认证 + 舆情基础 API + 驾驶舱统计",

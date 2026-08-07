@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from app.collectors.mediacrawler_command_builder import build_mediacrawler_command
+from app.collectors.mediacrawler_weibo_compatibility import WEIBO_PLATFORM_SPEC
 from scripts.check_mediacrawler_weibo_runtime import inspect_runtime
 from scripts.check_mediacrawler_weibo_profile import inspect_weibo_profile
 from scripts.run_mediacrawler_real_verify import compute_jsonl_metrics
@@ -48,7 +49,12 @@ def test_profile_metadata_remains_content_free(tmp_path: Path) -> None:
 
 def test_standard_native_command_uses_debug_entry(tmp_path: Path) -> None:
     command = build_mediacrawler_command(
-        ["大厂县"], 10, tmp_path / "output", python_executable=sys.executable, entry="standard_entry.py"
+        ["大厂县"],
+        10,
+        tmp_path / "output",
+        python_executable=sys.executable,
+        entry="standard_entry.py",
+        platform_spec=WEIBO_PLATFORM_SPEC,
     )
     assert command[1] == "standard_entry.py"
     assert command[command.index("--platform") + 1] == "wb"

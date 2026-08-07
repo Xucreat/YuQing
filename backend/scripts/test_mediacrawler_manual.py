@@ -15,6 +15,10 @@ from app.collectors.media_crawler_weibo_collector import (  # noqa: E402
     MediaCrawlerWeiboCollector,
 )
 from app.collectors.mediacrawler_runner import MediaCrawlerRunner  # noqa: E402
+from app.collectors.mediacrawler_weibo_compatibility import (  # noqa: E402
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 
 
 def _json_default(value):
@@ -45,6 +49,8 @@ def main() -> int:
         fixture_path=args.fixture,
         command=args.real_command,
         mock_command=not bool(args.real_command),
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
     collector = MediaCrawlerWeiboCollector(
         runner=runner,

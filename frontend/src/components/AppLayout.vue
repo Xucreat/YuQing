@@ -6,7 +6,6 @@
         <div class="brand-logo">YQ</div>
         <div class="brand-name">
           舆情监测研判平台
-          <small>河北省公安</small>
         </div>
         <button
           class="sidebar-toggle"

@@ -35,6 +35,11 @@ from app.collectors.mediacrawler_runner import (  # noqa: E402
     MediaCrawlerRunnerError,
 )
 from app.collectors.mediacrawler_runtime import MediaCrawlerRuntimeFactory  # noqa: E402
+from app.collectors.mediacrawler_weibo_compatibility import (  # noqa: E402
+    WEIBO_COMPATIBILITY_POLICY,
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from app.core.config import settings  # noqa: E402
 from scripts.check_mediacrawler_env import collect_checks  # noqa: E402
 from scripts.check_weibo_profile_switch import inspect_profile  # noqa: E402
@@ -251,7 +256,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.native_mode:
             batch_dir = runtime_root / "runs" / uuid.uuid4().hex
             output_dir = batch_dir / "output"
-            runtime_factory = MediaCrawlerRuntimeFactory(root=runtime_root)
+            runtime_factory = MediaCrawlerRuntimeFactory(
+                root=runtime_root,
+                source_key=WEIBO_SOURCE_KEY,
+                platform_spec=WEIBO_PLATFORM_SPEC,
+                compatibility_policy=WEIBO_COMPATIBILITY_POLICY,
+            )
             runner, runtime_lock, runtime_config = runtime_factory.create_runner(
                 "manual", profile_path=native_profile
             )
@@ -265,6 +275,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     max_items=limit,
                     output_dir=out,
                     login_type=runtime_config.login_type,
+                    platform_spec=WEIBO_PLATFORM_SPEC,
                 )
             runner.enable_real_run = True
             runner.command_cwd = Path(root)
@@ -285,6 +296,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             command_cwd=command_cwd,
             mock_command=False,
             enable_real_run=True,
+            platform_spec=WEIBO_PLATFORM_SPEC,
+            source_key=WEIBO_SOURCE_KEY,
         )
     collector = MediaCrawlerWeiboCollector(
         runner=runner, max_items=args.max_items, timeout_seconds=args.timeout_seconds

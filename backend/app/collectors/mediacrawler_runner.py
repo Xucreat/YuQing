@@ -21,6 +21,10 @@ from typing import Any, Callable, Sequence
 
 from app.core.config import settings
 from app.collectors.mediacrawler_batch import MediaCrawlerBatchLocator
+from app.collectors.mediacrawler_platform import (
+    MediaCrawlerConfigurationError,
+    MediaCrawlerPlatformSpec,
+)
 
 
 class MediaCrawlerRunnerError(RuntimeError):
@@ -76,12 +80,21 @@ class MediaCrawlerRunResult:
 
 
 _SECRET_RE = re.compile(
-    r"(?i)(cookie|password|token|authorization|browser[_ -]?data)\s*[:=]\s*[^\s,;]+"
+    r"(?i)(xsec[_-]?token|xsec[_-]?source|cookie|password|token|authorization|browser[_ -]?data)\s*[:=]\s*[^\s,;]+"
+)
+_STRUCTURED_SECRET_RE = re.compile(
+    r"""(?ix)
+    (["']?)
+    (xsec[_-]?token|xsec[_-]?source|cookie|password|token|authorization|browser[_ -]?data)
+    (["']?\s*:\s*["']?)
+    [^"',\s}]+
+    """
 )
 
 
 def _redact(value: str) -> str:
-    return _SECRET_RE.sub(r"\1=[REDACTED]", value)
+    value = _SECRET_RE.sub(r"\1=[REDACTED]", value)
+    return _STRUCTURED_SECRET_RE.sub(r"\1\2\3[REDACTED]", value)
 
 
 class MediaCrawlerRunner:
@@ -97,6 +110,7 @@ class MediaCrawlerRunner:
         self,
         *,
         root: str | Path | None = None,
+        output_root: str | Path | None = None,
         python_executable: str | None = None,
         browser_data: str | None = None,
         profile_name: str | None = None,
@@ -106,16 +120,44 @@ class MediaCrawlerRunner:
         fixture_path: str | Path | None = None,
         mock_command: bool = True,
         enable_real_run: bool | None = None,
+        platform_spec: MediaCrawlerPlatformSpec | None = None,
+        source_key: str | None = None,
+        artifact_scope: str | None = None,
     ) -> None:
-        configured_root = root or settings.media_crawler_root or "runtime/mediacrawler"
-        self.root = Path(configured_root)
-        self.batch_locator = MediaCrawlerBatchLocator(self.root)
+        if platform_spec is None:
+            raise MediaCrawlerConfigurationError(
+                "MediaCrawlerRunner requires an explicit PlatformSpec"
+            )
+        if not source_key:
+            raise MediaCrawlerConfigurationError(
+                "MediaCrawlerRunner requires an explicit source_key"
+            )
+        configured_root = (
+            output_root
+            or root
+            or settings.media_crawler_root
+            or "runtime/mediacrawler"
+        )
+        self.output_root = Path(configured_root)
+        # ``root`` remains the public compatibility name for artifact callers.
+        self.root = self.output_root
+        self.platform_spec = platform_spec
+        self.batch_locator = MediaCrawlerBatchLocator(
+            self.output_root,
+            platform_spec=platform_spec,
+        )
+        self.artifact_name = platform_spec.artifact_name
+        self.native_output_parts = tuple(platform_spec.native_output_parts)
+        self.artifact_scope = artifact_scope
+        self.platform = platform_spec.platform
+        self.source_key = str(source_key)
         self.python_executable = python_executable or settings.media_crawler_python or sys.executable
         self.browser_data = browser_data or settings.media_crawler_browser_data or ""
         # The upstream MediaCrawler entry reads MEDIA_CRAWLER_PROFILE_NAME and
         # maps it to config.USER_DATA_DIR. Keep this separate from the legacy
         # browser-data variable, which the upstream entry does not consume.
         self.profile_name = str(profile_name or "")
+        self.command_options: dict[str, bool] = {}
         self.command = list(command) if command is not None else None
         self.command_factory = command_factory
         self.command_cwd = Path(command_cwd) if command_cwd else None
@@ -146,6 +188,8 @@ class MediaCrawlerRunner:
         payload: dict[str, Any] = {
             "batch_id": self.last_batch_id,
             "collector": "mediacrawler",
+            "platform": self.platform,
+            "source_key": self.source_key,
             "raw_count": 0,
             "output_count": 0,
             "effective_max_items": 0,
@@ -164,6 +208,8 @@ class MediaCrawlerRunner:
         payload.update({key: value for key, value in updates.items() if value is not None})
         payload["batch_id"] = self.last_batch_id
         payload["collector"] = "mediacrawler"
+        payload["platform"] = self.platform
+        payload["source_key"] = self.source_key
         for key in (
             "raw_count",
             "output_count",
@@ -194,7 +240,10 @@ class MediaCrawlerRunner:
         """Create the metrics envelope before a pre-run failure (for example a lock conflict)."""
 
         self.last_batch_id = batch_id
-        self.last_metrics_path = self.batch_locator.locate(batch_id).metrics_path
+        self.last_metrics_path = self.batch_locator.locate(
+            batch_id,
+            artifact_scope=self.artifact_scope,
+        ).metrics_path
         return self._write_metrics()
 
     def _prepare_paths(
@@ -202,7 +251,10 @@ class MediaCrawlerRunner:
     ) -> tuple[str, Path, Path, Path, Path]:
         if output_dir is None:
             batch_id = batch_id_override or uuid.uuid4().hex
-            run_dir = self.batch_locator.locate(batch_id).run_dir
+            run_dir = self.batch_locator.locate(
+                batch_id,
+                artifact_scope=self.artifact_scope,
+            ).run_dir
             output_path_dir = run_dir / "output"
         else:
             output_path_dir = Path(output_dir)
@@ -212,7 +264,7 @@ class MediaCrawlerRunner:
         output_path_dir.mkdir(parents=True, exist_ok=True)
         config_dir.mkdir(parents=True, exist_ok=True)
         log_path = run_dir / "crawler.log"
-        output_path = output_path_dir / "weibo.jsonl"
+        output_path = output_path_dir / f"{self.artifact_name}.jsonl"
         return batch_id, run_dir, config_dir, output_path, log_path
 
     @staticmethod
@@ -261,8 +313,12 @@ class MediaCrawlerRunner:
             )
 
     @staticmethod
-    def _preserve_raw(source_path: Path, run_dir: Path) -> Path:
-        raw_path = run_dir / "raw" / "weibo.jsonl"
+    def _preserve_raw(
+        source_path: Path,
+        run_dir: Path,
+        artifact_name: str,
+    ) -> Path:
+        raw_path = run_dir / "raw" / f"{artifact_name}.jsonl"
         raw_path.parent.mkdir(parents=True, exist_ok=True)
         if source_path.resolve() != raw_path.resolve():
             shutil.copyfile(source_path, raw_path)
@@ -275,9 +331,10 @@ class MediaCrawlerRunner:
         before: dict[Path, tuple[int, int]],
         started_ns: int,
         native_output_path: Path | None = None,
+        native_output_parts: tuple[str, ...] = (),
     ) -> Path | None:
         native_root = native_output_path or output_path.parent
-        native_dir = native_root / "weibo" / "jsonl"
+        native_dir = native_root.joinpath(*native_output_parts)
         candidates = list(native_dir.glob("*.jsonl")) if native_dir.is_dir() else []
         if not candidates:
             candidates = list(run_dir.rglob("*.jsonl"))
@@ -292,6 +349,11 @@ class MediaCrawlerRunner:
             prior = before.get(path)
             if prior is None or (stat.st_mtime_ns, stat.st_size) != prior or stat.st_mtime_ns >= started_ns:
                 changed.append(path)
+        content_candidates = [
+            path for path in changed if "_contents_" in path.name.lower()
+        ]
+        if content_candidates:
+            changed = content_candidates
         return max(changed, key=lambda path: path.stat().st_mtime_ns) if changed else None
 
     def run(
@@ -310,7 +372,10 @@ class MediaCrawlerRunner:
             output_dir, batch_id
         )
         self.last_batch_id = batch_id
-        self.last_metrics_path = run_dir / "metrics.json"
+        self.last_metrics_path = self.batch_locator.locate(
+            batch_id,
+            artifact_scope=self.artifact_scope,
+        ).metrics_path
         timeout = (
             timeout_seconds
             if timeout_seconds is not None
@@ -356,7 +421,11 @@ class MediaCrawlerRunner:
                 self.append_log(log_path, message)
                 self.update_metrics(failed=1)
                 raise MediaCrawlerProcessError(message)
-            raw_output_path = self._preserve_raw(self.fixture_path, run_dir)
+            raw_output_path = self._preserve_raw(
+                self.fixture_path,
+                run_dir,
+                self.artifact_name,
+            )
             raw_count, output_count = self._write_bounded_jsonl(
                 raw_output_path,
                 output_path,
@@ -406,6 +475,14 @@ class MediaCrawlerRunner:
                 "MEDIA_CRAWLER_ENABLE_REAL_RUN=true and trigger it explicitly"
             )
             self.append_log(log_path, "real_run_blocked=1")
+            self.update_metrics(failed=1)
+            raise MediaCrawlerRealRunDisabledError(message)
+        if not self.mock_command and not self.platform_spec.allow_real_collection:
+            message = (
+                "real MediaCrawler collection is disabled by PlatformSpec: "
+                f"{self.platform_spec.platform}"
+            )
+            self.append_log(log_path, "platform_real_run_blocked=1")
             self.update_metrics(failed=1)
             raise MediaCrawlerRealRunDisabledError(message)
 
@@ -481,6 +558,7 @@ class MediaCrawlerRunner:
                 jsonl_snapshot,
                 process_started_ns,
                 configured_native_path,
+                self.native_output_parts,
             )
             if discovered_native_output is not None:
                 self.append_log(
@@ -499,7 +577,11 @@ class MediaCrawlerRunner:
             )
 
         source_path = discovered_native_output or output_path
-        raw_output_path = self._preserve_raw(source_path, run_dir)
+        raw_output_path = self._preserve_raw(
+            source_path,
+            run_dir,
+            self.artifact_name,
+        )
         raw_count, output_count = self._write_bounded_jsonl(
             raw_output_path,
             output_path,

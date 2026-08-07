@@ -19,6 +19,10 @@ from app.collectors.mediacrawler_runner import (
     MediaCrawlerRealRunDisabledError,
     MediaCrawlerRunner,
 )
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from app.core.config import settings
 
 
@@ -38,10 +42,12 @@ def test_mediacrawler_datasource_payload_is_national_and_disabled() -> None:
     assert parse_mediacrawler_config(payload["config_json"]) == {
         "collector": "mediacrawler",
         "platform": "weibo",
-        "keywords": ["大厂县"],
-        "max_items": 10,
+        "keywords": [],
+        "max_items": 20,
         "collection_scope": "national",
+        "collection_mode": "national",
     }
+    assert payload["scope_region_codes"] is None
 
 
 def test_reject_collection_mode_manual() -> None:
@@ -64,6 +70,8 @@ def test_real_command_is_blocked_without_explicit_enable(tmp_path: Path, monkeyp
         command=[sys.executable, "-c", "raise SystemExit(0)"],
         mock_command=False,
         enable_real_run=False,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
 
     with pytest.raises(MediaCrawlerRealRunDisabledError):
@@ -128,6 +136,8 @@ def test_mock_command_nonzero_exit_preserves_redacted_stderr(tmp_path: Path) -> 
             "import sys; sys.stderr.write('token=secret-value\\n'); sys.exit(7)",
         ],
         mock_command=True,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
 
     with pytest.raises(MediaCrawlerProcessError) as exc_info:

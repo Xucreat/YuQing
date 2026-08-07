@@ -15,12 +15,31 @@ MEDIACRAWLER_DATA_SOURCE_KEY = "weibo_mediacrawler"
 MEDIACRAWLER_CLASS_PATH = (
     "app.collectors.media_crawler_weibo_collector.MediaCrawlerWeiboCollector"
 )
+MEDIACRAWLER_PLATFORM_CLASS_PATH = (
+    "app.collectors.media_crawler_platform_collector.MediaCrawlerPlatformCollector"
+)
 MEDIACRAWLER_CONFIG = {
     "collector": "mediacrawler",
     "platform": "weibo",
+    # Empty means "use the enabled global monitoring keywords".
     "keywords": [],
     "max_items": 20,
     "collection_scope": "national",
+    "collection_mode": "national",
+}
+
+XHS_MEDIACRAWLER_DATA_SOURCE_KEY = "xhs_mediacrawler"
+XHS_MEDIACRAWLER_CONFIG = {
+    "collector": "mediacrawler",
+    "platform": "xiaohongshu",
+    "crawler_type": "search",
+    "login_type": "qrcode",
+    "keywords": ["大厂", "廊坊大厂"],
+    "max_items": 20,
+    "get_comment": False,
+    "get_sub_comment": False,
+    "collection_scope": "national",
+    "collection_mode": "national",
 }
 
 
@@ -41,6 +60,26 @@ def build_mediacrawler_data_source_payload(
         "next_collect_time": None,
         "scope_region_codes": None,
         "config_json": json.dumps(MEDIACRAWLER_CONFIG, ensure_ascii=False),
+    }
+
+
+def build_xhs_mediacrawler_data_source_payload(
+    *, enabled: bool = False, schedule_enabled: bool = False
+) -> dict[str, Any]:
+    """Return the disabled-by-default formal XHS source contract."""
+
+    return {
+        "key": XHS_MEDIACRAWLER_DATA_SOURCE_KEY,
+        "name": "小红书（MediaCrawler）",
+        "type": "social",
+        "class_path": MEDIACRAWLER_PLATFORM_CLASS_PATH,
+        "enabled": bool(enabled),
+        "priority": 91,
+        "schedule_enabled": bool(schedule_enabled),
+        "schedule_interval_minutes": 60,
+        "next_collect_time": None,
+        "scope_region_codes": None,
+        "config_json": json.dumps(XHS_MEDIACRAWLER_CONFIG, ensure_ascii=False),
     }
 
 

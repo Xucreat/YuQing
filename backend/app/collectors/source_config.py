@@ -31,6 +31,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
+from app.collectors.mediacrawler_platform import (
+    FORBIDDEN_MEDIACRAWLER_CONFIG_KEYS,
+    MEDIACRAWLER_CONFIG_KEYS,
+    get_mediacrawler_platform_spec,
+)
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -415,6 +421,19 @@ def validate_data_source_config(config: dict) -> dict:
     if not isinstance(config, dict):
         raise ValueError("config_json must be a JSON object")
 
+    unknown = sorted(set(config) - MEDIACRAWLER_CONFIG_KEYS)
+    if unknown:
+        raise ValueError(
+            "MediaCrawler config contains unsupported top-level keys: "
+            + ", ".join(unknown)
+        )
+    forbidden = sorted(set(config) & FORBIDDEN_MEDIACRAWLER_CONFIG_KEYS)
+    if forbidden:
+        raise ValueError(
+            "MediaCrawler config must not contain runtime or credential keys: "
+            + ", ".join(forbidden)
+        )
+
     scope = config.get("collection_scope")
     legacy_mode = config.get("collection_mode")
     if scope is not None and scope not in COLLECTION_SCOPES:
@@ -427,8 +446,13 @@ def validate_data_source_config(config: dict) -> dict:
 
     if "collector" in config and config["collector"] != "mediacrawler":
         raise ValueError("collector must be 'mediacrawler'")
-    if "platform" in config and config["platform"] != "weibo":
-        raise ValueError("platform must be 'weibo'")
+    platform = get_mediacrawler_platform_spec(config.get("platform"))
+    if "schema_version" in config and config["schema_version"] != 1:
+        raise ValueError("schema_version must be 1")
+    if "crawler_type" in config:
+        platform.validate_crawler_type(config["crawler_type"])
+    if "login_type" in config:
+        platform.validate_login_type(config["login_type"])
     if "keywords" in config:
         keywords = config["keywords"]
         if not isinstance(keywords, list) or any(
@@ -443,6 +467,29 @@ def validate_data_source_config(config: dict) -> dict:
             or not 1 <= max_items <= 20
         ):
             raise ValueError("max_items must be between 1 and 20")
+    for key in ("get_comment", "get_sub_comment"):
+        if key in config and not isinstance(config[key], bool):
+            raise ValueError(f"{key} must be boolean")
+    if "content_type" in config and (
+        not isinstance(config["content_type"], str) or not config["content_type"].strip()
+    ):
+        raise ValueError("content_type must be a non-empty string")
+    if "comments" in config:
+        comments = config["comments"]
+        if not isinstance(comments, dict):
+            raise ValueError("comments must be an object")
+        unknown_comments = sorted(set(comments) - {"enabled", "sub_comments"})
+        if unknown_comments:
+            raise ValueError(
+                "comments contains unsupported keys: " + ", ".join(unknown_comments)
+            )
+        if any(
+            key in comments and not isinstance(comments[key], bool)
+            for key in ("enabled", "sub_comments")
+        ):
+            raise ValueError("comments.enabled and comments.sub_comments must be boolean")
+    if "platform_options" in config and not isinstance(config["platform_options"], dict):
+        raise ValueError("platform_options must be an object")
 
     if mode == "national":
         fm = config.get("filter_mode")
@@ -467,4 +514,39 @@ def validate_data_source_config(config: dict) -> dict:
         raise ValueError("filter_mode=region_only conflicts with keyword_scope=topic")
     if fm == "topic_only" and ks == "region":
         raise ValueError("filter_mode=topic_only conflicts with keyword_scope=region")
+    return config
+
+
+def validate_mediacrawler_region_contract(
+    config: dict, scope_region_codes: str | Iterable[str] | None
+) -> dict:
+    """Validate the source scope contract.
+
+    An empty ``scope_region_codes`` means national collection.  Both Weibo and
+    Xiaohongshu may use that mode because their business coverage can change;
+    regional scope remains available through the admin configuration screen.
+    """
+
+    validate_data_source_config(config)
+    if config.get("platform") != "weibo":
+        return config
+    mode = (
+        config.get("collection_scope")
+        or config.get("collection_mode")
+        or DEFAULT_COLLECTION_MODE
+    )
+    if mode == "national":
+        return config
+    if mode != "regional":
+        raise ValueError(
+            "weibo_mediacrawler 必须使用 collection_scope=regional，禁止 national"
+        )
+    if isinstance(scope_region_codes, str):
+        codes = [part.strip() for part in scope_region_codes.split(",") if part.strip()]
+    else:
+        codes = [str(part).strip() for part in (scope_region_codes or []) if str(part).strip()]
+    if not codes:
+        raise ValueError(
+            "weibo_mediacrawler 必须使用 scope_region_codes=131000（廊坊全域）"
+        )
     return config

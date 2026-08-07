@@ -14,6 +14,10 @@ from app.collectors.mediacrawler_runner import (
     MediaCrawlerRunner,
     MediaCrawlerTimeoutError,
 )
+from app.collectors.mediacrawler_weibo_compatibility import (
+    WEIBO_PLATFORM_SPEC,
+    WEIBO_SOURCE_KEY,
+)
 from app.collectors.service import _update_media_crawler_metrics
 
 
@@ -29,7 +33,12 @@ def test_runner_writes_raw_output_and_effective_max_metrics(tmp_path: Path) -> N
     source = tmp_path / "source.jsonl"
     source.write_text("\n".join((lines * 4)[:16]) + "\n", encoding="utf-8")
 
-    result = MediaCrawlerRunner(root=tmp_path / "runtime", fixture_path=source).run(
+    result = MediaCrawlerRunner(
+        root=tmp_path / "runtime",
+        fixture_path=source,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    ).run(
         [], max_items=10, timeout_seconds=10
     )
 
@@ -47,7 +56,12 @@ def test_runner_writes_raw_output_and_effective_max_metrics(tmp_path: Path) -> N
 
 def test_collector_service_counters_update_same_batch_metrics(tmp_path: Path) -> None:
     collector = MediaCrawlerWeiboCollector(
-        runner=MediaCrawlerRunner(root=tmp_path / "runtime", fixture_path=FIXTURE)
+        runner=MediaCrawlerRunner(
+            root=tmp_path / "runtime",
+            fixture_path=FIXTURE,
+            platform_spec=WEIBO_PLATFORM_SPEC,
+            source_key=WEIBO_SOURCE_KEY,
+        )
     )
     collector.fetch(keywords=["test"])
 
@@ -70,7 +84,12 @@ def test_collector_service_counters_update_same_batch_metrics(tmp_path: Path) ->
 
 def test_duplicate_counter_is_preserved_in_metrics(tmp_path: Path) -> None:
     collector = MediaCrawlerWeiboCollector(
-        runner=MediaCrawlerRunner(root=tmp_path / "runtime", fixture_path=FIXTURE)
+        runner=MediaCrawlerRunner(
+            root=tmp_path / "runtime",
+            fixture_path=FIXTURE,
+            platform_spec=WEIBO_PLATFORM_SPEC,
+            source_key=WEIBO_SOURCE_KEY,
+        )
     )
     collector.fetch(keywords=["test"])
     _update_media_crawler_metrics(collector, created=5, duplicate=2, admission_filtered=1, failed=0)
@@ -84,6 +103,8 @@ def test_login_process_failure_writes_failed_metrics(tmp_path: Path) -> None:
     runner = MediaCrawlerRunner(
         root=tmp_path / "runtime",
         command=[sys.executable, "-c", "import sys; sys.exit(1)"],
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
 
     with pytest.raises(MediaCrawlerProcessError):
@@ -99,6 +120,8 @@ def test_timeout_writes_failed_metrics(tmp_path: Path) -> None:
     runner = MediaCrawlerRunner(
         root=tmp_path / "runtime",
         command=[sys.executable, "-c", "import time; time.sleep(1)"],
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
     )
 
     with pytest.raises(MediaCrawlerTimeoutError):
@@ -111,7 +134,12 @@ def test_timeout_writes_failed_metrics(tmp_path: Path) -> None:
 def test_raw_records_without_bounded_output_fail_and_are_audited(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    runner = MediaCrawlerRunner(root=tmp_path / "runtime", fixture_path=FIXTURE)
+    runner = MediaCrawlerRunner(
+        root=tmp_path / "runtime",
+        fixture_path=FIXTURE,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    )
     monkeypatch.setattr(
         runner,
         "_write_bounded_jsonl",

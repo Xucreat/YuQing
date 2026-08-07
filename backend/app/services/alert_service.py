@@ -8,6 +8,10 @@ from app.models.opinion import Opinion
 from app.models.event import Event
 from app.services.keyword_service import get_monitoring_keywords
 from app.services.event.aggregator import _map_risk_level
+from app.services.risk_terms import (
+    ALL_HARM_KEYWORDS,
+    has_actual_harm_indicator,
+)
 
 MAX_SIZE = 100
 
@@ -17,6 +21,7 @@ MAX_SIZE = 100
 HARM_INDICATOR_KEYWORDS: frozenset = frozenset({
     "火灾", "爆炸", "事故", "伤亡", "死亡", "冲突", "上访",
     "谣言", "诈骗", "腐败", "贪污", "涉警",
+    *ALL_HARM_KEYWORDS,
 })
 
 class AlertService:
@@ -88,11 +93,15 @@ class AlertService:
                 # positive 且无真实危害指标词命中 → 禁止生成 high/critical 告警；
                 # 但若命中危害指标词（真实事件），即使 sentiment 为 positive 也保留风险。
                 if opinion.sentiment == "positive" and derived_level in ("high", "critical"):
-                    harm_hit = any(
-                        kw in (opinion.title or "")
-                        or kw in (opinion.content or "")
-                        or kw in (opinion.keywords or "")
-                        for kw in HARM_INDICATOR_KEYWORDS
+                    harm_hit = has_actual_harm_indicator(
+                        "\n".join(
+                            [
+                                (opinion.title or ""),
+                                (opinion.content or ""),
+                                (opinion.keywords or ""),
+                            ]
+                        ),
+                        HARM_INDICATOR_KEYWORDS,
                     )
                     if not harm_hit:
                         derived_level = "low"

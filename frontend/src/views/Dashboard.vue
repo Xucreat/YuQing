@@ -373,14 +373,21 @@ function renderTrend(trend: TrendPoint[]) {
   })
 }
 
+// 来源英文标识 → 中文展示名（与 AiSearchPanel 一致；仅影响前端展示，不改数据库值）
+const SOURCE_LABEL_MAP: Record<string, string> = { weibo: "微博", xiaohongshu: "小红书", xhs: "小红书", web: "网页" }
+function sourceLabel(name: string): string {
+  return SOURCE_LABEL_MAP[(name || "").toLowerCase()] || name || "未知"
+}
+
 function renderSourceDistribution() {
   if (!sourceChart || !stats.sources?.length) return
   const data = [...stats.sources].sort((a, b) => b.count - a.count).slice(0, 10)
   sourceChart.setOption({
     tooltip: { trigger: "axis", backgroundColor: "rgba(29,29,31,0.94)", borderColor: "transparent", textStyle: { color: "#fff", fontSize: 12 } },
-    grid: { left: 100, right: 30, top: 10, bottom: 20 },
+    grid: { left: 128, right: 30, top: 10, bottom: 20 },
     xAxis: { type: "value", splitLine: { lineStyle: { color: "#f0f0f2" } }, axisLabel: { color: "#86868b", fontSize: 11 } },
-    yAxis: { type: "category", data: data.map((d) => d.source).reverse(), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#1d1d1f", fontSize: 12 }, inverse: true },
+    // width + overflow:truncate：名称从开头完整显示，过长时末尾用省略号（…）代替，避免开头被裁切
+    yAxis: { type: "category", data: data.map((d) => sourceLabel(d.source)).reverse(), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#1d1d1f", fontSize: 12, width: 116, overflow: "truncate", align: "right" }, inverse: true },
     series: [{ name: "舆情数", type: "bar", data: data.map((d) => d.count).reverse(), barWidth: 16, itemStyle: { borderRadius: [0, 6, 6, 0], color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: "#0071e3" }, { offset: 1, color: "#5ac8fa" }]) } }],
   })
 }

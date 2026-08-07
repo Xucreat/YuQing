@@ -16,6 +16,14 @@ from typing import List, Optional, Tuple
 
 from app.schemas.ai import AIAnalysisResult
 from app.services.ai.providers.base import BaseAIProvider
+from app.services.risk_terms import (
+    ALL_HARM_KEYWORDS,
+    LAW_ENFORCEMENT_CONTEXT_FALLBACK_WEIGHTS,
+    LAW_ENFORCEMENT_HARM_FALLBACK_WEIGHTS,
+    SCHOOL_HARM_FALLBACK_WEIGHTS,
+    is_actual_harm_hit,
+    matches_harm_keyword,
+)
 
 # 内置默认敏感词表：(词, 权重)
 # 命中一个词：risk_score += 10 * weight。后续可由数据库 keywords 表扩展注入。
@@ -36,6 +44,9 @@ DEFAULT_KEYWORDS: List[Tuple[str, int]] = [
     ("贪污", 7),
     ("涉警", 8),
     ("舆情", 3),
+    *SCHOOL_HARM_FALLBACK_WEIGHTS.items(),
+    *LAW_ENFORCEMENT_HARM_FALLBACK_WEIGHTS.items(),
+    *LAW_ENFORCEMENT_CONTEXT_FALLBACK_WEIGHTS.items(),
 ]
 
 # 情感极性词表（与风险分解耦）：仅表达情感倾向，剔除领域噪声词。
@@ -44,6 +55,8 @@ DEFAULT_KEYWORDS: List[Tuple[str, int]] = [
 NEGATIVE_SENTIMENT: List[str] = [
     "火灾", "爆炸", "事故", "伤亡", "死亡", "冲突", "群体",
     "上访", "谣言", "诈骗", "腐败", "贪污", "涉警",
+    *ALL_HARM_KEYWORDS,
+    *LAW_ENFORCEMENT_CONTEXT_FALLBACK_WEIGHTS.keys(),
 ]
 POSITIVE_SENTIMENT: List[str] = [
     "解决", "落实", "成效", "竣工", "通车", "获奖", "提升", "改善",
@@ -73,7 +86,14 @@ class RuleFallbackProvider(BaseAIProvider):
         """对文本做规则分析，返回 AIAnalysisResult。"""
         hits: List[str] = []
         for word, _weight in self.keywords:
-            if word and word in text:
+            if (
+                word
+                and matches_harm_keyword(text, word)
+                and (
+                    word not in ALL_HARM_KEYWORDS
+                    or is_actual_harm_hit(text, word)
+                )
+            ):
                 hits.append(word)
 
         risk_score = BASE_RISK + sum(
@@ -85,7 +105,16 @@ class RuleFallbackProvider(BaseAIProvider):
 
         # 情感极性：与风险分完全解耦，仅依据情感词表判断，
         # 不再把「命中敏感词→风险高」等同于「负面情感」。
-        neg_hits = [w for w in NEGATIVE_SENTIMENT if w and w in text]
+        neg_hits = [
+            w
+            for w in NEGATIVE_SENTIMENT
+            if w
+            and w in text
+            and (
+                w not in ALL_HARM_KEYWORDS
+                or is_actual_harm_hit(text, w)
+            )
+        ]
         pos_hits = [w for w in POSITIVE_SENTIMENT if w and w in text]
         if neg_hits and not pos_hits:
             sentiment = "negative"
