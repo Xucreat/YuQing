@@ -238,6 +238,17 @@ class Settings(BaseSettings):
     # 单条 Opinion 不单独建事件（避免空关键词噪声撑爆事件中心），但仍可经延续挂载到既有事件。
     event_singleton_min_risk: int = 40
 
+    # Foreign-only remediation gates. Both remain disabled by default and are
+    # never implied by the domestic scheduler switches.
+    foreign_alert_auto_evaluation_enabled: bool = False
+    foreign_event_auto_aggregation_enabled: bool = False
+    foreign_event_auto_confidence_threshold: float = 0.72
+    foreign_event_auto_time_window_hours: int = 72
+    # Cross-language candidates are isolated from same-language confirmation.
+    foreign_event_cross_language_enabled: bool = False
+    # Reserved for a separately approved future phase; this implementation never honors it.
+    foreign_event_cross_language_auto_confirm_enabled: bool = False
+
 
     # ===== Phase 6 可靠性收口配置（集中阈值，禁止散落 magic number）=====
     # P1-1：启动时对账「仍 running 的历史 CollectorRun」的超时阈值（分钟）。

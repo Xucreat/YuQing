@@ -27,6 +27,9 @@ from app.api.bocha import bocha_router
 from app.api.anspire import anspire_router
 from app.api.tasks import tasks_router
 from app.api.foreign import foreign_router
+from app.api.foreign_events import foreign_events_router, foreign_event_meta_router
+from app.api.foreign_alerts import foreign_alerts_router, foreign_alert_meta_router
+from app.api.foreign_visualization import foreign_visualization_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -60,3 +63,8 @@ api_router.include_router(anspire_router)
 # 后台任务状态查询（GET /api/tasks/{task_id}）
 api_router.include_router(tasks_router, prefix="/tasks")
 api_router.include_router(foreign_router)
+api_router.include_router(foreign_events_router)
+api_router.include_router(foreign_event_meta_router)
+api_router.include_router(foreign_alerts_router)
+api_router.include_router(foreign_alert_meta_router)
+api_router.include_router(foreign_visualization_router)

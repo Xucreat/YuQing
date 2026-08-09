@@ -4,6 +4,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import uuid
 
+from fastapi.testclient import TestClient
+
+from app.api.admin_data_sources import _validate_foreign_config
+from app.collectors.data_source_repository import enabled_sources
 from app.collectors.foreign_rss import ForeignRSSCollector
 from app.db.session import SessionLocal
 from app.models.collector_run import CollectorRun
@@ -141,3 +145,247 @@ def test_foreign_collection_deduplicates_url_and_content_without_opinions(monkey
         )
         db.commit()
         db.close()
+
+
+def test_foreign_api_requires_auth_and_filters_by_foreign_config(client: TestClient, auth_headers):
+    assert client.get("/api/foreign/opinions").status_code == 401
+
+    suffix = uuid.uuid4().hex[:10]
+    key = f"phase1_nonforeign_marker_{suffix}"
+    db = SessionLocal()
+    try:
+        db.add(
+            DataSource(
+                key=key,
+                name=f"Nonforeign marker {suffix}",
+                type="foreign_rss",
+                class_path="app.collectors.foreign_rss.ForeignRSSCollector",
+                enabled=False,
+                schedule_enabled=False,
+                schedule_interval_minutes=60,
+                priority=9999,
+                config_json='{"is_foreign": false, "feeds": [], "keywords": []}',
+            )
+        )
+        db.commit()
+
+        response = client.get("/api/foreign/sources", headers=auth_headers)
+        assert response.status_code == 200, response.text
+        assert all(item["key"] != key for item in response.json()["items"])
+
+        opinions = client.get("/api/foreign/opinions", headers=auth_headers)
+        runs = client.get("/api/foreign/collection-runs", headers=auth_headers)
+        assert opinions.status_code == 200
+        assert runs.status_code == 200
+        assert all(item.get("scope") == "foreign" for item in runs.json()["items"])
+    finally:
+        db.query(DataSource).filter(DataSource.key == key).delete(
+            synchronize_session=False
+        )
+        db.commit()
+        db.close()
+
+
+def test_domestic_repository_excludes_foreign_class_path_even_if_config_missing():
+    suffix = uuid.uuid4().hex[:10]
+    key = f"phase1_foreign_guard_{suffix}"
+    db = SessionLocal()
+    try:
+        db.add(
+            DataSource(
+                key=key,
+                name=f"Foreign guard {suffix}",
+                type="foreign_rss",
+                class_path="app.collectors.foreign_rss.ForeignRSSCollector",
+                enabled=True,
+                schedule_enabled=False,
+                schedule_interval_minutes=60,
+                priority=9999,
+                config_json='{"is_foreign": false, "feeds": ["https://fixture.test/rss"], "keywords": ["China"]}',
+            )
+        )
+        db.commit()
+
+        rows = enabled_sources(db)
+        assert all(row["key"] != key for row in rows)
+    finally:
+        db.query(DataSource).filter(DataSource.key == key).delete(
+            synchronize_session=False
+        )
+        db.commit()
+        db.close()
+
+
+def test_collection_log_scope_isolation(client: TestClient, auth_headers):
+    suffix = uuid.uuid4().hex[:10]
+    domestic_batch = f"phase1_domestic_batch_{suffix}"
+    foreign_batch = f"phase1_foreign_batch_{suffix}"
+    db = SessionLocal()
+    try:
+        db.add_all(
+            [
+                CollectorRun(
+                    collector_name=f"Domestic fixture {suffix}",
+                    batch_id=domestic_batch,
+                    trigger_type="manual",
+                    scope="domestic",
+                    start_time=datetime.now(timezone.utc),
+                    end_time=datetime.now(timezone.utc),
+                    status="success",
+                    fetched_raw=1,
+                    upstream_returned=1,
+                    created=1,
+                ),
+                CollectorRun(
+                    collector_name=f"Foreign fixture {suffix}",
+                    batch_id=foreign_batch,
+                    trigger_type="manual",
+                    scope="foreign",
+                    start_time=datetime.now(timezone.utc),
+                    end_time=datetime.now(timezone.utc),
+                    status="success",
+                    fetched_raw=2,
+                    upstream_returned=2,
+                    created=2,
+                ),
+            ]
+        )
+        db.commit()
+
+        domestic = client.get(
+            "/api/admin/data-sources/collection-logs",
+            headers=auth_headers,
+            params={"scope": "domestic", "size": 100},
+        )
+        foreign = client.get(
+            "/api/admin/data-sources/collection-logs",
+            headers=auth_headers,
+            params={"scope": "foreign", "size": 100},
+        )
+        assert domestic.status_code == 200, domestic.text
+        assert foreign.status_code == 200, foreign.text
+        domestic_keys = {item["batch_id"] for item in domestic.json()["items"]}
+        foreign_keys = {item["batch_id"] for item in foreign.json()["items"]}
+        assert domestic_batch in domestic_keys
+        assert foreign_batch not in domestic_keys
+        assert foreign_batch in foreign_keys
+        assert domestic_batch not in foreign_keys
+    finally:
+        db.query(CollectorRun).filter(
+            CollectorRun.batch_id.in_([domestic_batch, foreign_batch])
+        ).delete(synchronize_session=False)
+        db.commit()
+        db.close()
+
+
+def test_foreign_source_api_validates_feeds_and_keeps_schedule_manual(
+    client: TestClient, auth_headers, monkeypatch
+):
+    invalid = client.post(
+        "/api/foreign/sources",
+        headers=auth_headers,
+        json={
+            "name": "Invalid foreign fixture",
+            "key": f"phase1_invalid_{uuid.uuid4().hex[:8]}",
+            "feeds": ["file:///local-fixture.xml"],
+        },
+    )
+    assert invalid.status_code == 422
+
+    suffix = uuid.uuid4().hex[:10]
+    key = f"phase1_api_foreign_{suffix}"
+    keyword_word = f"Phase1China_{suffix}"
+    db = SessionLocal()
+    db.add(ForeignKeyword(word=keyword_word, category="general", is_enabled=True))
+    db.commit()
+    db.close()
+
+    class FakeResponse:
+        status_code = 200
+        encoding = "utf-8"
+        apparent_encoding = "utf-8"
+        text = RSS_FIXTURE
+
+        def raise_for_status(self):
+            return None
+
+    requested: list[str] = []
+
+    def fake_get(url, **kwargs):
+        requested.append(url)
+        assert url == "https://fixture.test/rss"
+        return FakeResponse()
+
+    # Patch the module-level requests.get used by ForeignRSSCollector._get_response,
+    # so this API contract test cannot make a real network request.
+    monkeypatch.setattr("app.collectors.foreign_rss.requests.get", fake_get)
+    response = client.post(
+        "/api/foreign/sources",
+        headers=auth_headers,
+        json={
+            "name": f"API Foreign Fixture {suffix}",
+            "key": key,
+            "feeds": ["https://fixture.test/rss"],
+            "enabled": False,
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert requested == ["https://fixture.test/rss"]
+    source_id = response.json()["id"]
+    assert response.json()["enabled"] is False
+    assert response.json()["schedule_enabled"] is False
+
+    try:
+        updated = client.patch(
+            f"/api/foreign/sources/{source_id}",
+            headers=auth_headers,
+            json={"enabled": True, "schedule_enabled": True},
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["enabled"] is True
+        assert updated.json()["schedule_enabled"] is False
+        assert updated.json()["config_json"]
+    finally:
+        db = SessionLocal()
+        try:
+            db.query(DataSource).filter(DataSource.id == source_id).delete(
+                synchronize_session=False
+            )
+            db.query(ForeignKeyword).filter(ForeignKeyword.word == keyword_word).delete(
+                synchronize_session=False
+            )
+            db.commit()
+        finally:
+            db.close()
+
+
+def test_foreign_config_rejects_domestic_scope_and_requires_keywords():
+    base = {
+        "is_foreign": True,
+        "feeds": ["https://fixture.test/rss"],
+        "keywords": ["China"],
+        "collection_mode": "foreign",
+    }
+    assert _validate_foreign_config(base) is None
+    assert "RSS feed" in _validate_foreign_config({**base, "feeds": []})
+    assert "keyword" in _validate_foreign_config({**base, "keywords": []})
+    assert "domestic collection_mode" in _validate_foreign_config(
+        {**base, "collection_mode": "regional"}
+    )
+
+
+def test_foreign_proxy_reads_only_environment_value(monkeypatch):
+    monkeypatch.setenv("PHASE1_FOREIGN_PROXY", "http://fixture-proxy.invalid:8080")
+    collector = ForeignRSSCollector(
+        feeds=["https://fixture.test/rss"],
+        keywords=["China"],
+        is_foreign=True,
+        proxy_env="PHASE1_FOREIGN_PROXY",
+    )
+    assert collector._proxies() == {
+        "http": "http://fixture-proxy.invalid:8080",
+        "https": "http://fixture-proxy.invalid:8080",
+    }
+    assert "fixture-proxy.invalid" not in str(
+        {"proxy_env": collector.proxy_env, "is_foreign": True}
+    )

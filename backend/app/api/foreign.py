@@ -6,19 +6,18 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
-from sqlalchemy import cast, func, or_, select, String
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import cast, func, inspect, or_, select, String
 from sqlalchemy.orm import Session
 
 from app.api.admin_data_sources import (
-    _is_foreign,
     _parse_config_json,
-    _serialize,
     _validate_foreign_config,
 )
 from app.core.dependencies import get_current_user
@@ -29,10 +28,38 @@ from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
 from app.models.foreign_keyword import ForeignKeyword
 from app.models.foreign_opinion import ForeignOpinion
+from app.models.foreign_analysis_run import ForeignAnalysisRun
+from app.models.foreign_ai_result import ForeignAIResult
+from app.models.foreign_risk_result import ForeignRiskResult
+from app.models.foreign_risk_term import ForeignRiskTerm
 from app.models.user import User
 from app.services.audit_service import audit_write
 from app.services.foreign_collection_service import collect_foreign
-from app.services.foreign_keyword_service import get_foreign_keywords
+from app.services.foreign_ai_service import (
+    AI_MODEL_VERSION,
+    ForeignAIService,
+    serialize_ai_result,
+)
+from app.services.foreign_alert_admission_service import (
+    ForeignAlertAdmissionService,
+    serialize_admission,
+    serialize_admission_action,
+)
+from app.services.foreign_keyword_service import (
+    create_foreign_keyword_row,
+    delete_foreign_keyword_row,
+    get_foreign_keyword_row,
+    get_foreign_keywords,
+    list_foreign_keyword_categories,
+    list_foreign_keyword_rows,
+    update_foreign_keyword_row,
+)
+from app.services.foreign_collection_service import test_foreign_source
+from app.services.foreign_content_sanitizer import sanitize_foreign_html
+from app.services.foreign_risk_service import (
+    RULE_MODEL_VERSION,
+    ForeignRiskService,
+)
 
 
 foreign_router = APIRouter(
@@ -43,15 +70,55 @@ foreign_router = APIRouter(
 
 
 class ForeignKeywordPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     word: str = Field(min_length=1, max_length=128)
-    category: str = Field(default="general", max_length=64)
+    category: str = Field(default="主题", max_length=64)
+    type: Literal["monitoring", "sensitive"] = "monitoring"
+    source: Literal["system", "custom"] = "custom"
+    weight: int = Field(default=10, ge=0, le=100)
+    severity_weight: int = Field(default=0, ge=0, le=100)
+    rule_config: dict[str, Any] = Field(default_factory=dict)
     is_enabled: bool = True
 
 
+class ForeignAIAlertAdmissionPayload(BaseModel):
+    included: bool
+    note: str = Field(min_length=1, max_length=4000)
+
+
+class ForeignKeywordUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    word: str | None = Field(default=None, min_length=1, max_length=128)
+    category: str | None = Field(default=None, max_length=64)
+    type: Literal["monitoring", "sensitive"] | None = None
+    source: Literal["system", "custom"] | None = None
+    weight: int | None = Field(default=None, ge=0, le=100)
+    severity_weight: int | None = Field(default=None, ge=0, le=100)
+    rule_config: dict[str, Any] | None = None
+    is_enabled: bool | None = None
+
+
+class ForeignKeywordBulkPayload(BaseModel):
+    keyword_ids: list[int] = Field(min_length=1, max_length=500)
+    is_enabled: bool
+
+
+class ForeignCollectionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_ids: list[int] | None = Field(default=None, max_length=50)
+    all_sources: bool = False
+
+
 class ForeignSourcePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=128)
     key: str = Field(min_length=1, max_length=64)
     feeds: list[str] = Field(min_length=1)
+    language: Literal["en", "zh", "mixed", "unknown"] = "unknown"
     proxy_env: str | None = "FOREIGN_HTTP_PROXY"
     enabled: bool = False
     schedule_enabled: bool = False
@@ -59,6 +126,77 @@ class ForeignSourcePayload(BaseModel):
     priority: int = Field(default=500, ge=0, le=9999)
     fetch_full_text: bool = False
     max_items: int = Field(default=100, ge=1, le=500)
+    timeout: int = Field(default=15, ge=1, le=120)
+    connect_timeout: float = Field(default=15, ge=0.1, le=120)
+    read_timeout: float = Field(default=15, ge=0.1, le=120)
+    request_interval: float = Field(default=0.5, ge=0, le=60)
+    max_retries: int = Field(default=2, ge=0, le=5)
+    max_content_length: int = Field(default=200_000, ge=100, le=1_000_000)
+    respect_robots: bool = True
+
+    @staticmethod
+    def _check_full_text(value: bool) -> bool:
+        if value:
+            raise ValueError("fetch_full_text must remain false in the foreign manual phase")
+        return value
+
+
+class ForeignSourceUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    feeds: list[str] | None = Field(default=None, min_length=1)
+    language: Literal["en", "zh", "mixed", "unknown"] | None = None
+    proxy_env: str | None = "FOREIGN_HTTP_PROXY"
+    enabled: bool | None = None
+    schedule_enabled: bool | None = None
+    schedule_interval_minutes: int | None = Field(default=None, ge=5, le=10080)
+    priority: int | None = Field(default=None, ge=0, le=9999)
+    fetch_full_text: bool | None = None
+    max_items: int | None = Field(default=None, ge=1, le=500)
+    timeout: int | None = Field(default=None, ge=1, le=120)
+    connect_timeout: float | None = Field(default=None, ge=0.1, le=120)
+    read_timeout: float | None = Field(default=None, ge=0.1, le=120)
+    request_interval: float | None = Field(default=None, ge=0, le=60)
+    max_retries: int | None = Field(default=None, ge=0, le=5)
+    max_content_length: int | None = Field(default=None, ge=100, le=1_000_000)
+    respect_robots: bool | None = None
+
+    @staticmethod
+    def _check_full_text(value: bool | None) -> bool | None:
+        if value:
+            raise ValueError("fetch_full_text must remain false in the foreign manual phase")
+        return value
+
+
+class ForeignSourceTestPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: int | None = Field(default=None, ge=1)
+    name: str = Field(default="Foreign source test", min_length=1, max_length=128)
+    feeds: list[str] | None = None
+    keywords: list[str] | None = None
+    proxy_env: str | None = "FOREIGN_HTTP_PROXY"
+    timeout: int = Field(default=15, ge=1, le=120)
+    connect_timeout: float = Field(default=15, ge=0.1, le=120)
+    read_timeout: float = Field(default=15, ge=0.1, le=120)
+    max_items: int = Field(default=100, ge=1, le=500)
+    max_retries: int = Field(default=2, ge=0, le=5)
+    respect_robots: bool = False
+    fetch_full_text: bool = False
+
+
+class ForeignRiskAnalyzePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+
+    model_version: str = Field(default=RULE_MODEL_VERSION, min_length=1, max_length=64)
+
+
+class ForeignRiskBatchPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+
+    foreign_opinion_ids: list[int] = Field(min_length=1, max_length=50)
+    model_version: str = Field(default=RULE_MODEL_VERSION, min_length=1, max_length=64)
 
 
 def _source_config(source: DataSource) -> dict:
@@ -66,15 +204,42 @@ def _source_config(source: DataSource) -> dict:
     return cfg if not err and isinstance(cfg, dict) else {}
 
 
+def _is_foreign_config(source: DataSource) -> bool:
+    return _source_config(source).get("is_foreign") is True
+
+
+def _safe_foreign_error(value: object) -> str | None:
+    if not value:
+        return None
+    message = " ".join(str(value).split())
+    lowered = message.casefold()
+    if any(
+        marker in lowered
+        for marker in (
+            "traceback", "sqlalchemy", "psycopg", "password", "token",
+            "secret", "api key", "proxy", "connection string", "://", "@",
+        )
+    ):
+        return "外网运行失败，详细错误已隐藏"
+    return message[:240]
+
+
 def _foreign_source_or_404(db: Session, source_id: int) -> DataSource:
     source = db.get(DataSource, source_id)
-    if source is None or not _is_foreign(source.class_path):
+    if source is None or not _is_foreign_config(source):
         raise HTTPException(status_code=404, detail="Foreign data source not found")
     return source
 
 
 def _foreign_source_item(source: DataSource) -> dict[str, Any]:
     cfg = _source_config(source)
+    safe_config_keys = {
+        "is_foreign", "collector", "source_name", "feeds", "language", "proxy_env", "keywords",
+        "collection_mode", "max_items", "timeout", "max_content_length",
+        "request_interval", "max_retries", "fetch_full_text", "connect_timeout",
+        "read_timeout", "respect_robots",
+    }
+    safe_config = {key: cfg[key] for key in safe_config_keys if key in cfg}
     return {
         "id": source.id,
         "key": source.key,
@@ -86,6 +251,7 @@ def _foreign_source_item(source: DataSource) -> dict[str, Any]:
         "schedule_interval_minutes": source.schedule_interval_minutes,
         "priority": source.priority,
         "feeds": cfg.get("feeds") or [],
+        "language": cfg.get("language", "unknown"),
         "keywords": cfg.get("keywords") or [],
         "proxy_env": cfg.get("proxy_env"),
         "proxy_configured": bool(
@@ -93,7 +259,16 @@ def _foreign_source_item(source: DataSource) -> dict[str, Any]:
         ),
         "fetch_full_text": bool(cfg.get("fetch_full_text", False)),
         "max_items": cfg.get("max_items", 100),
-        "config_json": source.config_json,
+        "timeout": cfg.get("timeout", 15),
+        "connect_timeout": cfg.get("connect_timeout", cfg.get("timeout", 15)),
+        "read_timeout": cfg.get("read_timeout", cfg.get("timeout", 15)),
+        "request_interval": cfg.get("request_interval", 0.5),
+        "max_retries": cfg.get("max_retries", 2),
+        "max_content_length": cfg.get("max_content_length", 200_000),
+        "respect_robots": bool(cfg.get("respect_robots", True)),
+        # Keep the legacy field for existing clients, but never echo arbitrary
+        # source configuration that could contain a proxy URL or credential.
+        "config_json": json.dumps(safe_config, ensure_ascii=False),
     }
 
 
@@ -102,33 +277,37 @@ def list_foreign_keywords(
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=100),
     q: str | None = None,
+    category: str | None = None,
+    type_: str | None = Query(None, alias="type"),
+    source: str | None = None,
     is_enabled: bool | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("keywords:read")),
+    _: User = Depends(require_permission("foreign:keywords:read")),
 ):
-    stmt = select(ForeignKeyword)
-    if q:
-        stmt = stmt.where(ForeignKeyword.word.ilike(f"%{q}%"))
-    if is_enabled is not None:
-        stmt = stmt.where(ForeignKeyword.is_enabled.is_(is_enabled))
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    rows = db.scalars(
-        stmt.order_by(ForeignKeyword.id.asc())
-        .offset((page - 1) * size)
-        .limit(size)
-    ).all()
-    return {"items": rows, "total": total, "page": page, "size": size}
+    items, total, _ = list_foreign_keyword_rows(
+        db, page=page, size=size, q=q, category=category, type_=type_,
+        source=source, is_enabled=is_enabled,
+    )
+    return {"items": items, "total": total, "page": page, "size": size}
+
+
+@foreign_router.get("/keywords/categories")
+def list_foreign_keyword_category_options(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:keywords:read")),
+):
+    return {"items": list_foreign_keyword_categories(db)}
 
 
 @foreign_router.post("/keywords", status_code=201)
 def create_foreign_keyword(
     payload: ForeignKeywordPayload,
     request: Request,
-    current_user: User = Depends(require_permission("keywords:write")),
+    current_user: User = Depends(require_permission("foreign:keywords:write")),
     db: Session = Depends(get_db),
 ):
     word = payload.word.strip()
-    if db.scalar(select(ForeignKeyword).where(ForeignKeyword.word == word)):
+    if db.scalar(select(ForeignKeyword.id).where(ForeignKeyword.word == word)):
         raise HTTPException(status_code=409, detail=f"Foreign keyword already exists: {word}")
     with audit_write(
         db,
@@ -138,38 +317,41 @@ def create_foreign_keyword(
         resource_type="foreign_keyword",
         details={"word": word},
     ) as ctx:
-        row = ForeignKeyword(
-            word=word,
-            category=payload.category.strip() or "general",
-            is_enabled=payload.is_enabled,
-        )
-        db.add(row)
-        db.commit()
-        db.refresh(row)
-        ctx["resource_id"] = str(row.id)
+        try:
+            row = create_foreign_keyword_row(
+                db, word=word, category=payload.category.strip() or "general",
+                is_enabled=payload.is_enabled, type_=payload.type, source=payload.source,
+                weight=payload.weight, severity_weight=payload.severity_weight,
+                rule_config=payload.rule_config,
+            )
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            if "uq_foreign_keywords_word" in str(exc) or "duplicate key" in str(exc).lower():
+                raise HTTPException(status_code=409, detail=f"Foreign keyword already exists: {word}") from exc
+            raise
+        ctx["resource_id"] = str(row["id"])
     return row
 
 
 @foreign_router.patch("/keywords/{keyword_id}")
 def update_foreign_keyword(
     keyword_id: int,
-    payload: ForeignKeywordPayload,
+    payload: ForeignKeywordUpdatePayload,
     request: Request,
-    current_user: User = Depends(require_permission("keywords:write")),
+    current_user: User = Depends(require_permission("foreign:keywords:write")),
     db: Session = Depends(get_db),
 ):
-    row = db.get(ForeignKeyword, keyword_id)
-    if row is None:
+    existing, _ = get_foreign_keyword_row(db, keyword_id)
+    if existing is None:
         raise HTTPException(status_code=404, detail="Foreign keyword not found")
-    word = payload.word.strip()
-    clash = db.scalar(
-        select(ForeignKeyword).where(
-            ForeignKeyword.word == word,
-            ForeignKeyword.id != keyword_id,
-        )
-    )
-    if clash:
-        raise HTTPException(status_code=409, detail=f"Foreign keyword already exists: {word}")
+    values = payload.model_dump(exclude_unset=True)
+    if "word" in values:
+        values["word"] = values["word"].strip()
+    if "category" in values:
+        values["category"] = values["category"].strip() or "general"
+    if "type" in values:
+        values["type"] = values.pop("type")
     with audit_write(
         db,
         action="UPDATE",
@@ -177,24 +359,47 @@ def update_foreign_keyword(
         request=request,
         resource_type="foreign_keyword",
         resource_id=str(keyword_id),
-        details={"word": word},
+        details={"changes": list(values.keys())},
     ):
-        row.word = word
-        row.category = payload.category.strip() or "general"
-        row.is_enabled = payload.is_enabled
+        try:
+            result = update_foreign_keyword_row(db, keyword_id, values)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            if "uq_foreign_keywords_word" in str(exc) or "duplicate key" in str(exc).lower():
+                raise HTTPException(status_code=409, detail="Foreign keyword already exists") from exc
+            raise
+    return result
+
+
+@foreign_router.post("/keywords/bulk-status")
+def bulk_update_foreign_keywords(
+    payload: ForeignKeywordBulkPayload,
+    request: Request,
+    current_user: User = Depends(require_permission("foreign:keywords:write")),
+    db: Session = Depends(get_db),
+):
+    changed = 0
+    with audit_write(
+        db, action="BULK_UPDATE", operator=current_user, request=request,
+        resource_type="foreign_keyword", details=payload.model_dump(),
+    ):
+        for keyword_id in payload.keyword_ids:
+            changed += int(bool(update_foreign_keyword_row(
+                db, keyword_id, {"is_enabled": payload.is_enabled}
+            )))
         db.commit()
-    db.refresh(row)
-    return row
+    return {"changed": changed, "is_enabled": payload.is_enabled}
 
 
 @foreign_router.delete("/keywords/{keyword_id}")
 def delete_foreign_keyword(
     keyword_id: int,
     request: Request,
-    current_user: User = Depends(require_permission("keywords:write")),
+    current_user: User = Depends(require_permission("foreign:keywords:write")),
     db: Session = Depends(get_db),
 ):
-    row = db.get(ForeignKeyword, keyword_id)
+    row, _ = get_foreign_keyword_row(db, keyword_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Foreign keyword not found")
     with audit_write(
@@ -204,31 +409,43 @@ def delete_foreign_keyword(
         request=request,
         resource_type="foreign_keyword",
         resource_id=str(keyword_id),
-        details={"word": row.word},
+        details={"word": row["word"]},
     ):
-        db.delete(row)
+        delete_foreign_keyword_row(db, keyword_id)
         db.commit()
     return {"detail": "Foreign keyword deleted", "id": keyword_id}
 
 
 @foreign_router.get("/sources")
 def list_foreign_sources(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    q: str | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("sources:read")),
+    _: User = Depends(require_permission("foreign:sources:read")),
 ):
-    rows = db.scalars(
-        select(DataSource)
-        .where(DataSource.class_path.ilike("%foreign_rss%"))
-        .order_by(DataSource.priority.asc(), DataSource.id.asc())
+    candidates = db.scalars(
+        select(DataSource).order_by(DataSource.priority.asc(), DataSource.id.asc())
     ).all()
-    return {"items": [_foreign_source_item(row) for row in rows], "total": len(rows)}
+    rows = [row for row in candidates if _is_foreign_config(row)]
+    if q:
+        needle = q.casefold()
+        rows = [row for row in rows if needle in row.name.casefold() or needle in row.key.casefold()]
+    total = len(rows)
+    offset = (page - 1) * size
+    return {
+        "items": [_foreign_source_item(row) for row in rows[offset:offset + size]],
+        "total": total,
+        "page": page,
+        "size": size,
+    }
 
 
 @foreign_router.post("/sources", status_code=201)
 def create_foreign_source(
     payload: ForeignSourcePayload,
     request: Request,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("foreign:sources:write")),
     db: Session = Depends(get_db),
 ):
     if " " in payload.key or not payload.key.replace("_", "").isalnum():
@@ -240,15 +457,36 @@ def create_foreign_source(
         "collector": "foreign_rss",
         "source_name": payload.name.strip(),
         "feeds": [feed.strip() for feed in payload.feeds if feed.strip()],
+        "language": payload.language,
         "proxy_env": payload.proxy_env,
         "keywords": get_foreign_keywords(db),
         "collection_mode": "foreign",
-        "fetch_full_text": payload.fetch_full_text,
+        "fetch_full_text": False,
         "max_items": payload.max_items,
+        "timeout": payload.timeout,
+        "connect_timeout": payload.connect_timeout,
+        "read_timeout": payload.read_timeout,
+        "request_interval": payload.request_interval,
+        "max_retries": payload.max_retries,
+        "max_content_length": payload.max_content_length,
+        "respect_robots": payload.respect_robots,
     }
     error = _validate_foreign_config(cfg)
     if error:
         raise HTTPException(status_code=422, detail=error)
+    if payload.fetch_full_text:
+        raise HTTPException(status_code=422, detail="fetch_full_text must remain false in the foreign manual phase")
+    try:
+        test_foreign_source(
+            db, name=payload.name, feeds=cfg["feeds"],
+            keywords=cfg["keywords"], proxy_env=payload.proxy_env,
+            timeout=payload.timeout, connect_timeout=payload.connect_timeout,
+            read_timeout=payload.read_timeout, max_items=payload.max_items,
+            max_retries=payload.max_retries, respect_robots=payload.respect_robots,
+            require_success=True,
+        )
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     with audit_write(
         db,
         action="CREATE",
@@ -279,29 +517,52 @@ def create_foreign_source(
 @foreign_router.patch("/sources/{source_id}")
 def update_foreign_source(
     source_id: int,
-    payload: dict,
+    payload: ForeignSourceUpdatePayload,
     request: Request,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("foreign:sources:write")),
     db: Session = Depends(get_db),
 ):
     source = _foreign_source_or_404(db, source_id)
+    changes = payload.model_dump(exclude_unset=True)
     cfg = _source_config(source)
-    if "feeds" in payload:
-        cfg["feeds"] = payload["feeds"]
-    if "proxy_env" in payload:
-        cfg["proxy_env"] = payload["proxy_env"]
-    if "fetch_full_text" in payload:
-        cfg["fetch_full_text"] = bool(payload["fetch_full_text"])
-    if "max_items" in payload:
-        cfg["max_items"] = int(payload["max_items"])
-    if "name" in payload:
-        source.name = str(payload["name"]).strip() or source.name
-        cfg["source_name"] = source.name
+    next_name = str(changes.get("name", source.name)).strip() or source.name
+    cfg["keywords"] = get_foreign_keywords(db)
+    if "feeds" in changes:
+        cfg["feeds"] = changes["feeds"]
+    if "language" in changes:
+        cfg["language"] = changes["language"]
+    if "proxy_env" in changes:
+        cfg["proxy_env"] = changes["proxy_env"]
+    if "fetch_full_text" in changes and changes["fetch_full_text"]:
+        raise HTTPException(status_code=422, detail="fetch_full_text must remain false in the foreign manual phase")
+    cfg["fetch_full_text"] = False
+    if "max_items" in changes:
+        cfg["max_items"] = int(changes["max_items"])
+    for key in (
+        "timeout", "connect_timeout", "read_timeout", "request_interval",
+        "max_retries", "max_content_length", "respect_robots",
+    ):
+        if key in changes:
+            cfg[key] = changes[key]
+    if "name" in changes:
+        cfg["source_name"] = next_name
     error = _validate_foreign_config(cfg)
     if error:
         raise HTTPException(status_code=422, detail=error)
-    if payload.get("enabled") is True or payload.get("schedule_enabled") is True:
-        source_enabled = payload.get("enabled", source.enabled)
+    try:
+        test_foreign_source(
+            db, name=next_name, feeds=cfg.get("feeds") or [], keywords=cfg.get("keywords"),
+            proxy_env=cfg.get("proxy_env"), timeout=int(cfg.get("timeout", 15)),
+            connect_timeout=float(cfg.get("connect_timeout", cfg.get("timeout", 15))),
+            read_timeout=float(cfg.get("read_timeout", cfg.get("timeout", 15))),
+            max_items=int(cfg.get("max_items", 100)), max_retries=int(cfg.get("max_retries", 2)),
+            respect_robots=bool(cfg.get("respect_robots", True)),
+            require_success=True,
+        )
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if changes.get("enabled") is True or changes.get("schedule_enabled") is True:
+        source_enabled = changes.get("enabled", source.enabled)
         if source_enabled is not True:
             raise HTTPException(
                 status_code=422,
@@ -314,23 +575,73 @@ def update_foreign_source(
         request=request,
         resource_type="foreign_data_source",
         resource_id=str(source_id),
-        details={"changes": list(payload.keys())},
+        details={"changes": list(changes.keys())},
     ):
-        if "enabled" in payload:
-            source.enabled = bool(payload["enabled"])
+        if "enabled" in changes:
+            source.enabled = bool(changes["enabled"])
+        if "name" in changes:
+            source.name = next_name
         # Phase 1 keeps foreign scheduling manual-only.
-        if "schedule_enabled" in payload:
+        if "schedule_enabled" in changes:
             source.schedule_enabled = False
-        if "schedule_interval_minutes" in payload:
+        if "schedule_interval_minutes" in changes:
             source.schedule_interval_minutes = max(
-                5, int(payload["schedule_interval_minutes"])
+                5, int(changes["schedule_interval_minutes"])
             )
-        if "priority" in payload:
-            source.priority = int(payload["priority"])
+        if "priority" in changes:
+            source.priority = int(changes["priority"])
         source.config_json = json.dumps(cfg, ensure_ascii=False)
         db.commit()
     db.refresh(source)
     return _foreign_source_item(source)
+
+
+@foreign_router.post("/sources/test")
+def test_foreign_source_connection(
+    payload: ForeignSourceTestPayload,
+    _: User = Depends(require_permission("foreign:sources:test")),
+    db: Session = Depends(get_db),
+):
+    if payload.fetch_full_text:
+        raise HTTPException(status_code=422, detail="fetch_full_text must remain false in the foreign manual phase")
+    try:
+        result = test_foreign_source(
+            db, source_id=payload.source_id, name=payload.name,
+            feeds=payload.feeds, keywords=payload.keywords,
+            proxy_env=payload.proxy_env, timeout=payload.timeout,
+            connect_timeout=payload.connect_timeout, read_timeout=payload.read_timeout,
+            max_items=payload.max_items, max_retries=payload.max_retries,
+            respect_robots=payload.respect_robots,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return result
+
+
+@foreign_router.get("/sources/{source_id}/runs")
+def list_foreign_source_runs(
+    source_id: int,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:sources:read")),
+):
+    source = _foreign_source_or_404(db, source_id)
+    stmt = select(CollectorRun).where(
+        CollectorRun.scope == "foreign",
+        CollectorRun.collector_name == source.name,
+    )
+    if status:
+        stmt = stmt.where(CollectorRun.status == status)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(
+        stmt.order_by(CollectorRun.start_time.desc(), CollectorRun.id.desc())
+        .offset((page - 1) * size).limit(size)
+    ).all()
+    return {"items": [_foreign_run_item(row) for row in rows], "total": total, "page": page, "size": size}
 
 
 def _foreign_opinion_item(row: ForeignOpinion) -> dict[str, Any]:
@@ -340,8 +651,8 @@ def _foreign_opinion_item(row: ForeignOpinion) -> dict[str, Any]:
         "source_key": row.source_key,
         "source_name_snapshot": row.source_name_snapshot,
         "title": row.title,
-        "summary": row.summary,
-        "content": row.content,
+        "summary": sanitize_foreign_html(row.summary),
+        "content": sanitize_foreign_html(row.content),
         "url": row.url,
         "published_at": row.published_at.isoformat() if row.published_at else None,
         "collected_at": row.collected_at.isoformat() if row.collected_at else None,
@@ -350,6 +661,48 @@ def _foreign_opinion_item(row: ForeignOpinion) -> dict[str, Any]:
         "duplicate_of_id": row.duplicate_of_id,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
+
+
+def _foreign_opinion_detail(db: Session, row: ForeignOpinion) -> dict[str, Any]:
+    payload = _foreign_opinion_item(row)
+    current_rule = db.scalar(
+        select(ForeignRiskResult)
+        .where(
+            ForeignRiskResult.foreign_opinion_id == row.id,
+            ForeignRiskResult.is_current.is_(True),
+        )
+        .order_by(ForeignRiskResult.id.desc())
+    )
+    payload["rule_result"] = _foreign_risk_item(current_rule, row) if current_rule else None
+    payload["ai_result"] = None
+    payload["ai_alert_admission"] = None
+    payload["ai_alert_admission_actions"] = []
+    if inspect(db.get_bind()).has_table("foreign_ai_results"):
+        ai_result = db.scalar(
+            select(ForeignAIResult)
+            .where(
+                ForeignAIResult.foreign_opinion_id == row.id,
+                ForeignAIResult.is_current.is_(True),
+            )
+            .order_by(ForeignAIResult.id.desc())
+        )
+        payload["ai_result"] = serialize_ai_result(ai_result)
+        if inspect(db.get_bind()).has_table("foreign_alert_admissions"):
+            admission = ForeignAlertAdmissionService.get_current(db, row.id)
+            payload["ai_alert_admission"] = serialize_admission(admission)
+            if admission is not None:
+                payload["ai_alert_admission_actions"] = [
+                    serialize_admission_action(action)
+                    for action in ForeignAlertAdmissionService.list_actions(db, admission.id)
+                ]
+    runs = db.scalars(
+        select(ForeignAnalysisRun)
+        .where(ForeignAnalysisRun.foreign_opinion_id == row.id)
+        .order_by(ForeignAnalysisRun.started_at.desc(), ForeignAnalysisRun.id.desc())
+        .limit(50)
+    ).all()
+    payload["analysis_runs"] = [_foreign_analysis_run_item(run) for run in runs]
+    return payload
 
 
 @foreign_router.get("/opinions")
@@ -362,7 +715,7 @@ def list_foreign_opinions(
     date_from: str | None = None,
     date_to: str | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("sources:read")),
+    _: User = Depends(require_permission("foreign:opinions:read")),
 ):
     stmt = select(ForeignOpinion)
     if source:
@@ -413,7 +766,7 @@ def list_foreign_opinions(
 @foreign_router.get("/opinions/sources")
 def list_foreign_opinion_sources(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("sources:read")),
+    _: User = Depends(require_permission("foreign:opinions:read")),
 ):
     rows = db.execute(
         select(ForeignOpinion.source_name_snapshot)
@@ -428,12 +781,400 @@ def list_foreign_opinion_sources(
 def get_foreign_opinion(
     opinion_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("sources:read")),
+    _: User = Depends(require_permission("foreign:opinions:read")),
 ):
     row = db.get(ForeignOpinion, opinion_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Foreign opinion not found")
-    return _foreign_opinion_item(row)
+    return _foreign_opinion_detail(db, row)
+
+
+@foreign_router.get("/opinions/{opinion_id}/original")
+def get_foreign_opinion_original(
+    opinion_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:opinions:read")),
+):
+    row = db.get(ForeignOpinion, opinion_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Foreign opinion not found")
+    return {
+        "id": row.id,
+        "title": row.title,
+        # This legacy route remains available for old clients but never
+        # exposes the stored publisher HTML.
+        "content": sanitize_foreign_html(row.content),
+        "url": row.url,
+        "source_name_snapshot": row.source_name_snapshot,
+    }
+
+
+@foreign_router.get("/opinions/{opinion_id}/detail")
+def get_foreign_opinion_detail(
+    opinion_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:opinions:read")),
+):
+    row = db.get(ForeignOpinion, opinion_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Foreign opinion not found")
+    return _foreign_opinion_detail(db, row)
+
+
+@foreign_router.post("/opinions/{opinion_id}/ai-analyze")
+def analyze_foreign_opinion_ai(
+    opinion_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:ai:analyze")),
+):
+    if not inspect(db.get_bind()).has_table("foreign_ai_results"):
+        raise HTTPException(status_code=503, detail="Foreign AI storage migration is not applied")
+    try:
+        result = ForeignAIService().analyze_opinion(db, opinion_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return serialize_ai_result(result)
+
+
+@foreign_router.post("/opinions/{opinion_id}/ai-alert-admission")
+def set_foreign_ai_alert_admission(
+    opinion_id: int,
+    payload: ForeignAIAlertAdmissionPayload,
+    request: Request,
+    current_user: User = Depends(require_permission("foreign:alerts:ai-admit")),
+    db: Session = Depends(get_db),
+):
+    with audit_write(
+        db,
+        action="SET_FOREIGN_AI_ALERT_ADMISSION",
+        operator=current_user,
+        request=request,
+        resource_type="foreign_alert_admission",
+        resource_id=str(opinion_id),
+        details={"included": payload.included, "note": payload.note.strip(), "evaluation_source": "ai"},
+    ) as ctx:
+        try:
+            admission, action = ForeignAlertAdmissionService.set_status(
+                db,
+                opinion_id,
+                included=payload.included,
+                actor_id=current_user.id,
+                note=payload.note.strip(),
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        ctx["resource_id"] = str(admission.id)
+    return {
+        "admission": serialize_admission(admission),
+        "action": serialize_admission_action(action),
+    }
+
+
+def _foreign_risk_item(result: ForeignRiskResult, opinion: ForeignOpinion) -> dict[str, Any]:
+    return {
+        "id": result.id,
+        "foreign_opinion_id": result.foreign_opinion_id,
+        "analysis_run_id": result.analysis_run_id,
+        "content_hash": result.content_hash,
+        "language": result.language,
+        "risk_score": result.risk_score,
+        "risk_level": result.risk_level,
+        "sentiment": result.sentiment,
+        "sentiment_confidence": result.sentiment_confidence,
+        "risk_category": result.risk_category,
+        "matched_terms": result.matched_terms or [],
+        "explanation": result.explanation,
+        "analyzer_type": result.analyzer_type,
+        "model_name": result.model_name,
+        "model_version": result.model_version,
+        "analysis_status": result.analysis_status,
+        "error_message": _safe_foreign_error(result.error_message),
+        "analyzed_at": result.analyzed_at.isoformat() if result.analyzed_at else None,
+        "created_at": result.created_at.isoformat() if result.created_at else None,
+        "updated_at": result.updated_at.isoformat() if result.updated_at else None,
+        "is_current": bool(result.is_current),
+        "opinion": _foreign_opinion_item(opinion),
+    }
+
+
+def _parse_risk_date(value: str | None, field_name: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} must be YYYY-MM-DD",
+        ) from exc
+
+
+@foreign_router.get("/risk")
+def list_foreign_risk(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    source: str | None = None,
+    language: str | None = None,
+    sentiment: str | None = None,
+    risk_level: str | None = None,
+    analysis_status: str | None = None,
+    model_version: str | None = None,
+    q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:risk:read")),
+):
+    stmt = (
+        select(ForeignRiskResult, ForeignOpinion)
+        .join(
+            ForeignOpinion,
+            ForeignOpinion.id == ForeignRiskResult.foreign_opinion_id,
+        )
+    )
+    if source:
+        stmt = stmt.where(ForeignOpinion.source_name_snapshot == source)
+    if language:
+        stmt = stmt.where(ForeignRiskResult.language == language)
+    if sentiment:
+        stmt = stmt.where(ForeignRiskResult.sentiment == sentiment)
+    if risk_level:
+        stmt = stmt.where(ForeignRiskResult.risk_level == risk_level)
+    if analysis_status:
+        stmt = stmt.where(ForeignRiskResult.analysis_status == analysis_status)
+    if model_version:
+        stmt = stmt.where(ForeignRiskResult.model_version == model_version)
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                ForeignOpinion.title.ilike(like),
+                ForeignOpinion.summary.ilike(like),
+                ForeignOpinion.content.ilike(like),
+            )
+        )
+    start = _parse_risk_date(date_from, "date_from")
+    end = _parse_risk_date(date_to, "date_to")
+    if start:
+        stmt = stmt.where(ForeignOpinion.published_at >= start)
+    if end:
+        stmt = stmt.where(
+            ForeignOpinion.published_at < end.replace(hour=23, minute=59, second=59)
+        )
+    total = db.scalar(
+        select(func.count()).select_from(stmt.order_by(None).subquery())
+    ) or 0
+    rows = db.execute(
+        stmt.order_by(ForeignRiskResult.analyzed_at.desc(), ForeignRiskResult.id.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    ).all()
+    return {
+        "items": [_foreign_risk_item(result, opinion) for result, opinion in rows],
+        "total": total,
+        "page": page,
+        "size": size,
+    }
+
+
+@foreign_router.get("/risk/summary")
+def summarize_foreign_risk(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:risk:read")),
+):
+    rows = db.execute(
+        select(
+            ForeignRiskResult.analysis_status,
+            ForeignRiskResult.risk_level,
+            ForeignRiskResult.sentiment,
+            func.count(ForeignRiskResult.id),
+        ).group_by(
+            ForeignRiskResult.analysis_status,
+            ForeignRiskResult.risk_level,
+            ForeignRiskResult.sentiment,
+        )
+    ).all()
+    return {
+        "total": sum(int(row[3]) for row in rows),
+        "by_status": {
+            row[0]: sum(int(item[3]) for item in rows if item[0] == row[0])
+            for row in rows
+        },
+        "by_risk_level": {
+            row[0]: sum(int(item[3]) for item in rows if item[1] == row[0])
+            for row in rows
+        },
+        "by_sentiment": {
+            row[0]: sum(int(item[3]) for item in rows if item[2] == row[0])
+            for row in rows
+        },
+    }
+
+
+@foreign_router.get("/risk/{foreign_opinion_id}")
+def get_foreign_risk(
+    foreign_opinion_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:risk:read")),
+):
+    opinion = db.get(ForeignOpinion, foreign_opinion_id)
+    if opinion is None:
+        raise HTTPException(status_code=404, detail="Foreign opinion not found")
+    results = db.scalars(
+        select(ForeignRiskResult)
+        .where(ForeignRiskResult.foreign_opinion_id == foreign_opinion_id)
+        .order_by(ForeignRiskResult.created_at.desc(), ForeignRiskResult.id.desc())
+    ).all()
+    return {
+        "foreign_opinion_id": foreign_opinion_id,
+        "opinion": _foreign_opinion_item(opinion),
+        "items": [_foreign_risk_item(result, opinion) for result in results],
+    }
+
+
+@foreign_router.post("/risk/{foreign_opinion_id}/analyze")
+def analyze_foreign_risk(
+    foreign_opinion_id: int,
+    payload: ForeignRiskAnalyzePayload | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:risk:analyze")),
+):
+    service = ForeignRiskService()
+    try:
+        result = service.analyze_opinion(
+            db,
+            foreign_opinion_id,
+            model_version=payload.model_version if payload else RULE_MODEL_VERSION,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _foreign_risk_item(result, db.get(ForeignOpinion, foreign_opinion_id))
+
+
+@foreign_router.post("/risk/batch")
+def analyze_foreign_risk_batch(
+    payload: ForeignRiskBatchPayload,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:risk:batch")),
+):
+    service = ForeignRiskService()
+    try:
+        run, results = service.analyze_many(
+            db,
+            payload.foreign_opinion_ids,
+            model_version=payload.model_version,
+        )
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    opinion_map = {
+        opinion.id: opinion
+        for opinion in db.scalars(
+            select(ForeignOpinion).where(
+                ForeignOpinion.id.in_(payload.foreign_opinion_ids)
+            )
+        ).all()
+    }
+    return {
+        "run": _foreign_analysis_run_item(run),
+        "items": [
+            _foreign_risk_item(result, opinion_map[result.foreign_opinion_id])
+            for result in results
+        ],
+    }
+
+
+@foreign_router.post("/risk/{foreign_opinion_id}/ai-review")
+def manual_foreign_ai_review(
+    foreign_opinion_id: int,
+    current_user: User = Depends(require_permission("foreign:risk:ai")),
+    db: Session = Depends(get_db),
+):
+    if db.get(ForeignOpinion, foreign_opinion_id) is None:
+        raise HTTPException(status_code=404, detail="Foreign opinion not found")
+    try:
+        ForeignRiskService().manual_ai_review(db, foreign_opinion_id)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "FOREIGN_AI_DISABLED",
+                "message": str(exc),
+            },
+        ) from exc
+    return {"status": "disabled", "foreign_opinion_id": foreign_opinion_id}
+
+
+def _foreign_analysis_run_item(row: ForeignAnalysisRun) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "foreign_opinion_id": row.foreign_opinion_id,
+        "analyzer_type": row.analyzer_type,
+        "model_name": row.model_name,
+        "model_version": row.model_version,
+        "status": row.status,
+        "started_at": row.started_at.isoformat() if row.started_at else None,
+        "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+        "processed_count": row.processed_count,
+        "success_count": row.success_count,
+        "failed_count": row.failed_count,
+        "error_message": _safe_foreign_error(row.error_message),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@foreign_router.get("/analysis-runs")
+def list_foreign_analysis_runs(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:risk:read")),
+):
+    stmt = select(ForeignAnalysisRun)
+    if status:
+        stmt = stmt.where(ForeignAnalysisRun.status == status)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(
+        stmt.order_by(ForeignAnalysisRun.started_at.desc(), ForeignAnalysisRun.id.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    ).all()
+    return {
+        "items": [_foreign_analysis_run_item(row) for row in rows],
+        "total": total,
+        "page": page,
+        "size": size,
+    }
+
+
+@foreign_router.get("/risk-terms")
+def list_foreign_risk_terms(
+    page: int = Query(1, ge=1),
+    size: int = Query(100, ge=1, le=100),
+    language: str | None = None,
+    is_enabled: bool | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:risk:terms:read")),
+):
+    stmt = select(ForeignRiskTerm)
+    if language:
+        stmt = stmt.where(ForeignRiskTerm.language == language)
+    if is_enabled is not None:
+        stmt = stmt.where(ForeignRiskTerm.is_enabled.is_(is_enabled))
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(
+        stmt.order_by(ForeignRiskTerm.id.asc())
+        .offset((page - 1) * size)
+        .limit(size)
+    ).all()
+    return {
+        "items": rows,
+        "total": total,
+        "page": page,
+        "size": size,
+    }
 
 
 def _foreign_run_item(row: CollectorRun) -> dict[str, Any]:
@@ -452,7 +1193,7 @@ def _foreign_run_item(row: CollectorRun) -> dict[str, Any]:
         "duplicate": row.duplicate,
         "failed": row.failed,
         "proxy_used": bool(row.proxy_used),
-        "error_msg": row.error_msg,
+        "error_msg": _safe_foreign_error(row.error_msg),
     }
 
 
@@ -462,7 +1203,7 @@ def list_foreign_collection_runs(
     size: int = Query(20, ge=1, le=100),
     status: str | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("sources:read")),
+    _: User = Depends(require_permission("foreign:sources:read")),
 ):
     stmt = select(CollectorRun).where(CollectorRun.scope == "foreign")
     if status:
@@ -481,7 +1222,11 @@ def list_foreign_collection_runs(
     }
 
 
-def _run_foreign_collect_task(task, source_ids: list[int] | None) -> dict:
+def _run_foreign_collect_task(
+    task,
+    source_ids: list[int] | None,
+    all_sources: bool,
+) -> dict:
     db = SessionLocal()
     try:
         task.step = "外网 RSS 采集中"
@@ -493,6 +1238,7 @@ def _run_foreign_collect_task(task, source_ids: list[int] | None) -> dict:
         result = collect_foreign(
             db,
             source_ids=source_ids,
+            all_sources=all_sources,
             on_progress=progress,
         )
         task.step = "外网采集完成"
@@ -503,13 +1249,35 @@ def _run_foreign_collect_task(task, source_ids: list[int] | None) -> dict:
 
 @foreign_router.post("/collect")
 def collect_foreign_now(
-    source_ids: list[int] | None = Body(None, embed=True),
+    payload: ForeignCollectionPayload,
+    db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
+    source_ids = payload.source_ids
+    if payload.all_sources and source_ids is not None:
+        raise HTTPException(status_code=422, detail="source_ids cannot be combined with all_sources=true")
+    if not payload.all_sources and not source_ids:
+        raise HTTPException(
+            status_code=422,
+            detail="Select at least one foreign source; use all_sources=true for full collection",
+        )
+    if source_ids is not None and len(set(source_ids)) != len(source_ids):
+        raise HTTPException(status_code=422, detail="source_ids must not contain duplicates")
+    if not payload.all_sources:
+        selected = db.scalars(select(DataSource).where(DataSource.id.in_(source_ids or []))).all()
+        selected_by_id = {source.id: source for source in selected}
+        missing = [source_id for source_id in source_ids or [] if source_id not in selected_by_id]
+        if missing:
+            raise HTTPException(status_code=422, detail="One or more selected foreign sources were not found")
+        if any(not _is_foreign_config(source) for source in selected):
+            raise HTTPException(status_code=422, detail="All selected sources must be foreign sources")
+        if any(not source.enabled for source in selected):
+            raise HTTPException(status_code=422, detail="All selected foreign sources must be enabled")
     task_id = start_task(
         "foreign-collector",
         _run_foreign_collect_task,
         source_ids,
+        payload.all_sources,
     )
     return {
         "success": True,

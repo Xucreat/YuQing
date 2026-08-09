@@ -222,11 +222,22 @@ def _is_foreign(class_path: str) -> bool:
     return "foreign_rss" in (class_path or "")
 
 
+def _has_foreign_config(raw: str | None) -> bool:
+    cfg, err = _parse_config_json(raw or "{}")
+    return not err and isinstance(cfg, dict) and cfg.get("is_foreign") is True
+
+
+def _is_foreign_source(ds: DataSource) -> bool:
+    return _is_foreign(ds.class_path) or _has_foreign_config(ds.config_json)
+
+
 FOREIGN_ALLOWED_KEYS = {
     "is_foreign", "collector", "source_name", "feeds", "proxy_env", "enabled",
     "schedule_enabled", "keywords", "collection_mode", "collection_scope",
     "filter_mode", "keyword_scope", "max_items", "timeout", "max_content_length",
-    "request_interval", "max_retries", "fetch_full_text",
+    "request_interval", "max_retries", "fetch_full_text", "connect_timeout",
+    "read_timeout", "language",
+    "respect_robots",
 }
 
 
@@ -749,11 +760,6 @@ def list_data_sources(
         stmt = stmt.where(or_(DataSource.name.like(like), DataSource.key.like(like)))
     if enabled is not None:
         stmt = stmt.where(DataSource.enabled == enabled)
-    foreign_like = '%"is_foreign": true%'
-    if is_foreign is True:
-        stmt = stmt.where(func.coalesce(DataSource.config_json, "").like(foreign_like))
-    elif is_foreign is False:
-        stmt = stmt.where(~func.coalesce(DataSource.config_json, "").like(foreign_like))
     if region_code:  # 具体区域：命中该 code 或全国(空)源
         stmt = stmt.where(
             or_(
@@ -763,12 +769,25 @@ def list_data_sources(
             )
         )
 
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    rows = db.scalars(
-        stmt.order_by(DataSource.priority.asc(), DataSource.id.asc())
-        .offset((page - 1) * size)
-        .limit(size)
-    ).all()
+    offset = (page - 1) * size
+    if is_foreign is None:
+        total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        rows = db.scalars(
+            stmt.order_by(DataSource.priority.asc(), DataSource.id.asc())
+            .offset(offset)
+            .limit(size)
+        ).all()
+    else:
+        candidates = db.scalars(
+            stmt.order_by(DataSource.priority.asc(), DataSource.id.asc())
+        ).all()
+        filtered = [
+            row
+            for row in candidates
+            if _is_foreign_source(row) is bool(is_foreign)
+        ]
+        total = len(filtered)
+        rows = filtered[offset: offset + size]
 
     # 最近运行：按 collector_name 聚合最新一条
     names = [r.name for r in rows]

@@ -806,7 +806,7 @@ async function reload(resetPage = false) {
   if (resetPage) page.value = 1
   loading.value = true
   try {
-    const params: Record<string, any> = { page: page.value, size: size.value }
+    const params: Record<string, any> = { page: page.value, size: size.value, is_foreign: false }
     if (filterRegion.value) params.region_code = filterRegion.value
     if (filterEnabled.value !== '') params.enabled = filterEnabled.value
     if (filterQ.value) params.q = filterQ.value

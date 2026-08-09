@@ -5,9 +5,13 @@
         <h2>外网舆情</h2>
         <p>独立采集、去重和展示链路；不会进入国内舆情、风险、事件或告警。</p>
       </div>
-      <button class="btn btn-primary" :disabled="collecting" @click="collectNow">
+      <div class="collection-actions">
+        <span class="source-scope-label">已批准数据源：57-60</span>
+        <button class="btn btn-primary" :disabled="collecting" @click="collectNow">
         {{ collecting ? '采集中...' : '采集外网 RSS' }}
-      </button>
+        </button>
+        <button class="btn btn-secondary" :disabled="collecting" @click="collectAll">采集全部数据源</button>
+      </div>
     </div>
 
     <div class="tabs" role="tablist">
@@ -15,6 +19,63 @@
         {{ tab.label }}
       </button>
     </div>
+
+    <section v-if="activeTab === 'dashboard'" class="panel visualization-panel">
+      <div class="fw-dash-head">
+        <div>
+          <h2 class="fw-dash-title">外网舆情看板</h2>
+          <p class="muted">面向外网公开来源采集的舆情概览（仅外网数据）</p>
+        </div>
+        <div class="toolbar" style="margin-bottom:0">
+          <label class="muted">统计窗口
+            <select v-model.number="visualizationDays" class="input" @change="loadDashboard">
+              <option :value="1">近 1 天</option><option :value="7">近 7 天</option><option :value="30">近 30 天</option><option :value="90">近 90 天</option>
+            </select>
+          </label>
+          <button class="btn btn-primary" @click="loadDashboard">刷新看板</button>
+          <span v-if="visualizationStale" class="stale-badge">数据较旧</span>
+        </div>
+      </div>
+      <div v-if="visualizationError" class="error-state"><span>{{ visualizationError }}</span><button class="btn btn-secondary" @click="loadDashboard">重试</button></div>
+      <div v-else-if="dashboardSummary" class="fw-dash">
+        <div class="fw-kpi-grid">
+          <div class="fw-kpi"><span class="fw-kpi-label">文章总数</span><strong class="fw-kpi-value">{{ dashboardSummary.articles.total }}</strong><small>{{ dashboardSummary.articles.window_new }} 条在窗口内</small></div>
+          <div class="fw-kpi"><span class="fw-kpi-label">数据源</span><strong class="fw-kpi-value">{{ dashboardSummary.articles.sources }}</strong><small>{{ dashboardSummary.articles.languages?.en || 0 }} 英文 / {{ dashboardSummary.articles.languages?.zh || 0 }} 中文</small></div>
+          <div class="fw-kpi"><span class="fw-kpi-label">风险已完成</span><strong class="fw-kpi-value">{{ dashboardSummary.risk.completed }}</strong><small>{{ dashboardSummary.risk.failed }} 失败 · {{ dashboardSummary.risk.pending }} 待处理</small></div>
+          <div class="fw-kpi"><span class="fw-kpi-label">已确认事件</span><strong class="fw-kpi-value">{{ dashboardSummary.events.confirmed }}</strong><small>{{ dashboardSummary.events.candidate }} 候选</small></div>
+          <div class="fw-kpi"><span class="fw-kpi-label">外网告警</span><strong class="fw-kpi-value">{{ dashboardSummary.alerts.total }}</strong><small>{{ dashboardSummary.alerts.by_status?.triggered || 0 }} 已触发</small></div>
+        </div>
+        <div class="fw-widget-grid">
+          <article class="fw-card"><h3>风险分布</h3><div v-for="(count, label) in dashboardRisk?.risk_levels" :key="label" class="distribution-row"><span>{{ zh(label) }}</span><strong>{{ count }}</strong></div><p v-if="!dashboardRisk || !Object.keys(dashboardRisk.risk_levels || {}).length" class="empty">暂无已完成风险结果</p></article>
+          <article class="fw-card"><h3>事件状态</h3><div v-for="(count, label) in dashboardEvents?.formal_events" :key="label" class="distribution-row"><span>{{ zh(label) }}</span><strong>{{ count }}</strong></div><p v-if="!dashboardEvents || !Object.keys(dashboardEvents.formal_events || {}).length" class="empty">暂无外网事件</p></article>
+          <article class="fw-card"><h3>采集状态</h3><div v-if="dashboardSummary.collection.latest" class="distribution-row"><span>最近一次</span><strong>{{ zh(dashboardSummary.collection.latest.status) }}</strong></div><div class="distribution-row"><span>成功 / 失败</span><strong>{{ dashboardSummary.collection.success }} / {{ dashboardSummary.collection.failed }}</strong></div><p v-if="!dashboardSummary.collection.latest" class="empty">暂无外网采集记录</p></article>
+          <article class="fw-card fw-card-wide">
+            <header class="fw-card-head">
+              <h3>每日趋势</h3>
+              <div class="fw-legend">
+                <button v-for="item in trendSeriesOptions" :key="item.key" type="button" class="fw-legend-item" :class="{ off: !trendSeriesOn[item.key] }" @click="toggleTrendSeries(item.key)">
+                  <i :style="{ background: item.color }"></i>{{ item.label }}
+                </button>
+              </div>
+            </header>
+            <div v-show="(dashboardTrends?.items || []).length" ref="trendChartRef" class="fw-chart"></div>
+            <p v-if="!(dashboardTrends?.items || []).length" class="empty">该窗口内暂无趋势数据</p>
+          </article>
+          <article class="fw-card fw-card-wide">
+            <header class="fw-card-head">
+              <h3>外网热词</h3>
+              <span class="muted">近 {{ visualizationDays }} 天 · 共 {{ hotwordItems.length }} 个热词</span>
+            </header>
+            <div v-show="hotwordItems.length" ref="hotwordChartRef" class="fw-chart"></div>
+            <p v-if="!hotwordItems.length" class="empty">该窗口内暂无外网热词</p>
+          </article>
+        </div>
+        <div class="visualization-meta">数据范围：{{ formatTime(dashboardSummary.window_start) }} - {{ formatTime(dashboardSummary.window_end) }} · 更新于：{{ formatTime(dashboardSummary.data_as_of) }}</div>
+      </div>
+      <div v-else class="state">加载外网看板中...</div>
+    </section>
+
+
 
     <section v-if="activeTab === 'opinions'" class="panel">
       <div class="toolbar">
@@ -24,155 +85,735 @@
           <option v-for="source in opinionSources" :key="source" :value="source">{{ source }}</option>
         </select>
         <input v-model="opinionFilters.keyword" class="input" placeholder="命中关键词" @keyup.enter="loadOpinions" />
+        <select v-model="riskFilters.language" class="input" @change="loadRisk">
+          <option value="">全部语言</option><option value="zh">中文</option><option value="en">英文</option><option value="mixed">中英混合</option><option value="unknown">未知</option>
+        </select>
+        <select v-model="riskFilters.risk_level" class="input" @change="loadRisk">
+          <option value="">全部风险等级</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option><option value="unknown">未知</option>
+        </select>
+        <select v-model="riskFilters.analysis_status" class="input" @change="loadRisk">
+          <option value="">全部分析状态</option><option value="completed">完成</option><option value="skipped">跳过</option><option value="failed">失败</option>
+        </select>
+        <input v-model="opinionFilters.date_from" class="input date-input" type="date" title="发布时间起始" @change="loadOpinions" />
+        <input v-model="opinionFilters.date_to" class="input date-input" type="date" title="发布时间截止" @change="loadOpinions" />
         <button class="btn btn-secondary" @click="loadOpinions">搜索</button>
+        <span class="muted">以舆情为主，右侧为已关联的风险研判（未分析显示 -）</span>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap tbl-scroll">
         <table>
-          <thead><tr><th>标题</th><th>来源快照</th><th>命中关键词</th><th>发布时间</th><th>采集时间</th></tr></thead>
+          <thead><tr><th>标题</th><th>来源快照</th><th>命中关键词</th><th>发布时间</th><th>采集时间</th><th>风险分</th><th>等级</th><th>情感</th><th>风险类别</th><th>命中风险词</th><th>分析状态</th><th>分析时间</th><th>版本</th><th>操作</th></tr></thead>
           <tbody>
-            <tr v-for="row in opinions" :key="row.id" @click="selectedOpinion = row">
+            <tr v-for="row in opinions" :key="row.id" @click="openOpinion(row.id)">
               <td class="title-cell">{{ row.title || '无标题' }}</td>
               <td>{{ row.source_name_snapshot }}</td>
               <td><span v-for="word in row.matched_keywords" :key="word" class="tag">{{ word }}</span></td>
               <td>{{ formatTime(row.published_at) }}</td>
               <td>{{ formatTime(row.collected_at) }}</td>
-            </tr>
-            <tr v-if="!opinions.length"><td colspan="5" class="empty">暂无外网舆情</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="pager" v-if="opinionTotal > opinionSize">
-        <button class="btn btn-secondary" :disabled="opinionPage <= 1" @click="opinionPage--; loadOpinions()">上一页</button>
-        <span>第 {{ opinionPage }} 页 / 共 {{ opinionTotal }} 条</span>
-        <button class="btn btn-secondary" :disabled="opinionPage * opinionSize >= opinionTotal" @click="opinionPage++; loadOpinions()">下一页</button>
-      </div>
-    </section>
-
-    <section v-else-if="activeTab === 'keywords'" class="panel">
-      <div class="toolbar">
-        <input v-model="keywordDraft.word" class="input" placeholder="新增外网关键词" @keyup.enter="createKeyword" />
-        <button class="btn btn-primary" @click="createKeyword">新增关键词</button>
-        <button class="btn btn-secondary" @click="loadKeywords">刷新</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>关键词</th><th>分类</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="row in keywords" :key="row.id">
-              <td>{{ row.word }}</td><td>{{ row.category }}</td>
-              <td><span class="status" :class="{ on: row.is_enabled }">{{ row.is_enabled ? '启用' : '停用' }}</span></td>
+              <td>{{ riskOf(row.id)?.risk_score ?? '-' }}</td>
+              <td><span class="status" :class="{ on: riskOf(row.id)?.risk_level === 'high' }">{{ zh(riskOf(row.id)?.risk_level) }}</span></td>
+              <td>{{ zh(riskOf(row.id)?.sentiment) }}</td>
+              <td>{{ zh(riskOf(row.id)?.risk_category) }}</td>
+              <td>
+                <span v-for="term in (riskOf(row.id)?.matched_terms || [])" :key="term.word" class="tag">{{ term.word }}</span>
+                <span v-if="!(riskOf(row.id)?.matched_terms || []).length" class="muted">无</span>
+              </td>
+              <td><span class="status" :class="{ on: riskOf(row.id)?.analysis_status === 'completed' }">{{ zh(riskOf(row.id)?.analysis_status) }}</span></td>
+              <td>{{ formatTime(riskOf(row.id)?.analyzed_at) }}</td>
+              <td>{{ riskOf(row.id)?.model_version || '-' }}</td>
               <td class="actions">
-                <button class="link-btn" @click="toggleKeyword(row)">{{ row.is_enabled ? '停用' : '启用' }}</button>
-                <button class="link-btn danger" @click="removeKeyword(row.id)">删除</button>
+                <button class="link-btn" v-if="riskOf(row.id)" :disabled="!canAnalyzeRisk" @click.stop="analyzeRisk(riskOf(row.id)!)">重新分析</button>
               </td>
             </tr>
-            <tr v-if="!keywords.length"><td colspan="4" class="empty">暂无外网关键词</td></tr>
+            <tr v-if="!opinions.length"><td colspan="14" class="empty">暂无外网舆情</td></tr>
           </tbody>
         </table>
       </div>
-    </section>
-
-    <section v-else-if="activeTab === 'sources'" class="panel">
-      <div class="source-note">首批来源默认停用，代理只读取环境变量名，不在前端展示地址、账号或密钥。</div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>来源</th><th>RSS</th><th>状态</th><th>调度</th><th>代理</th></tr></thead>
-          <tbody>
-            <tr v-for="row in sources" :key="row.id">
-              <td><strong>{{ row.name }}</strong><div class="muted">{{ row.key }}</div></td>
-              <td><div v-for="feed in row.feeds" :key="feed" class="feed">{{ feed }}</div></td>
-              <td><button class="status-toggle" :class="{ on: row.enabled }" @click="toggleSource(row)">{{ row.enabled ? '已启用' : '已停用' }}</button></td>
-              <td>{{ row.schedule_enabled ? '自动' : '手动' }}</td>
-              <td>{{ row.proxy_env || '直连' }}<span v-if="row.proxy_configured" class="proxy-mark">已配置</span></td>
-            </tr>
-            <tr v-if="!sources.length"><td colspan="5" class="empty">暂无外网数据源</td></tr>
-          </tbody>
-        </table>
+      <div class="pager" v-if="opinionTotal > 0">
+        <Pager :total="opinionTotal" v-model:current-page="opinionPage" :page-size="opinionSize" @current-change="loadOpinions" />
       </div>
     </section>
 
-    <section v-else class="panel">
+
+    <section v-else-if="activeTab === 'events'" class="panel">
+      <div class="alert-scope-note">外网自动聚合：{{ eventAutoStatus?.enabled ? '已启用' : '已停用' }} · 调度已注册：{{ eventAutoStatus?.scheduler_registered ? '是' : '否' }} · 置信度阈值 {{ eventAutoStatus?.confidence_threshold ?? '-' }} · 时间窗口 {{ eventAutoStatus?.time_window_hours ?? '-' }} 小时</div>
       <div class="toolbar">
-        <button class="btn btn-secondary" @click="loadRuns">刷新日志</button>
-        <span class="muted">仅显示 scope=foreign 的采集记录</span>
+        <button class="btn btn-secondary" @click="loadEvents">刷新外网事件</button>
+        <button class="btn btn-secondary" :disabled="rebuildingEvents" @click="rebuildEvents">
+          {{ rebuildingEvents ? '重建中...' : '候选 Dry-Run' }}
+        </button>
+        <span class="muted">候选只进入外网事件表，必须人工确认后才形成正式事件</span>
       </div>
-      <div class="table-wrap">
+      <div v-if="eventLoadError" class="state error-state">
+        <span>外网事件加载失败：{{ eventLoadError }}</span>
+        <button class="btn btn-secondary" @click="loadEvents">重试</button>
+      </div>
+      <div v-if="eventRunFailures.length" class="event-failures">
+        <strong>外网事件运行失败</strong>
+        <div v-for="run in eventRunFailures" :key="run.id" class="event-failure-row">
+          <span class="status failed">失败</span>
+          <span>{{ formatTime(run.finished_at || run.started_at) }}</span>
+          <span>{{ run.error_message || '运行失败，未提供错误摘要' }}</span>
+        </div>
+      </div>
+      <div class="subtabs">
+        <button class="tab" :class="{ active: eventSection === 'candidates' }" @click="eventSection = 'candidates'">事件候选</button>
+        <button class="tab" :class="{ active: eventSection === 'confirmed' }" @click="eventSection = 'confirmed'">外网事件</button>
+      </div>
+      <div v-if="eventSection === 'candidates'" class="table-wrap">
         <table>
-          <thead><tr><th>来源</th><th>开始</th><th>状态</th><th>抓取</th><th>命中</th><th>新增</th><th>去重</th><th>代理</th><th>失败原因</th></tr></thead>
+          <thead><tr><th>标题</th><th>语言</th><th>审核来源</th><th>置信度</th><th>文章数</th><th>来源数</th><th>状态</th><th>操作</th></tr></thead>
           <tbody>
-            <tr v-for="row in runs" :key="row.id">
-              <td>{{ row.collector_name }}</td><td>{{ formatTime(row.start_time) }}</td>
-              <td><span class="status" :class="{ on: row.status === 'success' }">{{ row.status }}</span></td>
-              <td>{{ row.fetched_raw }}</td><td>{{ row.matched }}</td><td>{{ row.created }}</td><td>{{ row.duplicate }}</td>
-              <td>{{ row.proxy_used ? '是' : '否' }}</td><td class="error-cell">{{ row.error_msg || '-' }}</td>
+            <tr v-for="row in eventCandidates" :key="row.id">
+              <td class="title-cell">{{ row.title || '无标题' }}</td>
+               <td>{{ zh(row.language) }}</td>
+               <td>{{ zh(row.review_source || 'manual') }}</td>
+              <td>{{ Math.round(row.confidence * 100) }}%</td>
+              <td>{{ row.opinion_count }}</td>
+              <td>{{ row.source_count }}</td>
+              <td><span class="status" :class="{ on: row.candidate_status === 'converted' }">{{ zh(row.candidate_status) }}</span></td>
+              <td class="actions">
+                <button v-if="row.candidate_status === 'candidate'" class="link-btn" :disabled="!canConfirmEvents || eventActionKey === `candidate-confirm-${row.id}`" @click="confirmCandidate(row)">确认</button>
+                <button v-if="row.candidate_status === 'candidate'" class="link-btn danger" :disabled="!canConfirmEvents || eventActionKey === `candidate-reject-${row.id}`" @click="rejectCandidate(row)">拒绝</button>
+              </td>
             </tr>
-            <tr v-if="!runs.length"><td colspan="9" class="empty">暂无外网采集日志</td></tr>
+            <tr v-if="!eventCandidates.length"><td colspan="8" class="empty">暂无外网事件候选</td></tr>
           </tbody>
         </table>
       </div>
+      <div v-else class="table-wrap">
+        <table>
+          <thead><tr><th>标题</th><th>语言</th><th>确认来源</th><th>状态</th><th>风险快照</th><th>热度</th><th>文章数</th><th>来源数</th><th>置信度</th><th>首次出现</th><th>最近出现</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="row in foreignEvents" :key="row.id" @click="loadEventDetail(row.id)">
+              <td class="title-cell">{{ row.title || '无标题' }}</td>
+               <td>{{ zh(row.language) }}</td>
+               <td>{{ zh(row.confirmation_source || 'manual') }}</td>
+              <td><span class="status" :class="{ on: row.event_status === 'monitoring', failed: row.event_status === 'failed' }">{{ zh(row.event_status) }}</span></td>
+              <td>{{ zh(row.risk_level) }}</td>
+              <td>{{ row.heat_score ?? '-' }}</td>
+              <td>{{ row.opinion_count }}</td>
+              <td>{{ row.source_count }}</td>
+              <td>{{ Math.round(row.confidence * 100) }}%</td>
+              <td>{{ formatTime(row.first_seen_at) }}</td>
+              <td>{{ formatTime(row.last_seen_at) }}</td>
+              <td><button class="link-btn" :disabled="!canChangeEventStatus || eventActionKey === `event-close-${row.id}`" @click.stop="closeEvent(row)">关闭</button><button class="link-btn" :disabled="!canChangeEventStatus || eventActionKey === `event-archive-${row.id}`" @click.stop="archiveEvent(row)">归档</button></td>
+            </tr>
+            <tr v-if="!foreignEvents.length"><td colspan="12" class="empty">暂无已确认外网事件</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <article v-if="selectedForeignEvent" class="event-detail">
+        <div class="event-provenance">
+          <strong>事件溯源</strong>
+          <span>确认来源：{{ zh(selectedForeignEvent.confirmation_source || 'manual') }}</span>
+          <span>审核来源：{{ zh(selectedForeignEvent.auto_aggregation?.review_source) }}</span>
+          <span>置信度：{{ Math.round((selectedForeignEvent.confidence || 0) * 100) }}%</span>
+          <span>文章数：{{ selectedForeignEvent.opinion_count }} · 来源数：{{ selectedForeignEvent.source_count }}</span>
+          <details v-if="selectedForeignEvent.auto_aggregation?.evidence"><summary>聚合证据</summary><pre>{{ JSON.stringify(selectedForeignEvent.auto_aggregation.evidence, null, 2) }}</pre></details>
+        </div>
+        <div class="event-detail-head">
+          <h3>{{ selectedForeignEvent.title }}</h3>
+          <div class="actions"><button class="link-btn" :disabled="!canChangeEventStatus || eventActionKey" @click="closeEvent(selectedForeignEvent)">关闭事件</button><button class="link-btn" :disabled="!canMergeEvents || eventActionKey" @click="mergeEvent(selectedForeignEvent)">合并</button><button class="link-btn" :disabled="!canSplitEvents || eventActionKey" @click="splitEvent(selectedForeignEvent)">拆分</button><button class="link-btn" @click="selectedForeignEvent = null">关闭详情</button></div>
+        </div>
+        <p class="muted">{{ zh(selectedForeignEvent.language) }} · {{ zh(selectedForeignEvent.event_status) }} · {{ selectedForeignEvent.opinion_count }} 篇文章</p>
+        <div class="event-metrics">
+          <span>热度：{{ selectedForeignEvent.heat_score ?? '-' }}</span>
+          <span>首次出现：{{ formatTime(selectedForeignEvent.first_seen_at) }}</span>
+          <span>最近出现：{{ formatTime(selectedForeignEvent.last_seen_at) }}</span>
+        </div>
+        <p>{{ selectedForeignEvent.summary || '暂无摘要' }}</p>
+        <div v-for="opinion in selectedForeignEvent.opinions" :key="opinion.id" class="event-opinion">
+          <strong>{{ opinion.title }}</strong>
+          <span class="muted">{{ opinion.source_name_snapshot }} · {{ formatTime(opinion.published_at) }}</span>
+          <a :href="opinion.url" target="_blank" rel="noreferrer" class="original">原文</a>
+        </div>
+      </article>
     </section>
 
-    <div v-if="selectedOpinion" class="detail-mask" @click.self="selectedOpinion = null">
-      <article class="detail">
-        <button class="close" title="关闭详情" @click="selectedOpinion = null">×</button>
-        <h3>{{ selectedOpinion.title }}</h3>
-        <div class="detail-meta">{{ selectedOpinion.source_name_snapshot }} · 命中 {{ selectedOpinion.matched_keywords.join('、') }}</div>
-        <p class="detail-text">{{ selectedOpinion.content || selectedOpinion.summary || '暂无正文' }}</p>
-        <a v-if="selectedOpinion.url" :href="selectedOpinion.url" target="_blank" rel="noreferrer" class="original">打开原文</a>
-      </article>
+    <section v-else-if="activeTab === 'alerts'" class="panel">
+      <div class="alert-scope-note">外网自动告警评估：{{ alertAutoStatus?.enabled ? '已启用' : '已停用' }} · 调度已注册：{{ alertAutoStatus?.scheduler_registered ? '是' : '否' }} · 外部通知：{{ alertAutoStatus?.external_notifications_enabled ? '已启用' : '已停用' }}</div>
+      <div class="toolbar">
+        <button class="btn btn-secondary" @click="loadAlerts">刷新外网告警</button>
+        <button class="btn btn-secondary" :disabled="alertEvaluating || !canEvaluateAlerts" @click="evaluateAlerts">
+          {{ alertEvaluating ? '评估中...' : '手动 Dry-Run' }}
+        </button>
+        <select v-model="alertFilters.status" class="input" @change="loadAlerts">
+          <option value="">全部状态</option>
+          <option value="triggered">待处理</option>
+          <option value="acknowledged">已确认</option>
+          <option value="resolved">已解决</option>
+          <option value="suppressed">已抑制</option>
+          <option value="failed">失败</option>
+        </select>
+        <select v-model="alertFilters.severity" class="input" @change="loadAlerts">
+          <option value="">全部严重度</option>
+          <option value="low">低</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+          <option value="critical">紧急</option>
+        </select>
+        <span class="muted">告警评估默认关闭 · 外部通知默认关闭 · 当前仅保存站内记录</span>
+      </div>
+      <div class="alert-scope-note">
+        外网告警只读取外网风险和已确认外网事件；不会进入国内告警、Dashboard、地图、热词或事件链路。
+      </div>
+      <div v-if="alertLoadError" class="state error-state">
+        <span>外网告警加载失败：{{ alertLoadError }}</span>
+        <button class="btn btn-secondary" @click="loadAlerts">重试</button>
+      </div>
+      <div v-if="alertRunFailures.length" class="alert-failures">
+        <strong>外网告警评估失败</strong>
+        <div v-for="run in alertRunFailures" :key="run.id" class="alert-failure-row">
+          <span class="status failed">失败</span>
+          <span>{{ formatTime(run.finished_at || run.started_at) }}</span>
+          <span>{{ run.error_message || '评估失败，未提供错误摘要' }}</span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>告警标题</th><th>严重度</th><th>状态</th><th>触发规则</th><th>关联文章</th><th>关联事件</th><th>风险分/等级</th><th>触发时间</th><th>确认时间</th><th>解决时间</th><th>抑制</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="row in foreignAlerts" :key="row.id">
+              <td class="title-cell"><strong class="alert-title">{{ row.title || '无标题告警' }}</strong><div class="muted">{{ row.message }}</div></td>
+              <td><span class="status" :class="{ failed: row.severity === 'critical' || row.severity === 'high' }">{{ zh(row.severity) }}</span></td>
+              <td><span class="status" :class="{ on: row.status === 'acknowledged' || row.status === 'resolved', failed: row.status === 'failed' || row.status === 'suppressed' }">{{ zh(row.status) }}</span></td>
+              <td>{{ row.rule_snapshot?.name || ('规则 #' + row.rule_id) }}</td>
+              <td class="linked-cell">
+                <button v-if="row.foreign_opinion_id" class="link-btn" title="查看关联舆情详情" @click.stop="openOpinion(row.foreign_opinion_id)">{{ row.opinion_title_snapshot || ('#' + row.foreign_opinion_id) }}</button>
+                <span v-else class="muted">-</span>
+              </td>
+              <td>{{ row.event_title_snapshot || (row.foreign_event_id ? '#' + row.foreign_event_id : '-') }}</td>
+              <td>{{ row.risk_score === null ? '-' : row.risk_score }} / {{ zh(row.risk_level) }}</td>
+              <td>{{ formatTime(row.triggered_at) }}</td>
+              <td>{{ formatTime(row.acknowledged_at) }}</td>
+              <td>{{ formatTime(row.resolved_at) }}</td>
+              <td>{{ row.suppressed_at ? formatTime(row.suppressed_at) : '-' }}</td>
+               <td class="actions">
+                 <button class="link-btn" @click.stop="loadAlertActions(row)">处置历史</button>
+                 <button v-if="row.status === 'triggered'" class="link-btn" :disabled="!canAcknowledgeAlerts || alertActionBusyId === row.id" @click.stop="handleForeignAlert(row, 'acknowledge')">确认</button>
+                 <button v-if="row.status === 'triggered' || row.status === 'acknowledged'" class="link-btn" :disabled="!canResolveAlerts || alertActionBusyId === row.id" @click.stop="handleForeignAlert(row, 'resolve')">解决</button>
+                 <button v-if="row.status === 'triggered' || row.status === 'acknowledged'" class="link-btn danger" :disabled="!canSuppressAlerts || alertActionBusyId === row.id" @click.stop="handleForeignAlert(row, 'suppress')">抑制</button>
+               </td>
+            </tr>
+            <tr v-if="!foreignAlerts.length"><td colspan="12" class="empty">暂无外网告警记录</td></tr>
+         </tbody>
+       </table>
+      </div>
+    </section>
+
+    <section v-else-if="activeTab === 'alertRules'" class="panel">
+      <div class="toolbar"><button class="btn btn-primary" @click="beginAlertRuleCreate">新增告警规则</button><button class="btn btn-secondary" @click="loadAlertRules">刷新规则</button><span class="muted">外网规则独立管理；新规则保存后默认停用。</span></div>
+      <div class="table-wrap"><table><thead><tr><th>名称</th><th>类型</th><th>条件</th><th>严重度</th><th>冷却</th><th>状态</th><th>操作</th></tr></thead><tbody>
+        <tr v-for="rule in alertRules" :key="rule.id"><td>{{ rule.name }}</td><td>{{ zh(rule.rule_type) }}</td><td>{{ JSON.stringify(rule.conditions) }}</td><td>{{ zh(rule.severity) }}</td><td>{{ rule.cooldown_seconds }} 秒</td><td>{{ rule.is_enabled ? '启用' : '停用' }}</td><td class="actions"><button class="link-btn" @click="editAlertRule(rule)">编辑</button><button v-if="rule.is_enabled" class="link-btn" :disabled="alertRuleBusyId === rule.id" @click="disableAlertRule(rule)">停用</button><button v-else class="link-btn" :disabled="alertRuleBusyId === rule.id || !canEnableAlertRules" @click="enableAlertRule(rule)">启用</button><button v-if="!rule.is_enabled" class="link-btn danger" :disabled="alertRuleBusyId === rule.id" @click="deleteAlertRule(rule)">删除</button></td></tr>
+        <tr v-if="!alertRules.length"><td colspan="7" class="empty">暂无外网告警规则</td></tr>
+      </tbody></table></div>
+    </section>
+
+
+
+    <div v-if="historyAlert" class="detail-mask" @click.self="historyAlert = null">
+      <article class="detail history-dialog"><button class="close" title="关闭处置历史" @click="historyAlert = null">×</button><h3>外网告警处置历史</h3><p class="muted">{{ historyAlert.title || '告警 #' + historyAlert.id }} · 当前状态：{{ zh(historyAlert.status) }}</p><div v-if="alertActionsLoading" class="muted">处置历史加载中...</div><div v-else-if="!alertActions.length" class="empty">暂无处置历史</div><div v-else class="alert-action-history"><div v-for="action in alertActions" :key="action.id" class="alert-action-row"><strong>{{ actionLabel(action.action_type) }}</strong><span>{{ zh(action.previous_status) }} → {{ zh(action.new_status) }}</span><span>{{ action.note }}</span><span class="muted">操作人 #{{ action.actor_id ?? '-' }} · {{ formatTime(action.created_at) }}</span></div></div></article>
     </div>
+    <div v-if="alertRuleEditorVisible" class="detail-mask" @click.self="alertRuleEditorVisible = false">
+      <article class="detail rule-dialog"><button class="close" title="关闭规则编辑" @click="alertRuleEditorVisible = false">×</button><h3>{{ alertRuleEditingId ? '编辑外网告警规则' : '新增外网告警规则' }}</h3><label>规则名称<input v-model="alertRuleDraft.name" class="input" placeholder="规则名称" /></label><label>规则类型<select v-model="alertRuleDraft.rule_type" class="input"><option value="risk_score">风险分</option><option value="risk_level">风险等级</option><option value="risk_category">风险类别</option><option value="confirmed_event">确认事件</option><option value="keyword_combo">关键词组合</option></select></label><label>风险阈值或条件<input v-model="alertRuleDraft.conditionsText" class="input" placeholder='条件 JSON，例如 {"threshold":80}' /></label><label>严重等级<select v-model="alertRuleDraft.severity" class="input"><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="critical">紧急</option></select></label><label>冷却时间<input v-model.number="alertRuleDraft.cooldown_seconds" class="input number-input" type="number" min="0" /></label><label>规则说明<textarea v-model="alertRuleDraft.description" class="input" rows="3" placeholder="规则用途和处置说明"></textarea></label><label class="muted"><input v-model="alertRuleDraft.is_enabled" type="checkbox" :disabled="!alertRuleEditingId || !canEnableAlertRules" /> 编辑时启用状态（新规则默认停用，启用仍需外网启用权限）</label><div class="rule-preview"><strong>规则预览</strong><pre>{{ rulePreview }}</pre></div><div class="actions"><button class="btn btn-secondary" @click="alertRuleEditorVisible = false">取消</button><button class="btn btn-primary" :disabled="alertRuleSaving" @click="createAlertRule">{{ alertRuleSaving ? '保存中...' : '保存规则' }}</button></div></article>
+    </div>
+    <ForeignOpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import * as echarts from 'echarts'
+import 'echarts-wordcloud'
+ import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { pollTask } from '@/api'
+import { useRoute, useRouter } from 'vue-router'
+import { usePermission } from '@/composables/usePermission'
+import ForeignOpinionDetailModal from '@/views/foreign/ForeignOpinionDetailModal.vue'
+import Pager from '@/components/Pager.vue'
 
-type Tab = 'opinions' | 'keywords' | 'sources' | 'runs'
-type Keyword = { id: number; word: string; category: string; is_enabled: boolean }
-type Source = { id: number; key: string; name: string; feeds: string[]; enabled: boolean; schedule_enabled: boolean; proxy_env?: string; proxy_configured?: boolean }
-type Opinion = { id: number; title: string; summary: string; content: string; url: string; source_name_snapshot: string; matched_keywords: string[]; published_at?: string | null; collected_at?: string | null }
-type Run = { id: number; collector_name: string; start_time?: string | null; status: string; fetched_raw: number; matched: number; created: number; duplicate: number; proxy_used: boolean; error_msg?: string | null }
+type Tab = 'dashboard' | 'opinions' | 'events' | 'alerts' | 'alertRules'
+type Keyword = { id: number; word: string; category: string; type: 'monitoring' | 'sensitive'; source: 'system' | 'custom'; weight: number; severity_weight: number; rule_config?: Record<string, unknown>; is_enabled: boolean }
+type Source = { id: number; key: string; name: string; feeds: string[]; language?: string; enabled: boolean; schedule_enabled: boolean; schedule_interval_minutes?: number; class_path?: string; proxy_env?: string; proxy_configured?: boolean; timeout?: number; max_retries?: number; max_items?: number; request_interval?: number; max_content_length?: number; respect_robots?: boolean }
+type Opinion = { id: number; title: string; summary: string; content: string; url: string; source_name_snapshot: string; matched_keywords: string[]; published_at?: string | null; collected_at?: string | null; rule_result?: RiskResult | null; ai_result?: AIResult | null; ai_alert_admission?: { id: number; status: 'included' | 'excluded'; note: string; changed_at?: string | null } | null; ai_alert_admission_actions?: Array<{ id: number; previous_status: string; new_status: string; note: string; actor_id?: number | null; foreign_ai_result_id?: number | null; created_at?: string | null }>; analysis_runs?: Array<{ id: number; analyzer_type: string; status: string; started_at?: string | null; finished_at?: string | null; error_message?: string | null }> }
+type AIResult = { id: number; status: string; model_version: string; summary: string; sentiment: string; risk_score?: number | null; keywords: string[]; suggestion: string; error_message?: string | null; analyzed_at?: string | null }
+type Run = { id: number; collector_name: string; start_time?: string | null; end_time?: string | null; status: string; fetched_raw: number; matched: number; created: number; duplicate: number; proxy_used: boolean; error_msg?: string | null }
+type RiskResult = {
+  id: number
+  foreign_opinion_id: number
+  content_hash: string
+  language: string
+  risk_score: number | null
+  risk_level: string
+  sentiment: string
+  sentiment_confidence?: number | null
+  risk_category: string
+  matched_terms: Array<{ word: string; language: string; category: string; severity_weight: number }>
+  explanation: string
+  analyzer_type: string
+  model_name?: string | null
+  model_version: string
+  analysis_status: string
+  error_message?: string | null
+  analyzed_at?: string | null
+  is_current: boolean
+  opinion: Opinion
+}
+type EventCandidate = {
+  id: number
+  title: string
+  summary: string
+  language: string
+  candidate_status: string
+  confidence: number
+  opinion_count: number
+  source_count: number
+  review_source?: string
+  evidence_json?: Record<string, unknown>
+}
+type ForeignEvent = {
+  id: number
+  title: string
+  summary: string
+  language: string
+  event_status: string
+  confirmation_source?: string
+  auto_aggregation?: { review_source?: string; evidence?: Record<string, unknown> }
+  risk_level: string
+  opinion_count: number
+  source_count: number
+  confidence: number
+  heat_score: number | null
+  first_seen_at?: string | null
+  last_seen_at?: string | null
+  opinions?: Array<{ id: number; title: string; source_name_snapshot: string; url: string; summary?: string; content?: string; published_at?: string | null }>
+}
+type ForeignEventRun = {
+  id: number
+  status: string
+  started_at?: string | null
+  finished_at?: string | null
+  error_message?: string | null
+}
+type ForeignAlert = {
+  id: number
+  rule_id?: number | null
+  foreign_opinion_id?: number | null
+  foreign_risk_result_id?: number | null
+  foreign_event_id?: number | null
+  severity: string
+  status: string
+  evaluation_source?: 'rule' | 'ai'
+  title: string
+  message: string
+  rule_snapshot?: { name?: string; rule_type?: string }
+  opinion_title_snapshot?: string
+  event_title_snapshot?: string
+  foreign_ai_result_id?: number | null
+  opinion?: Opinion | null
+  event?: ForeignEvent | null
+  rule?: AlertRule | null
+  actions?: ForeignAlertAction[]
+  risk_score?: number | null
+  risk_level: string
+  triggered_at?: string | null
+  acknowledged_at?: string | null
+  resolved_at?: string | null
+  suppressed_at?: string | null
+}
+type ForeignAlertAction = {
+  id: number
+  alert_id: number
+  action_type: 'acknowledge' | 'resolve' | 'suppress'
+  previous_status: string
+  new_status: string
+  note: string
+  actor_id?: number | null
+  created_at?: string | null
+}
+type ForeignAlertRun = {
+  id: number
+  status: string
+  started_at?: string | null
+  finished_at?: string | null
+  error_message?: string | null
+}
+type AlertRule = { id: number; name: string; description?: string; rule_type: string; conditions: Record<string, unknown>; severity: string; is_enabled: boolean; cooldown_seconds: number }
+type VisualizationSummary = any
+type HotwordItem = { word: string; language: string; count: number; trend: string; sources: string[] }
 
 const tabs: { value: Tab; label: string }[] = [
+  { value: 'dashboard', label: '外网 Dashboard' },
   { value: 'opinions', label: '国外舆情' },
-  { value: 'keywords', label: '外网关键词' },
-  { value: 'sources', label: '外网数据源' },
-  { value: 'runs', label: '外网采集日志' },
+  { value: 'events', label: '外网事件' },
+  { value: 'alerts', label: '外网告警' },
+  { value: 'alertRules', label: '告警规则' },
 ]
-const activeTab = ref<Tab>('opinions')
+const route = useRoute()
+const router = useRouter()
+const { hasPermission } = usePermission()
+function normalizeTab(value: unknown): Tab {
+  const valid: Tab[] = ['dashboard', 'opinions', 'events', 'alerts', 'alertRules']
+  return valid.includes(value as Tab) ? (value as Tab) : 'dashboard'
+}
+
+const activeTab = ref<Tab>(normalizeTab(route.query.tab))
 const loading = ref(false)
 const collecting = ref(false)
 const keywords = ref<Keyword[]>([])
 const sources = ref<Source[]>([])
+const sourceEditorVisible = ref(false)
+const editingSourceId = ref<number | null>(null)
+const sourceSaving = ref(false)
+const sourceTesting = ref(false)
+const sourceBusyId = ref<number | null>(null)
+const sourceDraftTested = ref(false)
+const sourceTestResult = ref<any | null>(null)
+const selectedSourceRuns = ref<{ name: string; items: Run[] } | null>(null)
+const sourceDraft = reactive({ name: '', key: '', feedsText: '', language: 'unknown', proxyEnv: 'FOREIGN_HTTP_PROXY', timeout: 15, maxRetries: 2, maxItems: 100, requestInterval: 0.5, scheduleInterval: 60, maxContentLength: 200000, respectRobots: true })
+const sourceFilters = reactive({ q: '' })
+const sourcePage = ref(1)
+const sourceSize = 20
+const sourceTotal = ref(0)
 const opinions = ref<Opinion[]>([])
 const runs = ref<Run[]>([])
+const risks = ref<RiskResult[]>([])
+const eventCandidates = ref<EventCandidate[]>([])
+const foreignEvents = ref<ForeignEvent[]>([])
+const eventRunFailures = ref<ForeignEventRun[]>([])
+const eventAutoStatus = ref<{ enabled: boolean; confidence_threshold: number; time_window_hours: number; scheduler_registered: boolean } | null>(null)
+const eventLoadError = ref<string | null>(null)
+const selectedForeignEvent = ref<ForeignEvent | null>(null)
+const eventSection = ref<'candidates' | 'confirmed'>('candidates')
+const rebuildingEvents = ref(false)
+const eventActionKey = ref<string | null>(null)
+const eventDetailLoadingId = ref<number | null>(null)
+const foreignAlerts = ref<ForeignAlert[]>([])
+const alertRunFailures = ref<ForeignAlertRun[]>([])
+const alertAutoStatus = ref<{ enabled: boolean; scheduler_registered: boolean; external_notifications_enabled: boolean } | null>(null)
+const alertLoadError = ref<string | null>(null)
+const alertEvaluating = ref(false)
+const alertFilters = reactive({ status: '', severity: '' })
+const historyAlert = ref<ForeignAlert | null>(null)
+const alertActions = ref<ForeignAlertAction[]>([])
+const alertActionsLoading = ref(false)
+const alertActionBusyId = ref<number | null>(null)
+const alertRules = ref<AlertRule[]>([])
+const alertRuleBusyId = ref<number | null>(null)
+const alertRuleSaving = ref(false)
+const alertRuleEditorVisible = ref(false)
+const alertRuleEditingId = ref<number | null>(null)
+const alertRuleDraft = reactive({ name: '', description: '', rule_type: 'risk_score', conditionsText: '{"threshold":80}', severity: 'medium', cooldown_seconds: 3600, is_enabled: false })
+const rulePreview = computed(() => {
+  let conditions: unknown = alertRuleDraft.conditionsText
+  try { conditions = JSON.parse(alertRuleDraft.conditionsText) } catch { /* validation is shown on save */ }
+  return JSON.stringify({ name: alertRuleDraft.name || '未命名规则', rule_type: alertRuleDraft.rule_type, conditions, severity: alertRuleDraft.severity, cooldown_seconds: alertRuleDraft.cooldown_seconds, is_enabled: false }, null, 2)
+})
+const visualizationDays = ref(7)
+const visualizationError = ref<string | null>(null)
+const visualizationStale = ref(false)
+const dashboardSummary = ref<VisualizationSummary | null>(null)
+const dashboardRisk = ref<VisualizationSummary | null>(null)
+const dashboardEvents = ref<VisualizationSummary | null>(null)
+const dashboardTrends = ref<VisualizationSummary | null>(null)
+const dashboardAlerts = ref<VisualizationSummary | null>(null)
+const dashboardSources = ref<VisualizationSummary | null>(null)
+const hotwordItems = ref<HotwordItem[]>([])
+const hotwordTrendItems = ref<Array<{ date: string; words: Record<string, number> }>>([])
+const hotwordMeta = ref<any>({})
+const hotwordLanguage = ref('')
+const sourceDistribution = ref<VisualizationSummary | null>(null)
+const languageDistribution = ref<VisualizationSummary | null>(null)
 const opinionSources = ref<string[]>([])
 const opinionTotal = ref(0)
 const opinionPage = ref(1)
 const opinionSize = 20
-const selectedOpinion = ref<Opinion | null>(null)
-const keywordDraft = reactive({ word: '' })
-const opinionFilters = reactive({ q: '', source: '', keyword: '' })
+const riskTotal = ref(0)
+const riskPage = ref(1)
+// 后端 /foreign/risk 的 size 上限为 100（Query(..., le=100)），超过会 422，
+// 合并表需要覆盖当前舆情页的全部风险结果，因此分页循环拉取。
+const riskSize = 100
+const riskMaxPages = 20
+const detailVisible = ref(false)
+const detailId = ref<number | null>(null)
+const opinionLoading = ref(false)
+const riskByOpinion = computed(() => {
+  const m = new Map<number, any>()
+  for (const r of risks.value) m.set(r.foreign_opinion_id, r)
+  return m
+})
+function riskOf(id: number) { return riskByOpinion.value.get(id) || null }
+// 枚举值中文映射（仅前端展示，不改变任何接口取值）
+const ZH_DICT: Record<string, string> = {
+  high: '高', medium: '中', low: '低', critical: '紧急', unknown: '未知', none: '无', other: '其他',
+  positive: '正面', negative: '负面', neutral: '中性',
+  completed: '已完成', pending: '待处理', processing: '进行中', running: '运行中', queued: '排队中',
+  failed: '失败', success: '成功', partial: '部分成功', skipped: '已跳过', error: '异常',
+  candidate: '候选', converted: '已转正', confirmed: '已确认', rejected: '已拒绝', merged: '已合并',
+  monitoring: '监测中', closed: '已关闭', archived: '已归档', split: '已拆分', dismissed: '已忽略',
+  triggered: '待处理', acknowledged: '已确认', resolved: '已解决', suppressed: '已抑制',
+  manual: '人工', auto: '自动', automatic: '自动', rule: '规则', system: '系统',
+  enabled: '已启用', disabled: '已停用', included: '已纳入', excluded: '未纳入',
+  zh: '中文', en: '英文', mixed: '中英混合',
+  risk_score: '风险分', risk_level: '风险等级', risk_category: '风险类别',
+  keyword_combo: '关键词组合', confirmed_event: '确认事件',
+}
+function zh(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-'
+  const key = String(value)
+  return ZH_DICT[key] || key
+}
+const aiAnalyzing = ref(false)
+const keywordSaving = ref(false)
+const keywordCategories = ref<string[]>([])
+const keywordPage = ref(1)
+const keywordSize = 50
+const keywordTotal = ref(0)
+const keywordFilters = reactive({ q: '', category: '', type: '', enabled: '' })
+const keywordDraft = reactive({ word: '', category: 'general', type: 'monitoring' as 'monitoring' | 'sensitive', weight: 10 })
+const editingKeywordId = ref<number | null>(null)
+const opinionFilters = reactive({ q: '', source: '', keyword: '', date_from: '', date_to: '' })
+const riskFilters = reactive({ q: '', source: '', language: '', sentiment: '', risk_level: '', analysis_status: '', date_from: '', date_to: '' })
+const canAnalyzeRisk = hasPermission('foreign:risk:analyze')
+const canAnalyzeAI = hasPermission('foreign:ai:analyze')
+const canAdmitAI = hasPermission('foreign:alerts:ai-admit')
+const canConfirmEvents = hasPermission('foreign:events:confirm')
+const canChangeEventStatus = hasPermission('foreign:events:status')
+const canMergeEvents = hasPermission('foreign:events:merge')
+const canSplitEvents = hasPermission('foreign:events:split')
+const canEvaluateAlerts = hasPermission('foreign:alerts:evaluate')
+const canAcknowledgeAlerts = hasPermission('foreign:alerts:acknowledge')
+const canResolveAlerts = hasPermission('foreign:alerts:resolve')
+const canSuppressAlerts = hasPermission('foreign:alerts:suppress')
+const canEnableAlertRules = hasPermission('foreign:alerts:enable')
 
 function switchTab(tab: Tab) {
-  activeTab.value = tab
-  if (tab === 'opinions') loadOpinions()
-  if (tab === 'keywords') loadKeywords()
-  if (tab === 'sources') loadSources()
-  if (tab === 'runs') loadRuns()
+  router.push({ path: '/foreign', query: { ...route.query, tab } })
+}
+function loadTab(tab: Tab) {
+  if (tab === 'dashboard') loadDashboard()
+  if (tab === 'opinions') { loadOpinions(); loadRisk() }
+  if (tab === 'events') loadEvents()
+  if (tab === 'alerts') loadAlerts()
+  if (tab === 'alertRules') loadAlertRules()
+}
+function visualizationFailure(err: any) {
+  const status = err?.response?.status
+  const code = err?.response?.data?.error_code
+  if (code === 'FOREIGN_VISUALIZATION_QUERY_FAILED' || status === 503) return '外网可视化数据暂时不可用'
+  if (status === 403) return '当前账号没有外网可视化权限'
+  if (status === 422) return '外网可视化请求参数无效'
+  return '外网可视化数据加载失败，请稍后重试'
+}
+/* ===== 外网看板图表：每日趋势折线 + 热词词云（复用驾驶舱同款 echarts 配色/交互） ===== */
+const trendChartRef = ref<HTMLElement>()
+const hotwordChartRef = ref<HTMLElement>()
+let trendChart: echarts.ECharts | null = null
+let hotwordChart: echarts.ECharts | null = null
+type TrendKey = 'articles' | 'risk_completed' | 'risk_failed' | 'events' | 'alerts'
+const trendSeriesOptions: Array<{ key: TrendKey; label: string; color: string }> = [
+  { key: 'articles', label: '文章', color: '#0071e3' },
+  { key: 'risk_completed', label: '风险完成', color: '#34c759' },
+  { key: 'risk_failed', label: '风险失败', color: '#ff3b30' },
+  { key: 'events', label: '事件', color: '#ff9f0a' },
+  { key: 'alerts', label: '告警', color: '#af52de' },
+]
+const trendSeriesOn = reactive<Record<TrendKey, boolean>>({
+  articles: true, risk_completed: true, risk_failed: true, events: true, alerts: true,
+})
+function toggleTrendSeries(key: TrendKey) {
+  trendSeriesOn[key] = !trendSeriesOn[key]
+  renderTrendChart()
+}
+function renderTrendChart() {
+  if (!trendChart) return
+  const items: any[] = (dashboardTrends.value as any)?.items || []
+  const series = trendSeriesOptions
+    .filter((item) => trendSeriesOn[item.key])
+    .map((item) => ({
+      name: item.label,
+      type: 'line',
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 5,
+      data: items.map((row) => row[item.key] ?? 0),
+      lineStyle: { width: item.key === 'articles' ? 2.5 : 1.8, color: item.color },
+      itemStyle: { color: item.color },
+      areaStyle: item.key === 'articles'
+        ? { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(0,113,227,0.12)' }, { offset: 1, color: 'rgba(0,113,227,0)' }]) }
+        : undefined,
+    }))
+  trendChart.setOption({
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(29,29,31,0.94)', borderColor: 'transparent', textStyle: { color: '#fff', fontSize: 12 } },
+    grid: { left: 44, right: 20, top: 12, bottom: 30 },
+    xAxis: { type: 'category', data: items.map((row) => row.date), axisLine: { lineStyle: { color: '#e8e8ed' } }, axisTick: { show: false }, axisLabel: { color: '#86868b', fontSize: 11 } },
+    yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#f0f0f2' } }, axisLabel: { color: '#86868b', fontSize: 11 } },
+    series,
+  }, { notMerge: true })
+}
+function renderHotwordChart() {
+  if (!hotwordChart) return
+  const items = hotwordItems.value || []
+  if (!items.length) { hotwordChart.clear(); return }
+  const max = Math.max(...items.map((item) => item.count || 0), 1)
+  const data = items.map((item) => ({
+    name: item.word,
+    value: item.count,
+    textStyle: { color: `hsl(${(item.count / max) * 210 + 200}, 70%, ${60 - (item.count / max) * 30}%)` },
+  }))
+  hotwordChart.setOption({
+    tooltip: {
+      show: true,
+      backgroundColor: 'rgba(29,29,31,0.94)',
+      borderColor: 'transparent',
+      textStyle: { color: '#fff', fontSize: 12 },
+      formatter: (params: any) => {
+        const raw = items.find((item) => item.word === params.name)
+        if (!raw) return `${params.name}: ${params.value}`
+        const trend = raw.trend === 'up' ? '↑ 上升' : raw.trend === 'down' ? '↓ 下降' : '→ 持平'
+        return `${raw.word}<br/>近 ${visualizationDays.value} 天：${raw.count}<br/>语言：${zh(raw.language)}<br/>趋势：${trend}<br/>来源：${(raw.sources || []).join('、') || '-'}`
+      },
+    },
+    series: [{
+      type: 'wordCloud', shape: 'circle', left: 'center', top: 'center', width: '92%', height: '92%',
+      sizeRange: [14, 40], rotationRange: [-30, 30], gridSize: 8, layoutAnimation: true,
+      textStyle: { fontFamily: 'sans-serif', fontWeight: 'bold' },
+      emphasis: { textStyle: { color: '#0071e3' } },
+      data,
+    }],
+  }, { notMerge: true })
+}
+async function ensureDashboardCharts() {
+  await nextTick()
+  // tab 切换会销毁 DOM，实例失联后需要重建
+  if (trendChart && !trendChart.getDom()?.isConnected) { trendChart.dispose(); trendChart = null }
+  if (hotwordChart && !hotwordChart.getDom()?.isConnected) { hotwordChart.dispose(); hotwordChart = null }
+  if (trendChartRef.value && !trendChart) trendChart = echarts.init(trendChartRef.value)
+  if (hotwordChartRef.value && !hotwordChart) hotwordChart = echarts.init(hotwordChartRef.value)
+  renderTrendChart()
+  renderHotwordChart()
+}
+function handleDashboardResize() {
+  trendChart?.resize()
+  hotwordChart?.resize()
+}
+onMounted(() => window.addEventListener('resize', handleDashboardResize))
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleDashboardResize)
+  trendChart?.dispose(); trendChart = null
+  hotwordChart?.dispose(); hotwordChart = null
+})
+function markVisualizationFresh(data: any) {
+  const asOf = data?.data_as_of ? new Date(data.data_as_of).getTime() : Date.now()
+  visualizationStale.value = Date.now() - asOf > 15 * 60 * 1000
+}
+async function loadDashboard() {
+  loading.value = true
+  visualizationError.value = null
+  try {
+    const params = { days: visualizationDays.value }
+    const hotwordParams: Record<string, string | number> = { days: visualizationDays.value, limit: 30 }
+    if (hotwordLanguage.value) hotwordParams.language = hotwordLanguage.value
+    const emptyItems = { data: { items: [] } }
+    const [summary, trends, risk, events, alerts, sourceStats, hotwords, hotwordTrends] = await Promise.all([
+      api.get('/foreign/dashboard/summary', { params }),
+      api.get('/foreign/dashboard/trends', { params }),
+      api.get('/foreign/dashboard/risk', { params }),
+      api.get('/foreign/dashboard/events', { params }),
+      api.get('/foreign/dashboard/alerts', { params }),
+      api.get('/foreign/dashboard/sources', { params }),
+      // 热词接口单独降级：即使无权限或失败也不影响整个看板渲染
+      api.get('/foreign/hotwords', { params: hotwordParams }).catch(() => emptyItems),
+      api.get('/foreign/hotwords/trends', { params: hotwordParams }).catch(() => emptyItems),
+    ])
+    dashboardSummary.value = summary.data
+    dashboardTrends.value = trends.data
+    dashboardRisk.value = risk.data
+    dashboardEvents.value = events.data
+    dashboardAlerts.value = alerts.data
+    dashboardSources.value = sourceStats.data
+    hotwordItems.value = (hotwords as any).data.items || []
+    hotwordTrendItems.value = (hotwordTrends as any).data.items || []
+    hotwordMeta.value = (hotwords as any).data
+    markVisualizationFresh(summary.data)
+    await ensureDashboardCharts()
+  } catch (err: any) {
+    visualizationError.value = visualizationFailure(err)
+    dashboardSummary.value = null
+  } finally { loading.value = false }
+}
+async function loadHotwords() {
+  loading.value = true
+  visualizationError.value = null
+  try {
+    const params: Record<string, string | number> = { days: visualizationDays.value, limit: 30 }
+    if (hotwordLanguage.value) params.language = hotwordLanguage.value
+    const [response, trendResponse] = await Promise.all([
+      api.get('/foreign/hotwords', { params }),
+      api.get('/foreign/hotwords/trends', { params }),
+    ])
+    hotwordItems.value = response.data.items || []
+    hotwordTrendItems.value = trendResponse.data.items || []
+    hotwordMeta.value = response.data
+    markVisualizationFresh(response.data)
+    await ensureDashboardCharts()
+  } catch (err: any) {
+    visualizationError.value = visualizationFailure(err)
+    hotwordItems.value = []
+  } finally { loading.value = false }
+}
+async function loadSourcesView() {
+  loading.value = true
+  visualizationError.value = null
+  try {
+    const params = { days: visualizationDays.value }
+    const [distribution, languages, management] = await Promise.all([
+      api.get('/foreign/source-distribution', { params }),
+      api.get('/foreign/language-distribution', { params }),
+      api.get('/foreign/sources', { params: { page: sourcePage.value, size: sourceSize, q: sourceFilters.q || undefined } }),
+    ])
+    sourceDistribution.value = distribution.data
+    languageDistribution.value = languages.data
+    sources.value = management.data.items || []
+    sourceTotal.value = management.data.total || 0
+    markVisualizationFresh(distribution.data)
+  } catch (err: any) {
+    visualizationError.value = visualizationFailure(err)
+    sourceDistribution.value = null
+    languageDistribution.value = null
+  } finally { loading.value = false }
 }
 function formatTime(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-'
 }
+function operationRequestId(prefix: string) {
+  const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return `${prefix}-${random}`.slice(0, 128)
+}
 async function loadKeywords() {
   loading.value = true
-  try { keywords.value = (await api.get('/foreign/keywords', { params: { size: 100 } })).data.items } finally { loading.value = false }
+  try {
+    const params: Record<string, string | number | boolean> = { page: keywordPage.value, size: keywordSize }
+    if (keywordFilters.q) params.q = keywordFilters.q
+    if (keywordFilters.category) params.category = keywordFilters.category
+    if (keywordFilters.type) params.type = keywordFilters.type
+    if (keywordFilters.enabled) params.is_enabled = keywordFilters.enabled === 'true'
+    const [list, categories] = await Promise.all([
+      api.get('/foreign/keywords', { params }),
+      api.get('/foreign/keywords/categories'),
+    ])
+    keywords.value = list.data.items || []
+    keywordTotal.value = list.data.total || 0
+    keywordCategories.value = categories.data.items || []
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '外网关键词加载失败')
+  } finally { loading.value = false }
 }
 async function loadSources() {
   loading.value = true
-  try { sources.value = (await api.get('/foreign/sources')).data.items } finally { loading.value = false }
+  try { sources.value = (await api.get('/foreign/sources', { params: { size: 100, q: sourceFilters.q || undefined } })).data.items || [] } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网数据源加载失败') } finally { loading.value = false }
 }
 async function loadOpinions() {
   loading.value = true
@@ -181,6 +822,8 @@ async function loadOpinions() {
     if (opinionFilters.q) params.q = opinionFilters.q
     if (opinionFilters.source) params.source = opinionFilters.source
     if (opinionFilters.keyword) params.keyword = opinionFilters.keyword
+    if (opinionFilters.date_from) params.date_from = opinionFilters.date_from
+    if (opinionFilters.date_to) params.date_to = opinionFilters.date_to
     const [list, sourceList] = await Promise.all([
       api.get('/foreign/opinions', { params }),
       api.get('/foreign/opinions/sources'),
@@ -190,47 +833,558 @@ async function loadOpinions() {
     opinionSources.value = sourceList.data
   } finally { loading.value = false }
 }
+async function loadRisk() {
+  loading.value = true
+  try {
+    const base: Record<string, string | number> = { size: riskSize }
+    if (riskFilters.q) base.q = riskFilters.q
+    if (riskFilters.source) base.source = riskFilters.source
+    if (riskFilters.language) base.language = riskFilters.language
+    if (riskFilters.sentiment) base.sentiment = riskFilters.sentiment
+    if (riskFilters.risk_level) base.risk_level = riskFilters.risk_level
+    if (riskFilters.analysis_status) base.analysis_status = riskFilters.analysis_status
+    if (riskFilters.date_from) base.date_from = riskFilters.date_from
+    if (riskFilters.date_to) base.date_to = riskFilters.date_to
+    const [first, sourceList] = await Promise.all([
+      api.get('/foreign/risk', { params: { ...base, page: 1 } }),
+      api.get('/foreign/opinions/sources').catch(() => ({ data: [] })),
+    ])
+    const total = first.data.total || 0
+    let items: RiskResult[] = first.data.items || []
+    const pages = Math.min(Math.ceil(total / riskSize), riskMaxPages)
+    if (pages > 1) {
+      const rest = await Promise.all(
+        Array.from({ length: pages - 1 }, (_, index) =>
+          api.get('/foreign/risk', { params: { ...base, page: index + 2 } }).catch(() => ({ data: { items: [] } })),
+        ),
+      )
+      for (const response of rest) items = items.concat((response as any).data.items || [])
+    }
+    risks.value = items
+    riskTotal.value = total
+    riskPage.value = 1
+    if (Array.isArray((sourceList as any).data) && (sourceList as any).data.length) {
+      opinionSources.value = (sourceList as any).data
+    }
+  } catch (err: any) {
+    risks.value = []
+    riskTotal.value = 0
+    ElMessage.error(err?.response?.data?.detail || '外网风险研判数据加载失败')
+  } finally { loading.value = false }
+}
 async function loadRuns() {
   loading.value = true
   try { runs.value = (await api.get('/foreign/collection-runs', { params: { size: 100 } })).data.items } finally { loading.value = false }
 }
+async function loadEvents() {
+  loading.value = true
+  eventLoadError.value = null
+  try {
+    const [candidateResponse, eventResponse, runResponse, autoStatus] = await Promise.all([
+      api.get('/foreign/events/candidates', { params: { size: 100, status: 'candidate' } }),
+      api.get('/foreign/events', { params: { size: 100 } }),
+      api.get('/foreign/event-runs', { params: { size: 20, status: 'failed' } }),
+      api.get('/foreign/events/auto-aggregate/status'),
+    ])
+    eventCandidates.value = candidateResponse.data.items
+    foreignEvents.value = eventResponse.data.items
+    eventRunFailures.value = runResponse.data.items
+    eventAutoStatus.value = autoStatus.data
+  } catch (err: any) {
+    eventLoadError.value = err?.response?.data?.detail || '请求失败，请稍后重试'
+    eventCandidates.value = []
+    foreignEvents.value = []
+    eventRunFailures.value = []
+  } finally { loading.value = false }
+}
+async function loadAlerts() {
+  loading.value = true
+  alertLoadError.value = null
+  try {
+    const params: Record<string, string | number> = { size: 100 }
+    if (alertFilters.status) params.status = alertFilters.status
+    if (alertFilters.severity) params.severity = alertFilters.severity
+    const [list, runs, autoStatus] = await Promise.all([
+      api.get('/foreign/alerts', { params }),
+      api.get('/foreign/alert-runs', { params: { size: 20, status: 'failed' } }),
+      api.get('/foreign/alert-auto-evaluation/status'),
+    ])
+    foreignAlerts.value = list.data.items || []
+    alertRunFailures.value = runs.data.items || []
+    alertAutoStatus.value = autoStatus.data
+  } catch (err: any) {
+    alertLoadError.value = err?.response?.data?.detail || '请求失败，请稍后重试'
+    foreignAlerts.value = []
+    alertRunFailures.value = []
+  } finally { loading.value = false }
+  await loadAlertRules()
+}
+async function loadAlertActions(row: ForeignAlert) {
+  if (alertActionsLoading.value) return
+  historyAlert.value = row
+  alertActionsLoading.value = true
+  try {
+    alertActions.value = (await api.get(`/foreign/alerts/${row.id}/actions`)).data.items || []
+  } catch (err: any) {
+    alertActions.value = []
+    ElMessage.error(err?.response?.data?.detail || '外网告警处置历史加载失败')
+  } finally { alertActionsLoading.value = false }
+}
+async function loadAlertRules() {
+  try {
+    alertRules.value = (await api.get('/foreign/alert-rules', { params: { size: 100 } })).data.items || []
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '外网告警规则加载失败')
+  }
+}
+function beginAlertRuleCreate() {
+  alertRuleEditingId.value = null
+  alertRuleDraft.name = ''
+  alertRuleDraft.description = ''
+  alertRuleDraft.rule_type = 'risk_score'
+  alertRuleDraft.conditionsText = '{"threshold":80}'
+  alertRuleDraft.severity = 'medium'
+  alertRuleDraft.cooldown_seconds = 3600
+  alertRuleDraft.is_enabled = false
+  alertRuleEditorVisible.value = true
+}
+function editAlertRule(rule: AlertRule) {
+  alertRuleEditingId.value = rule.id
+  alertRuleDraft.name = rule.name
+  alertRuleDraft.description = rule.description || ''
+  alertRuleDraft.rule_type = rule.rule_type
+  alertRuleDraft.conditionsText = JSON.stringify(rule.conditions || {})
+  alertRuleDraft.severity = rule.severity
+  alertRuleDraft.cooldown_seconds = rule.cooldown_seconds
+  alertRuleDraft.is_enabled = rule.is_enabled
+  alertRuleEditorVisible.value = true
+}
+async function createAlertRule() {
+  if (alertRuleSaving.value) return
+  if (!alertRuleDraft.name.trim()) { ElMessage.warning('请输入规则名称'); return }
+  let conditions: Record<string, unknown>
+  try { conditions = JSON.parse(alertRuleDraft.conditionsText) } catch { ElMessage.error('规则条件必须是合法 JSON'); return }
+  alertRuleSaving.value = true
+  try {
+    const payload = { name: alertRuleDraft.name.trim(), description: alertRuleDraft.description.trim(), rule_type: alertRuleDraft.rule_type, conditions, severity: alertRuleDraft.severity, cooldown_seconds: alertRuleDraft.cooldown_seconds, is_enabled: alertRuleEditingId.value ? alertRuleDraft.is_enabled : false }
+    if (alertRuleEditingId.value) await api.patch(`/foreign/alert-rules/${alertRuleEditingId.value}`, payload)
+    else await api.post('/foreign/alert-rules', payload)
+    ElMessage.success(alertRuleEditingId.value ? '外网告警规则已更新' : '外网告警规则已创建并保持停用')
+    alertRuleDraft.name = ''
+    alertRuleDraft.description = ''
+    alertRuleEditingId.value = null
+    alertRuleEditorVisible.value = false
+    await loadAlertRules()
+  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '创建外网告警规则失败') } finally { alertRuleSaving.value = false }
+}
+async function enableAlertRule(rule: AlertRule) {
+  if (!canEnableAlertRules || alertRuleBusyId.value) return
+  alertRuleBusyId.value = rule.id
+  try { await api.post(`/foreign/alert-rules/${rule.id}/enable`); ElMessage.success('外网告警规则已启用'); await loadAlertRules() } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '启用外网告警规则失败') } finally { alertRuleBusyId.value = null }
+}
+async function disableAlertRule(rule: AlertRule) {
+  if (alertRuleBusyId.value) return
+  alertRuleBusyId.value = rule.id
+  try { await api.post(`/foreign/alert-rules/${rule.id}/disable`); ElMessage.success('外网告警规则已停用'); await loadAlertRules() } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '停用外网告警规则失败') } finally { alertRuleBusyId.value = null }
+}
+async function deleteAlertRule(rule: AlertRule) {
+  try {
+    await ElMessageBox.confirm(`确认删除外网告警规则“${rule.name}”？`, '删除规则', { type: 'warning' })
+    alertRuleBusyId.value = rule.id
+    await api.delete(`/foreign/alert-rules/${rule.id}`)
+    ElMessage.success('外网告警规则已删除')
+    await loadAlertRules()
+  } catch (err: any) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(err?.response?.data?.detail || '删除外网告警规则失败')
+  } finally { alertRuleBusyId.value = null }
+}
+function actionLabel(action: ForeignAlertAction['action_type']) {
+  return action === 'acknowledge' ? '确认' : action === 'resolve' ? '解决' : '抑制'
+}
+async function evaluateAlerts() {
+  if (alertEvaluating.value || !canEvaluateAlerts) return
+  alertEvaluating.value = true
+  try {
+    await api.post('/foreign/alerts/evaluate', { dry_run: true, max_items: 200 })
+    ElMessage.success('外网告警 Dry-Run 已完成，未写入告警记录')
+    await loadAlerts()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '外网告警评估失败')
+  } finally { alertEvaluating.value = false }
+}
+async function handleForeignAlert(row: ForeignAlert, action: 'acknowledge' | 'resolve' | 'suppress') {
+  const permission = action === 'acknowledge' ? canAcknowledgeAlerts : action === 'resolve' ? canResolveAlerts : canSuppressAlerts
+  if (!permission || alertActionBusyId.value) return
+  alertActionBusyId.value = row.id
+  try {
+    const prompt = await ElMessageBox.prompt(
+      `请输入${actionLabel(action)}备注`,
+      '外网告警处置',
+      {
+        inputType: 'textarea',
+        inputPlaceholder: '备注不能为空',
+        inputValidator: (value: string) => value.trim() ? true : '备注不能为空',
+      },
+    )
+    await api.post(`/foreign/alerts/${row.id}/${action}`, { note: prompt.value })
+    ElMessage.success(`外网告警${actionLabel(action)}成功`)
+    await loadAlerts()
+    await loadAlertActions(row)
+  } catch (err: any) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(err?.response?.data?.detail || '外网告警操作失败')
+  } finally { alertActionBusyId.value = null }
+}
+async function rebuildEvents() {
+  if (rebuildingEvents.value) return
+  rebuildingEvents.value = true
+  try {
+    await api.post('/foreign/events/rebuild', { dry_run: true })
+    ElMessage.success('外网事件候选 Dry-Run 已完成')
+    await loadEvents()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '外网事件候选重建失败')
+  } finally { rebuildingEvents.value = false }
+}
+async function confirmCandidate(row: EventCandidate) {
+  const key = `candidate-confirm-${row.id}`
+  if (eventActionKey.value) return
+  eventActionKey.value = key
+  try {
+    await api.post(`/foreign/events/candidates/${row.id}/confirm`, { reason: 'Foreign workspace manual confirmation', request_id: operationRequestId(`candidate-confirm-${row.id}`) })
+    ElMessage.success('外网事件候选已确认')
+    await loadEvents()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '确认外网事件候选失败')
+  } finally { eventActionKey.value = null }
+}
+async function rejectCandidate(row: EventCandidate) {
+  const key = `candidate-reject-${row.id}`
+  if (eventActionKey.value) return
+  eventActionKey.value = key
+  try {
+    await api.post(`/foreign/events/candidates/${row.id}/reject`, { reason: 'Foreign workspace manual rejection', request_id: operationRequestId(`candidate-reject-${row.id}`) })
+    ElMessage.success('外网事件候选已拒绝')
+    await loadEvents()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '拒绝外网事件候选失败')
+  } finally { eventActionKey.value = null }
+}
+async function loadEventDetail(id: number) {
+  if (selectedForeignEvent.value?.id === id && selectedForeignEvent.value.opinions) return
+  if (eventDetailLoadingId.value) return
+  eventDetailLoadingId.value = id
+  try {
+    selectedForeignEvent.value = (await api.get(`/foreign/events/${id}`)).data
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '外网事件详情加载失败')
+  } finally { eventDetailLoadingId.value = null }
+}
+async function archiveEvent(row: ForeignEvent) {
+  if (eventActionKey.value) return
+  eventActionKey.value = `event-archive-${row.id}`
+  try {
+    await api.post(`/foreign/events/${row.id}/status`, { status: 'archived', reason: 'Foreign workspace archive', request_id: operationRequestId(`event-archive-${row.id}`) })
+    ElMessage.success('外网事件已归档')
+    await loadEvents()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '外网事件归档失败')
+  } finally { eventActionKey.value = null }
+}
+async function closeEvent(row: ForeignEvent) {
+  if (!canChangeEventStatus || eventActionKey.value) return
+  eventActionKey.value = `event-close-${row.id}`
+  try {
+    const prompt = await ElMessageBox.prompt('请输入关闭原因', '关闭外网事件', { inputType: 'textarea', inputValidator: (value: string) => value.trim() ? true : '原因不能为空' })
+    await api.post(`/foreign/events/${row.id}/close`, { reason: prompt.value, request_id: operationRequestId(`event-close-${row.id}`) })
+    ElMessage.success('外网事件已关闭')
+    await loadEvents()
+  } catch (err: any) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(err?.response?.data?.detail || '关闭外网事件失败')
+  } finally { eventActionKey.value = null }
+}
+async function mergeEvent(row: ForeignEvent) {
+  if (!canMergeEvents || eventActionKey.value) return
+  eventActionKey.value = `event-merge-${row.id}`
+  try {
+    const prompt = await ElMessageBox.prompt('请输入目标外网事件 ID', '合并外网事件', { inputType: 'number', inputValidator: (value: string) => /^\d+$/.test(value) && Number(value) !== row.id ? true : '请输入不同的有效事件 ID' })
+    await api.post(`/foreign/events/${row.id}/merge`, { target_event_id: Number(prompt.value), reason: 'Foreign workspace manual merge', request_id: operationRequestId(`event-merge-${row.id}`) })
+    ElMessage.success('外网事件已合并')
+    selectedForeignEvent.value = null
+    await loadEvents()
+  } catch (err: any) { if (err === 'cancel' || err === 'close') return; ElMessage.error(err?.response?.data?.detail || '外网事件合并失败') } finally { eventActionKey.value = null }
+}
+async function splitEvent(row: ForeignEvent) {
+  if (!canSplitEvents || !row.opinions?.length || eventActionKey.value) return
+  eventActionKey.value = `event-split-${row.id}`
+  try {
+    const prompt = await ElMessageBox.prompt('请输入要拆出的文章 ID，多个 ID 用逗号分隔', '拆分外网事件', { inputValidator: (value: string) => value.split(',').every(item => /^\s*\d+\s*$/.test(item)) ? true : '请输入逗号分隔的文章 ID' })
+    const opinion_ids = prompt.value.split(',').map(item => Number(item.trim())).filter(Boolean)
+    await api.post(`/foreign/events/${row.id}/split`, { opinion_ids, reason: 'Foreign workspace manual split', request_id: operationRequestId(`event-split-${row.id}`) })
+    ElMessage.success('外网事件已拆分')
+    selectedForeignEvent.value = null
+    await loadEvents()
+  } catch (err: any) { if (err === 'cancel' || err === 'close') return; ElMessage.error(err?.response?.data?.detail || '外网事件拆分失败') } finally { eventActionKey.value = null }
+}
 async function createKeyword() {
+  if (keywordSaving.value) return
   const word = keywordDraft.word.trim()
-  if (!word) return
-  try { await api.post('/foreign/keywords', { word, category: 'general', is_enabled: true }); keywordDraft.word = ''; await loadKeywords(); ElMessage.success('外网关键词已新增') } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '新增失败') }
+  if (!word) { ElMessage.warning('请输入关键词'); return }
+  keywordSaving.value = true
+  try {
+    const payload = { word, category: keywordDraft.category.trim() || 'general', type: keywordDraft.type, weight: keywordDraft.weight, severity_weight: 0, source: editingKeywordId.value ? undefined : 'custom', is_enabled: true }
+    if (editingKeywordId.value) {
+      await api.patch(`/foreign/keywords/${editingKeywordId.value}`, payload)
+      ElMessage.success('外网关键词已更新')
+    } else {
+      await api.post('/foreign/keywords', payload)
+      ElMessage.success('外网关键词已新增')
+    }
+    editingKeywordId.value = null
+    keywordDraft.word = ''
+    await loadKeywords()
+  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网关键词保存失败') } finally { keywordSaving.value = false }
 }
 async function toggleKeyword(row: Keyword) {
-  try { await api.patch(`/foreign/keywords/${row.id}`, { word: row.word, category: row.category, is_enabled: !row.is_enabled }); await loadKeywords() } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '更新失败') }
+  if (keywordSaving.value) return
+  keywordSaving.value = true
+  try { await api.patch(`/foreign/keywords/${row.id}`, { is_enabled: !row.is_enabled }); await loadKeywords() } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网关键词更新失败') } finally { keywordSaving.value = false }
 }
 async function removeKeyword(id: number) {
-  try { await api.delete(`/foreign/keywords/${id}`); await loadKeywords() } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '删除失败') }
+  try {
+    await ElMessageBox.confirm('确认删除这个外网关键词？', '删除关键词', { type: 'warning' })
+    await api.delete(`/foreign/keywords/${id}`)
+    await loadKeywords()
+    ElMessage.success('外网关键词已删除')
+  } catch (err: any) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(err?.response?.data?.detail || '外网关键词删除失败')
+  }
+}
+function editKeyword(row: Keyword) {
+  editingKeywordId.value = row.id
+  keywordDraft.word = row.word
+  keywordDraft.category = row.category
+  keywordDraft.type = row.type || 'monitoring'
+  keywordDraft.weight = row.weight ?? 10
+}
+async function bulkToggleKeywords(isEnabled: boolean) {
+  if (keywordSaving.value || !keywords.value.length) return
+  keywordSaving.value = true
+  try { await api.post('/foreign/keywords/bulk-status', { keyword_ids: keywords.value.map(row => row.id), is_enabled: isEnabled }); await loadKeywords(); ElMessage.success('外网关键词状态已批量更新') } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '批量更新失败') } finally { keywordSaving.value = false }
+}
+async function openOpinion(id: number) {
+  detailId.value = id
+  detailVisible.value = true
+}
+function resetSourceDraft() {
+  sourceDraft.name = ''
+  sourceDraft.key = ''
+  sourceDraft.feedsText = ''
+  sourceDraft.language = 'unknown'
+  sourceDraft.proxyEnv = 'FOREIGN_HTTP_PROXY'
+  sourceDraft.timeout = 15
+  sourceDraft.maxRetries = 2
+  sourceDraft.maxItems = 100
+  sourceDraft.requestInterval = 0.5
+  sourceDraft.scheduleInterval = 60
+  sourceDraft.maxContentLength = 200000
+  sourceDraft.respectRobots = true
+  sourceDraftTested.value = false
+  sourceTestResult.value = null
+}
+function beginNewSource() {
+  resetSourceDraft()
+  editingSourceId.value = null
+  sourceEditorVisible.value = true
+}
+function editSource(row: Source) {
+  sourceDraft.name = row.name
+  sourceDraft.key = row.key
+  sourceDraft.feedsText = row.feeds.join('\n')
+  sourceDraft.language = row.language || 'unknown'
+  sourceDraft.proxyEnv = row.proxy_env || 'FOREIGN_HTTP_PROXY'
+  sourceDraft.timeout = row.timeout || 15
+  sourceDraft.maxRetries = row.max_retries ?? 2
+  sourceDraft.maxItems = row.max_items || 100
+  sourceDraft.requestInterval = row.request_interval ?? 0.5
+  sourceDraft.scheduleInterval = row.schedule_interval_minutes || 60
+  sourceDraft.maxContentLength = row.max_content_length || 200000
+  sourceDraft.respectRobots = row.respect_robots !== false
+  editingSourceId.value = row.id
+  sourceDraftTested.value = false
+  sourceTestResult.value = null
+  sourceEditorVisible.value = true
+}
+function sourcePayload() {
+  return {
+    name: sourceDraft.name.trim(),
+    key: sourceDraft.key.trim(),
+    feeds: sourceDraft.feedsText.split(/\r?\n|,/).map(item => item.trim()).filter(Boolean),
+    language: sourceDraft.language,
+    proxy_env: sourceDraft.proxyEnv.trim() || null,
+    timeout: sourceDraft.timeout,
+    connect_timeout: sourceDraft.timeout,
+    read_timeout: sourceDraft.timeout,
+    max_items: sourceDraft.maxItems,
+    max_retries: sourceDraft.maxRetries,
+    request_interval: sourceDraft.requestInterval,
+    schedule_interval_minutes: sourceDraft.scheduleInterval,
+    max_content_length: sourceDraft.maxContentLength,
+    respect_robots: sourceDraft.respectRobots,
+    fetch_full_text: false,
+  }
+}
+function sourceTestPayload() {
+  const payload = sourcePayload()
+  return {
+    name: payload.name,
+    feeds: payload.feeds,
+    proxy_env: payload.proxy_env,
+    timeout: payload.timeout,
+    connect_timeout: payload.connect_timeout,
+    read_timeout: payload.read_timeout,
+    max_items: payload.max_items,
+    max_retries: payload.max_retries,
+    respect_robots: payload.respect_robots,
+    fetch_full_text: false,
+  }
+}
+function sourceTestSucceeded(payload: any): boolean {
+  const sourceTestResult = payload || {}
+  return Boolean(sourceTestResult.success ?? sourceTestResult['ok'] ?? sourceTestResult.status === 'success')
+}
+async function testSourceDraft() {
+  if (sourceTesting.value) return
+  sourceTesting.value = true
+  sourceDraftTested.value = false
+  try {
+    const response = await api.post('/foreign/sources/test', sourceTestPayload())
+    sourceTestResult.value = response.data
+    sourceDraftTested.value = sourceTestSucceeded(response.data)
+    if (!sourceTestSucceeded(response.data)) ElMessage.warning('RSS 测试存在失败项，请检查配置')
+    else ElMessage.success('RSS 连通性测试通过')
+  } catch (err: any) { sourceTestResult.value = null; ElMessage.error(err?.response?.data?.detail || '外网源连通性测试失败') } finally { sourceTesting.value = false }
+}
+async function saveSource() {
+  if (sourceSaving.value || !sourceDraftTested.value) return
+  sourceSaving.value = true
+  try {
+    const payload = sourcePayload()
+    if (editingSourceId.value) {
+      const { key: _key, ...updatePayload } = payload
+      await api.patch(`/foreign/sources/${editingSourceId.value}`, updatePayload)
+    } else await api.post('/foreign/sources', payload)
+    ElMessage.success('外网数据源已保存')
+    sourceEditorVisible.value = false
+    await loadSourcesView()
+  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网数据源保存失败') } finally { sourceSaving.value = false }
+}
+async function testSource(row: Source) {
+  sourceTesting.value = true
+  try {
+    const response = await api.post('/foreign/sources/test', { source_id: row.id, fetch_full_text: false })
+    sourceTestResult.value = response.data
+    const succeeded = sourceTestSucceeded(response.data)
+    ElMessage[succeeded ? 'success' : 'warning'](succeeded ? 'RSS 连通性测试通过' : 'RSS 测试存在失败项')
+  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网源测试失败') } finally { sourceTesting.value = false }
+}
+async function loadSourceRuns(row: Source) {
+  try { selectedSourceRuns.value = { name: row.name, items: (await api.get(`/foreign/sources/${row.id}/runs`, { params: { size: 50 } })).data.items || [] } } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网采集历史加载失败') }
 }
 async function toggleSource(row: Source) {
-  try { await api.patch(`/foreign/sources/${row.id}`, { enabled: !row.enabled }); await loadSources() } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '数据源状态更新失败') }
+  if (sourceBusyId.value) return
+  sourceBusyId.value = row.id
+  try { await api.patch(`/foreign/sources/${row.id}`, { enabled: !row.enabled, schedule_enabled: false, fetch_full_text: false }); await loadSourcesView(); ElMessage.success('外网数据源状态已更新') } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '数据源状态更新失败') } finally { sourceBusyId.value = null }
 }
+async function analyzeRisk(row: RiskResult) {
+  if (!canAnalyzeRisk) {
+    ElMessage.warning('当前账号没有外网规则分析权限')
+    return
+  }
+  try {
+    await api.post(`/foreign/risk/${row.foreign_opinion_id}/analyze`, {})
+    ElMessage.success('外网规则分析完成')
+    await loadRisk()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '外网规则分析失败')
+  }
+}
+const approvedSourceIds = [57, 58, 59, 60]
 async function collectNow() {
   if (collecting.value) return
   collecting.value = true
   try {
-    const { data } = await api.post('/foreign/collect', { source_ids: null })
+    const { data } = await api.post('/foreign/collect', { source_ids: approvedSourceIds })
     const result = await pollTask(data.task_id)
     if (result.status === 'success') { ElMessage.success(`外网采集完成：新增 ${result.result?.created || 0} 条`); await loadOpinions(); await loadRuns() }
     else ElMessage.error(result.error || '外网采集失败')
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || err?.message || '外网采集失败') } finally { collecting.value = false }
 }
-onMounted(loadOpinions)
+async function collectAll() {
+  try {
+    await ElMessageBox.confirm(
+      'This runs every enabled foreign source. Continue?',
+      'Confirm full foreign collection',
+      { type: 'warning', confirmButtonText: 'Collect all', cancelButtonText: 'Cancel' },
+    )
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    throw err
+  }
+  if (collecting.value) return
+  collecting.value = true
+  try {
+    const { data } = await api.post('/foreign/collect', { all_sources: true })
+    const result = await pollTask(data.task_id)
+    if (result.status === 'success') { ElMessage.success(`Full collection complete: ${result.result?.created || 0} new articles`); await loadOpinions(); await loadRuns() }
+    else ElMessage.error(result.error || 'Foreign collection failed')
+  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || err?.message || 'Foreign collection failed') } finally { collecting.value = false }
+}
+watch(
+  () => route.query.tab,
+  (value) => {
+    const tab = normalizeTab(value)
+    activeTab.value = tab
+    loadTab(tab)
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped>
 .foreign-page { min-width: 0; }
 .workspace-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 20px; }
+.collection-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.source-scope-label { color: #6e6e73; font-size: 12px; align-self: center; }
 .workspace-head h2 { margin: 0 0 6px; font-size: 24px; color: #1d1d1f; }
 .workspace-head p, .source-note, .muted { margin: 0; color: #86868b; font-size: 13px; }
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid #e8e8ed; }
 .tab { border: 0; background: transparent; padding: 10px 16px; color: #6e6e73; cursor: pointer; border-bottom: 2px solid transparent; }
 .tab.active { color: #0071e3; border-bottom-color: #0071e3; }
+.subtabs { display: flex; gap: 8px; margin: -4px 0 14px; border-bottom: 1px solid #e8e8ed; }
+.subtabs .tab { padding: 8px 12px; }
 .panel { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.05); }
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+.visualization-panel { min-height: 280px; }
+.visualization-content { display: grid; gap: 18px; }
+.metric-grid { display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); gap: 12px; }
+.metric-card, .data-section { border: 1px solid #e8e8ed; border-radius: 8px; padding: 14px; background: #fbfbfc; }
+.metric-card { display: grid; gap: 6px; min-height: 92px; }
+.metric-card span, .metric-card small { color: #6e6e73; font-size: 12px; }
+.metric-card strong { color: #1d1d1f; font-size: 24px; }
+.visualization-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.data-section h3 { margin: 0 0 10px; font-size: 14px; color: #1d1d1f; }
+.distribution-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid #eeeeef; font-size: 13px; }
+.distribution-row:last-child { border-bottom: 0; }
+.distribution-row small { display: block; color: #86868b; font-size: 11px; }
+.visualization-meta, .scope-badge, .source-management-note { color: #6e6e73; font-size: 12px; }
+.scope-badge { padding: 4px 8px; border: 1px solid #d8e8f8; border-radius: 999px; color: #1769aa; background: #f3f9ff; }
+.stale-badge { padding: 4px 8px; border: 1px solid #f0c36d; border-radius: 999px; color: #8a5a00; background: #fff8e6; }
+.source-management-note { border-top: 1px solid #e8e8ed; margin-top: 18px; padding-top: 14px; }
+@media (max-width: 900px) { .metric-grid { grid-template-columns: repeat(2, minmax(130px, 1fr)); } .visualization-columns { grid-template-columns: 1fr; } }
 .input { height: 38px; border: 1px solid #d2d2d7; border-radius: 8px; padding: 0 11px; min-width: 190px; color: #1d1d1f; background: #fff; }
 .btn { border: 0; border-radius: 8px; padding: 9px 15px; cursor: pointer; font-size: 13px; }
 .btn-primary { color: #fff; background: #0071e3; }.btn-secondary { color: #1d1d1f; background: #f0f0f3; }
@@ -239,10 +1393,63 @@ onMounted(loadOpinions)
 th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #e8e8ed; vertical-align: top; } th { color: #86868b; font-weight: 600; }
 tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width: 280px; font-weight: 600; }
 .tag { display: inline-block; color: #0071e3; background: #e8f1fd; border-radius: 999px; padding: 3px 7px; margin: 0 4px 3px 0; }
-.status, .status-toggle { display: inline-block; border: 0; border-radius: 999px; padding: 4px 9px; color: #86868b; background: #f0f0f3; }.status.on, .status-toggle.on { color: #1a8e3c; background: #eafaf0; }
+.status, .status-toggle { display: inline-block; border: 0; border-radius: 999px; padding: 4px 9px; color: #86868b; background: #f0f0f3; }.status.on, .status-toggle.on { color: #1a8e3c; background: #eafaf0; }.status.failed { color: #b42318; background: #fef3f2; }
 .status-toggle { cursor: pointer; }.link-btn { border: 0; background: transparent; color: #0071e3; cursor: pointer; margin-right: 10px; }.link-btn.danger { color: #ff3b30; }
-.feed { max-width: 420px; overflow-wrap: anywhere; color: #515154; }.proxy-mark { color: #1a8e3c; margin-left: 8px; }.error-cell { color: #ff3b30; max-width: 240px; }
+.feed { max-width: 420px; overflow-wrap: anywhere; color: #515154; }.proxy-mark { color: #1a8e3c; margin-left: 8px; }.error-cell { color: #ff3b30; max-width: 240px; }.date-input { min-width: 145px; }
 .empty { text-align: center; color: #86868b; padding: 30px; }.pager { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 14px; color: #6e6e73; font-size: 13px; }
 .detail-mask { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: grid; place-items: center; padding: 20px; z-index: 20; }.detail { position: relative; width: min(760px, 100%); max-height: 80vh; overflow: auto; background: #fff; border-radius: 12px; padding: 24px; }.detail h3 { margin: 0 34px 10px 0; color: #1d1d1f; }.detail-meta { color: #86868b; font-size: 13px; }.detail-text { white-space: pre-wrap; line-height: 1.8; color: #2b2b2e; }.close { position: absolute; right: 14px; top: 12px; border: 0; background: #f0f0f3; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; }.original { color: #0071e3; }
+.title-link { padding: 0; font-weight: 600; text-align: left; }
+.alert-dialog, .history-dialog, .rule-dialog { width: min(820px, 100%); max-height: 86vh; }
+.rule-dialog label { display: grid; gap: 6px; margin: 12px 0; color: #424245; font-size: 13px; }
+.rule-preview { margin-top: 14px; padding: 12px; background: #f5f5f7; border-radius: 8px; }
+.rule-preview pre { margin: 8px 0 0; white-space: pre-wrap; font-size: 12px; }
+.event-detail { margin-top: 18px; border-top: 1px solid #e8e8ed; padding-top: 16px; }
+.event-detail-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.event-detail h3 { margin: 0; color: #1d1d1f; }
+.event-metrics { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 12px 0; color: #424245; font-size: 13px; }
+.event-failures { margin: 12px 0; padding: 12px; border: 1px solid #f3c7c2; background: #fff8f7; color: #5c1b16; }
+.event-failure-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; font-size: 13px; }
+.error-state { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 12px 0; padding: 12px; border: 1px solid #f3c7c2; background: #fff8f7; color: #5c1b16; }
+.alert-scope-note { margin: 10px 0 14px; padding: 10px 12px; border: 1px solid #d9e7f7; background: #f5f9ff; color: #36536f; font-size: 13px; }
+.alert-failures { margin: 12px 0; padding: 12px; border: 1px solid #f3c7c2; background: #fff8f7; color: #5c1b16; }
+.alert-failure-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; font-size: 13px; }
+.alert-detail { margin-top: 18px; border-top: 1px solid #e8e8ed; padding-top: 16px; }
+.alert-action-history { display: grid; gap: 8px; margin-top: 12px; }
+.alert-action-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f3; }
+.event-opinion { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid #f0f0f3; }
+/* ===== 外网 Dashboard：苹果风卡片（对齐驾驶舱视觉） ===== */
+.fw-dash-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.fw-dash-title { margin: 0 0 4px; font-size: 20px; font-weight: 600; color: #1d1d1f; letter-spacing: -0.01em; }
+.fw-dash { display: grid; gap: 16px; }
+.fw-kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.fw-kpi { display: grid; gap: 6px; align-content: start; padding: 16px 18px; background: #fff; border: 1px solid #e8e8ed; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.fw-kpi-label { font-size: 12.5px; font-weight: 600; color: #86868b; }
+.fw-kpi-value { font-size: 28px; font-weight: 700; color: #1d1d1f; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.fw-kpi small { font-size: 12px; color: #86868b; }
+.fw-widget-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.fw-card { padding: 16px 18px; background: #fff; border: 1px solid #e8e8ed; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); min-width: 0; }
+.fw-card h3 { margin: 0 0 10px; font-size: 15px; font-weight: 600; color: #1d1d1f; }
+.fw-card .empty { margin: 6px 0 0; color: #86868b; font-size: 13px; }
+.fw-card-wide { grid-column: 1 / -1; }
+.fw-card .table-wrap table { min-width: 560px; }
+.fw-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.fw-card-head h3 { margin: 0; }
+.fw-chart { width: 100%; height: 260px; }
+.fw-legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.fw-legend-item { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid #e8e8ed; border-radius: 980px; background: #fff; color: #1d1d1f; font-size: 12px; cursor: pointer; transition: opacity .15s ease, background .15s ease; }
+.fw-legend-item:hover { background: #f5f5f7; }
+.fw-legend-item i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.fw-legend-item.off { opacity: .38; }
+.alert-title { color: #1d1d1f; font-weight: 600; }
+.linked-cell { min-width: 180px; }
+.fw-hotwords { display: flex; flex-wrap: wrap; gap: 8px; }
+.fw-hotword { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 980px; background: #f5f5f7; color: #1d1d1f; font-size: 13px; font-weight: 500; }
+.fw-hotword small { color: #0071e3; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* ===== 舆情+风险合并表：横向滚动窗 ===== */
+.tbl-scroll { min-width: 0; overflow-x: auto; }
+.tbl-scroll table { min-width: 1720px; }
+.tbl-scroll .title-cell { min-width: 260px; }
+@media (max-width: 1280px) { .fw-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .fw-widget-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 820px) { .fw-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fw-widget-grid { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .workspace-head { flex-direction: column; }.input { width: 100%; min-width: 0; } }
 </style>

@@ -95,6 +95,8 @@ def upgrade() -> None:
         sa.column("schedule_interval_minutes", sa.Integer),
         sa.column("scope_region_codes", sa.String),
         sa.column("config_json", sa.Text),
+        sa.column("created_at", sa.DateTime),
+        sa.column("updated_at", sa.DateTime),
     )
     sources = [
         (
@@ -131,6 +133,8 @@ def upgrade() -> None:
                 schedule_interval_minutes=60,
                 scope_region_codes=None,
                 config_json=config_json,
+                created_at=now,
+                updated_at=now,
             )
         )
 

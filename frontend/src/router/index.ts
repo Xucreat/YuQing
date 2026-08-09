@@ -29,7 +29,7 @@ const router = createRouter({
       path: '/foreign',
       name: 'foreign',
       component: () => import('@/views/ForeignWorkspace.vue'),
-      meta: { requiresAuth: true, module: ['keywords', 'sources'] },
+      meta: { requiresAuth: true, module: ['keywords', 'sources', 'foreign'] },
     },
     // AI 检索：需 ai:search（后端 /bocha/*、/anspire/* 已同步收敛为 ai:search）
     {

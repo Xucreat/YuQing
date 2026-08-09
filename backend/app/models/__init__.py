@@ -26,6 +26,21 @@ from app.models.report_record import ReportRecord
 from app.models.report_template import ReportTemplate
 from app.models.foreign_keyword import ForeignKeyword
 from app.models.foreign_opinion import ForeignOpinion
+from app.models.foreign_analysis_run import ForeignAnalysisRun
+from app.models.foreign_risk_result import ForeignRiskResult
+from app.models.foreign_risk_term import ForeignRiskTerm
+from app.models.foreign_ai_result import ForeignAIResult
+from app.models.foreign_event_candidate import ForeignEventCandidate
+from app.models.foreign_event import ForeignEvent
+from app.models.foreign_event_opinion import ForeignEventOpinion
+from app.models.foreign_event_run import ForeignEventRun
+from app.models.foreign_event_action import ForeignEventAction
+from app.models.foreign_alert_rule import ForeignAlertRule
+from app.models.foreign_alert import ForeignAlert
+from app.models.foreign_alert_run import ForeignAlertRun
+from app.models.foreign_alert_action import ForeignAlertAction
+from app.models.foreign_alert_admission import ForeignAlertAdmission
+from app.models.foreign_alert_admission_action import ForeignAlertAdmissionAction
 
 __all__ = [
     "Base",
@@ -53,4 +68,19 @@ __all__ = [
     "ReportTemplate",
     "ForeignKeyword",
     "ForeignOpinion",
+    "ForeignAnalysisRun",
+    "ForeignRiskResult",
+    "ForeignRiskTerm",
+    "ForeignAIResult",
+    "ForeignEventCandidate",
+    "ForeignEvent",
+    "ForeignEventOpinion",
+    "ForeignEventRun",
+    "ForeignEventAction",
+    "ForeignAlertRule",
+    "ForeignAlert",
+    "ForeignAlertRun",
+    "ForeignAlertAction",
+    "ForeignAlertAdmission",
+    "ForeignAlertAdmissionAction",
 ]

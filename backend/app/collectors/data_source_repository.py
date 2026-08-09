@@ -34,6 +34,11 @@ def _is_foreign_config(raw: str | None) -> bool:
     return isinstance(value, dict) and value.get("is_foreign") is True
 
 
+def _is_foreign_source(row: dict) -> bool:
+    class_path = str(row.get("class_path") or "")
+    return "foreign_rss" in class_path or _is_foreign_config(row.get("config_json"))
+
+
 def enabled_sources(db: Session) -> List[dict]:
     """装配所需字段：所有 enabled 数据源（按 priority, id 排序）。
 
@@ -61,7 +66,7 @@ def enabled_sources(db: Session) -> List[dict]:
     )
     # Domestic CollectorService and the existing scheduler must never consume
     # the isolated foreign pipeline, even if an operator later enables a source.
-    return [dict(r) for r in rows if not _is_foreign_config(r.get("config_json"))]
+    return [dict(r) for r in rows if not _is_foreign_source(dict(r))]
 
 
 def _normalize_include_keys(include_keys) -> tuple[str, ...] | None:
@@ -97,6 +102,7 @@ def due_scheduled_sources(
           AND schedule_enabled = true
           AND key != 'weibo_octopus'
           AND COALESCE((config_json::jsonb ->> 'is_foreign'), 'false') <> 'true'
+          AND COALESCE(class_path, '') NOT LIKE '%foreign_rss%'
           AND (next_collect_time IS NULL OR next_collect_time <= now())
     """
     statement = text(sql)
@@ -133,6 +139,7 @@ def scheduled_enabled_sources(
           AND schedule_enabled = true
           AND key != 'weibo_octopus'
           AND COALESCE((config_json::jsonb ->> 'is_foreign'), 'false') <> 'true'
+          AND COALESCE(class_path, '') NOT LIKE '%foreign_rss%'
     """
     statement = text(sql)
     params = {}
