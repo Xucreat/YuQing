@@ -573,7 +573,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.cockpit { min-height: 100%; }
+.cockpit { min-height: 100%; max-width: 100%; overflow-x: hidden; }
 
 /* ============ KPI 指标条 ============ */
 .kpi-row {
@@ -797,5 +797,8 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 480px) {
   .kpi-row { grid-template-columns: 1fr; }
+  .situation { padding: 12px 14px; }
+  .sit-kpis { flex-wrap: wrap; gap: 12px; justify-content: flex-start; }
+  .kpi-card { padding: 12px 14px; }
 }
 </style>

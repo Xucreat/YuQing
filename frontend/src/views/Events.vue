@@ -176,11 +176,11 @@
             <td class="nowrap">{{ formatTime(row.first_time) }}</td>
             <td class="nowrap">{{ formatTime(row.last_time) }}</td>
             <td class="col-center operation-col" @click.stop>
-              <!-- RBAC 收口：处置/删除入口均需 events:write；无权限者不展示（观察者只读） -->
+              <!-- 窄屏始终可见的“查看”入口（粘性操作列），保证平板/移动处置人员可直接进入详情 -->
               <div class="row-actions">
+                <button class="btn-operate" title="查看事件详情" @click.stop="$router.push('/event/' + row.id)">查看</button>
                 <button v-if="canUpdateEvent" class="btn-operate" title="打开事件处置弹窗" @click.stop="openHandle(row)">处置</button>
-                <button v-if="canUpdateEvent" class="btn-icon btn-delete" title="删除事件" @click="handleDelete(row)">🗑</button>
-                <span v-if="!canUpdateEvent" class="row-actions-empty">—</span>
+                <button v-if="canUpdateEvent" class="btn-icon btn-delete" title="删除事件" @click.stop="handleDelete(row)">🗑</button>
               </div>
             </td>
           </tr>
@@ -725,11 +725,11 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
   background: transparent; cursor: pointer; font-size: 16px;
   transition: background 0.15s ease;
 }
-.row-actions { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.row-actions { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
 /* 无 events:write 时的操作列占位（保持行高与列宽稳定） */
 .row-actions-empty { color: #c0c4cc; font-size: 13px; }
 .operation-col {
-  position: sticky; right: 0; z-index: 2; min-width: 110px; width: 110px;
+  position: sticky; right: 0; z-index: 2; min-width: 168px; width: 168px;
   background: #fff; box-shadow: -10px 0 14px -14px rgba(0,0,0,0.38);
 }
 table.tbl thead .operation-col { z-index: 3; }

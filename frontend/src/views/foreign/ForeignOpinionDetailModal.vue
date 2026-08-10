@@ -35,9 +35,9 @@
                     <span class="kw-label">命中关键词</span>
                     <span v-for="k in detail.matched_keywords" :key="k" class="kw-tag">{{ k }}</span>
                   </p>
-                  <p v-if="detail.summary" class="orig-p">{{ detail.summary }}</p>
+                  <p v-if="detail.summary && detail.summary !== detail.content" class="orig-p">{{ detail.summary }}</p>
                   <p v-if="detail.content" class="orig-p">{{ detail.content }}</p>
-                  <p v-else-if="!detail.summary" class="orig-empty">暂无摘要与正文（正文抓取已关闭）。</p>
+                  <p v-else-if="!detail.content && !detail.summary" class="orig-empty">暂无摘要与正文（正文抓取已关闭）。</p>
                 </div>
               </div>
 

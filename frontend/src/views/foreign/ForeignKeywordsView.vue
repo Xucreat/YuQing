@@ -49,7 +49,9 @@
       <button class="btn btn-secondary" :disabled="keywordSaving" @click="bulkToggleKeywords(true)">批量启用全部当前结果</button>
       <button class="btn btn-secondary" :disabled="keywordSaving" @click="bulkToggleKeywords(false)">批量停用全部当前结果</button>
     </div>
-    <Pager v-if="keywordTotal > 0" :total="keywordTotal" v-model:current-page="keywordPage" :page-size="keywordSize" @current-change="loadKeywords" />
+    <div class="pager" v-if="keywordTotal > 0">
+      <Pager :total="keywordTotal" v-model:current-page="keywordPage" :page-size="keywordSize" @current-change="loadKeywords" />
+    </div>
   <el-dialog v-model="keywordDialogVisible" :title="editingKeywordId ? '编辑关键词' : '新增关键词'" width="440px">
     <el-form :model="keywordDraft" label-width="80px">
       <el-form-item label="关键词">

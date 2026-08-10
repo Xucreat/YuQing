@@ -6,9 +6,9 @@
 
 `POST /api/login`（**全站唯一公开接口，无需鉴权**）
 
-请求：
+请求（用户名与初始密码由部署时注入，禁止在文档中写死；如未配置请向系统管理员获取）：
 ```json
-{ "username": "admin", "password": "admin123" }
+{ "username": "<管理员用户名>", "password": "<INIT_ADMIN_PASSWORD 注入的初始密码>" }
 ```
 
 响应（简单 JWT）：

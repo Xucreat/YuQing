@@ -186,7 +186,7 @@
 
       <!-- Pager -->
       <div class="pager" v-if="total > 0">
-        <Pager :total="total" v-model:current-page="page" :page-size="size" @current-change="loadData" />
+        <Pager :total="total" v-model:current-page="page" :page-size="size" @current-change="onPageChange" />
       </div>
     </div>
 
@@ -196,14 +196,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
 import type { Opinion, OpinionListResponse } from '@/types'
 import OpinionDetailModal from '@/components/OpinionDetailModal.vue'
 import { usePermission } from '@/composables/usePermission'
 import { riskColor, levelPill, levelText, sentimentPill, sentimentText, statusPill, statusText, formatTime } from '@/utils/opinion'
 import { formatAdmissionHits } from '@/utils/admission'
+
+const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
 const rows = ref<Opinion[]>([])
@@ -483,6 +487,7 @@ async function loadData() {
     // 删除后当前页可能清空：若本页无数据且非首页，回退一页重载
     if (rows.value.length === 0 && page.value > 1) {
       page.value -= 1
+      syncUrl()
       return loadData()
     }
   } catch (err: any) {
@@ -490,13 +495,50 @@ async function loadData() {
   } finally { loading.value = false }
 }
 
-function handleSearch() { page.value = 1; loadData() }
+function buildQuery(): Record<string, string> {
+  const q: Record<string, string> = {}
+  if (filters.source) q.source = filters.source
+  if (filters.risk_level) q.risk_level = filters.risk_level
+  if (filters.level) q.level = filters.level
+  if (filters.content_type) q.content_type = filters.content_type
+  if (filters.relevance) q.relevance = filters.relevance
+  if (filters.date_from) q.date_from = filters.date_from
+  if (filters.date_to) q.date_to = filters.date_to
+  if (filters.keyword) q.keyword = filters.keyword
+  if (page.value > 1) q.page = String(page.value)
+  return q
+}
+let syncingUrl = false
+function syncUrl() {
+  syncingUrl = true
+  router.replace({ query: buildQuery() }).finally(() => { syncingUrl = false })
+}
+function restoreFromQuery() {
+  const q = route.query
+  page.value = (typeof q.page === 'string' && Number(q.page) > 0) ? Number(q.page) : 1
+  filters.source = typeof q.source === 'string' ? q.source : ''
+  filters.risk_level = typeof q.risk_level === 'string' ? q.risk_level : ''
+  filters.level = typeof q.level === 'string' ? q.level : ''
+  filters.content_type = typeof q.content_type === 'string' ? q.content_type : ''
+  filters.relevance = typeof q.relevance === 'string' ? q.relevance : ''
+  filters.date_from = typeof q.date_from === 'string' ? q.date_from : ''
+  filters.date_to = typeof q.date_to === 'string' ? q.date_to : ''
+  filters.keyword = typeof q.keyword === 'string' ? q.keyword : ''
+}
+function handleSearch() { page.value = 1; loadData(); syncUrl() }
 function handleRefresh() {
   filters.source = ''; filters.risk_level = ''; filters.level = ''
   filters.content_type = ''; filters.relevance = ''
   filters.date_from = ''; filters.date_to = ''; filters.keyword = ''
-  page.value = 1; loadData()
+  page.value = 1; loadData(); syncUrl()
 }
+function onPageChange(p: number) { page.value = p; loadData(); syncUrl() }
+// 支持浏览器前进/后退恢复筛选与页码（syncUrl 写回时不重复触发）
+watch(() => route.query, () => {
+  if (syncingUrl) return
+  restoreFromQuery()
+  loadData()
+})
 
 function openDetail(id: number) {
   detailId.value = id
@@ -504,6 +546,7 @@ function openDetail(id: number) {
 }
 
 onMounted(() => {
+  restoreFromQuery()
   loadData()
   loadSources()
   window.addEventListener('data-refresh', loadData)

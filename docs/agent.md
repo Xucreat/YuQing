@@ -57,7 +57,7 @@
 
 - [ ] `docker-compose up` 可以启动
 - [ ] localhost 打开登录页
-- [ ] `admin / admin123` 登录成功
+- [ ] 使用部署时配置的管理员凭据登录成功（初始密码由 `INIT_ADMIN_PASSWORD` 注入，禁止在文档中写死；如未配置请联系系统管理员获取）
 - [ ] Dashboard 有数据
 - [ ] MockCollector 生成 30 条以上数据
 - [ ] 舆情列表分页筛选正常

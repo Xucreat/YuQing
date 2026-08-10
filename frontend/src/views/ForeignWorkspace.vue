@@ -1,11 +1,5 @@
 <template>
   <div class="foreign-page" v-loading="loading">
-    <div class="workspace-head">
-      <div>
-        <h2>外网舆情</h2>
-        <p>独立采集、去重和展示链路；不会进入国内舆情、风险、事件或告警。</p>
-      </div>
-      <div class="collection-actions">
         <span class="source-scope-label">已批准数据源：57-60</span>
         <button class="btn btn-primary" :disabled="collecting" @click="collectNow">
         {{ collecting ? '采集中...' : '采集外网 RSS' }}
@@ -274,7 +268,11 @@
           <thead><tr><th>告警标题</th><th>严重度</th><th>状态</th><th>触发规则</th><th>关联文章</th><th>关联事件</th><th>风险分/等级</th><th>触发时间</th><th>确认时间</th><th>解决时间</th><th>抑制</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="row in foreignAlerts" :key="row.id">
-              <td class="title-cell"><strong class="alert-title">{{ row.title || '无标题告警' }}</strong><div class="muted">{{ row.message }}</div></td>
+              <td class="title-cell">
+                <button v-if="row.foreign_opinion_id || row.foreign_event_id" type="button" class="alert-title alert-title-link" :title="'查看详情：' + (row.title || '无标题告警')" @click.stop="openAlertTarget(row)" @keydown.enter.prevent="openAlertTarget(row)" @keydown.space.prevent="openAlertTarget(row)">{{ row.title || '无标题告警' }}</button>
+                <strong v-else class="alert-title">{{ row.title || '无标题告警' }}</strong>
+                <div class="muted">{{ row.message }}</div>
+              </td>
               <td><span class="status" :class="{ failed: row.severity === 'critical' || row.severity === 'high' }">{{ zh(row.severity) }}</span></td>
               <td><span class="status" :class="{ on: row.status === 'acknowledged' || row.status === 'resolved', failed: row.status === 'failed' || row.status === 'suppressed' }">{{ zh(row.status) }}</span></td>
               <td>{{ row.rule_snapshot?.name || ('规则 #' + row.rule_id) }}</td>
@@ -1179,6 +1177,15 @@ async function openOpinion(id: number) {
   detailId.value = id
   detailVisible.value = true
 }
+// AUDIT-008：外网告警标题可点击，按关联对象类型打开对应详情（文章→详情弹窗；事件→事件标签页内联详情）
+function openAlertTarget(row: ForeignAlert) {
+  if (row.foreign_opinion_id) {
+    openOpinion(row.foreign_opinion_id)
+  } else if (row.foreign_event_id) {
+    activeTab.value = 'events'
+    loadEventDetail(row.foreign_event_id)
+  }
+}
 function resetSourceDraft() {
   sourceDraft.name = ''
   sourceDraft.key = ''
@@ -1441,6 +1448,9 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .fw-legend-item i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .fw-legend-item.off { opacity: .38; }
 .alert-title { color: #1d1d1f; font-weight: 600; }
+.alert-title-link { background: none; border: none; padding: 0; margin: 0; font: inherit; cursor: pointer; text-align: left; color: #1d1d1f; }
+.alert-title-link:hover { color: #0071e3; text-decoration: underline; }
+.alert-title-link:focus-visible { outline: 2px solid #0071e3; outline-offset: 2px; border-radius: 4px; }
 .linked-cell { min-width: 180px; }
 .fw-hotwords { display: flex; flex-wrap: wrap; gap: 8px; }
 .fw-hotword { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 980px; background: #f5f5f7; color: #1d1d1f; font-size: 13px; font-weight: 500; }

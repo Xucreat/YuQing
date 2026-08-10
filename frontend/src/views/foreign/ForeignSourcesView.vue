@@ -125,17 +125,50 @@
         </tbody>
       </table>
     </div>
-    <Pager v-if="sourceTotal > 0" :total="sourceTotal" v-model:current-page="sourcePage" :page-size="sourceSize" @current-change="loadSourcesView" />
-    <el-dialog class="apple-dialog" modal-class="apple-modal" align-center v-model="sourceRunsVisible" :title="(selectedSourceRuns?.name || '来源') + ' · 采集历史'" width="680px">
-      <div class="source-runs">
-        <div v-for="run in (selectedSourceRuns?.items || [])" :key="run.id" class="history-row">
-          <span>{{ formatTime(run.start_time) }}</span>
-          <span>{{ run.status }}</span>
-          <span>抓取 {{ run.fetched_raw }} · 新增 {{ run.created }} · 去重 {{ run.duplicate }}</span>
-          <span class="error-cell">{{ run.error_msg || '' }}</span>
+    <div class="pager" v-if="sourceTotal > 0">
+      <Pager :total="sourceTotal" v-model:current-page="sourcePage" :page-size="sourceSize" @current-change="loadSourcesView" />
+    </div>
+    <el-dialog class="apple-dialog" modal-class="apple-modal" align-center v-model="sourceRunsVisible" :title="(selectedSourceRuns?.name || '来源') + ' · 采集历史'" width="760px">
+      <div v-loading="sourceRunsLoading">
+        <div class="run-summary" v-if="(selectedSourceRuns?.items || []).length">
+          <div class="run-stat"><span>抓取总数</span><b>{{ runsSummary.fetched }}</b></div>
+          <div class="run-stat"><span>命中</span><b>{{ runsSummary.matched }}</b></div>
+          <div class="run-stat"><span>新增</span><b>{{ runsSummary.created }}</b></div>
+          <div class="run-stat"><span>去重</span><b>{{ runsSummary.duplicate }}</b></div>
         </div>
-        <p v-if="!(selectedSourceRuns?.items || []).length" class="muted">暂无采集历史</p>
+        <div class="card table-card">
+          <table class="tbl hist-tbl">
+            <thead>
+              <tr>
+                <th style="width:170px">时间</th>
+                <th>采集器</th>
+                <th style="width:70px">抓取</th>
+                <th style="width:70px">命中</th>
+                <th style="width:70px">新增</th>
+                <th style="width:70px">去重</th>
+                <th style="width:80px">状态</th>
+                <th>失败原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="run in (selectedSourceRuns?.items || [])" :key="run.id">
+                <td>{{ formatTime(run.start_time) }}</td>
+                <td>{{ run.collector_name }}</td>
+                <td>{{ run.fetched_raw }}</td>
+                <td>{{ run.matched }}</td>
+                <td>{{ run.created }}</td>
+                <td>{{ run.duplicate }}</td>
+                <td><span class="pill" :class="runPill(run.status)">{{ runText(run.status) }}</span></td>
+                <td class="error-cell">{{ run.error_msg || '-' }}</td>
+              </tr>
+              <tr v-if="!(selectedSourceRuns?.items || []).length"><td colspan="8" class="empty-row">暂无采集记录</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
+      <template #footer>
+        <span class="dlg-foot"><button class="btn btn-ghost" @click="sourceRunsVisible = false">关闭</button></span>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -183,6 +216,7 @@ const sourceDraftTested = ref(false)
 const sourceTestResult = ref<any | null>(null)
 const selectedSourceRuns = ref<{ name: string; items: Run[] } | null>(null)
 const sourceRunsVisible = ref(false)
+const sourceRunsLoading = ref(false)
 const sourceDraft = reactive({ name: '', key: '', feedsText: '', language: 'unknown', proxyEnv: 'FOREIGN_HTTP_PROXY', timeout: 15, maxRetries: 2, maxItems: 100, requestInterval: 0.5, scheduleInterval: 60, maxContentLength: 200000, respectRobots: true })
 const sourceFilters = reactive({ q: '' })
 const sourcePage = ref(1)
@@ -198,6 +232,24 @@ function langLabel(lang?: string) {
   const map: Record<string, string> = { unknown: '未知', en: '英文', zh: '中文', mixed: '中英混合' }
   return (map[lang || 'unknown'] || lang || '-')
 }
+
+function runPill(st: string): string {
+  const m: Record<string, string> = { running: 'pill-blue', success: 'pill-green', partial: 'pill-orange', failed: 'pill-red', error: 'pill-red', unknown: 'pill-gray' }
+  return m[st] || 'pill-gray'
+}
+function runText(st: string): string {
+  const m: Record<string, string> = { running: '运行中', success: '成功', partial: '部分成功', failed: '失败', error: '异常', unknown: '未知' }
+  return m[st] || st
+}
+const runsSummary = computed(() => {
+  const items = selectedSourceRuns.value?.items || []
+  return {
+    fetched: items.reduce((a, r) => a + (r.fetched_raw || 0), 0),
+    matched: items.reduce((a, r) => a + (r.matched || 0), 0),
+    created: items.reduce((a, r) => a + (r.created || 0), 0),
+    duplicate: items.reduce((a, r) => a + (r.duplicate || 0), 0),
+  }
+})
 
 function formatTime(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-'
@@ -306,7 +358,15 @@ async function testSource(row: Source) {
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网源测试失败') } finally { sourceTesting.value = false }
 }
 async function loadSourceRuns(row: Source) {
-  try { selectedSourceRuns.value = { name: row.name, items: (await api.get(`/foreign/sources/${row.id}/runs`, { params: { size: 50 } })).data.items || [] }; sourceRunsVisible.value = true } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网采集历史加载失败') }
+  sourceRunsLoading.value = true
+  try {
+    selectedSourceRuns.value = { name: row.name, items: (await api.get(`/foreign/sources/${row.id}/runs`, { params: { size: 50 } })).data.items || [] }
+    sourceRunsVisible.value = true
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '外网采集历史加载失败')
+  } finally {
+    sourceRunsLoading.value = false
+  }
 }
 async function toggleSource(row: Source) {
   if (sourceBusyId.value) return
@@ -372,4 +432,29 @@ onMounted(loadSourcesView)
 .apple-dialog .el-dialog__body { padding: 4px 26px 10px; color: #1d1d1f; font-size: 14px; }
 .apple-dialog .el-dialog__footer { padding: 14px 26px 22px; }
 .apple-modal { background: rgba(0, 0, 0, 0.34); backdrop-filter: saturate(160%) blur(8px); -webkit-backdrop-filter: saturate(160%) blur(8px); }
+
+/* 采集历史弹窗（对齐国内数据源管理页查看历史弹窗） */
+.run-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.run-stat { min-height: 58px; padding: 10px 12px; border: 1px solid #e8e8ed; border-radius: 12px; background: #fafafc; box-sizing: border-box; }
+.run-stat span { display: block; font-size: 12px; color: #86868b; margin-bottom: 4px; }
+.run-stat b { font-size: 18px; font-weight: 600; color: #1d1d1f; }
+.table-card { padding: 0 6px 14px; max-height: 56vh; overflow: auto; background: #fff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.05); }
+.table-card::-webkit-scrollbar { width: 8px; height: 8px; }
+.table-card::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); border-radius: 8px; }
+.table-card::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
+.hist-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.hist-tbl thead th { text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b; padding: 14px 18px; border-bottom: 1px solid #e8e8ed; }
+.hist-tbl tbody td { padding: 12px 18px; border-bottom: 1px solid #e8e8ed; color: #1d1d1f; vertical-align: middle; }
+.hist-tbl tbody tr:last-child td { border-bottom: none; }
+.hist-tbl td, .hist-tbl th { white-space: nowrap; }
+.hist-tbl thead th { position: sticky; top: 0; z-index: 2; background: #fff; border-bottom: 1px solid #e8e8ed; }
+.empty-row td { text-align: center; color: #86868b; padding: 40px 0; }
+.dlg-foot { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 980px; font-size: 12px; font-weight: 500; }
+.pill-blue { background: rgba(0,122,255,0.1); color: #007aff; }
+.pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.pill-red { background: rgba(255,59,48,0.1); color: #ff3b30; }
+.pill-orange { background: rgba(255,159,10,0.12); color: #c77700; }
+.pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
+.error-cell { color: #ff3b30; font-size: 12.5px; max-width: 320px; }
 </style>

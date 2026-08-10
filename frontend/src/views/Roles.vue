@@ -12,7 +12,7 @@
         </tr></thead>
         <tbody>
           <tr v-for="r in roles" :key="r.id">
-            <td><span class="role-name">{{ r.name }}</span><span class="role-code">{{ r.code }}</span></td>
+            <td><span class="role-name">{{ r.name }}</span><span v-if="r.code && r.code !== r.name" class="role-code">{{ r.code }}</span></td>
             <td>{{ r.display_name }}</td>
             <td>
               <span v-if="r.is_system" class="pill pill-purple">系统角色</span>

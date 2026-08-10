@@ -13,7 +13,7 @@
 | role | VARCHAR | 角色（MVP 固定 `admin`） |
 | created_at | TIMESTAMP | 默认 now() |
 
-- 初始化：`admin` / `admin123`（bcrypt 加密）。
+- 初始化：用户名 `admin`；初始密码由环境变量 `INIT_ADMIN_PASSWORD` 注入（bcrypt 加密，未配置时由部署流程生成/下发，不在文档中写死）。
 
 ## 2. regions（区域）
 
