@@ -1402,7 +1402,9 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .strategy-preview-row { display: flex; align-items: center; gap: 8px; }
 .strategy-preview-src { font-size: 12px; color: #86868b; }
 .strategy-preview-ks { font-size: 12px; color: #515154; margin-top: 4px; }
-.pill-green { background: #e7f7ed; color: #1a8a4f; }
+/* 限定在 apple-dialog 内：本块为非 scoped 全局样式，
+   裸 .pill-green 会泄漏并污染 EventDetail 等使用同名类的页面 */
+.apple-dialog .pill-green { background: #e7f7ed; color: #1a8a4f; }
 .cfg-warn {
   margin-top: 6px; padding: 8px 10px; border-radius: 8px;
   background: #fff7ed; border: 1px solid #fed7aa; color: #c2410c; font-size: 12px;

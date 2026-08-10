@@ -433,28 +433,32 @@ onMounted(loadSourcesView)
 .apple-dialog .el-dialog__footer { padding: 14px 26px 22px; }
 .apple-modal { background: rgba(0, 0, 0, 0.34); backdrop-filter: saturate(160%) blur(8px); -webkit-backdrop-filter: saturate(160%) blur(8px); }
 
-/* 采集历史弹窗（对齐国内数据源管理页查看历史弹窗） */
-.run-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
-.run-stat { min-height: 58px; padding: 10px 12px; border: 1px solid #e8e8ed; border-radius: 12px; background: #fafafc; box-sizing: border-box; }
-.run-stat span { display: block; font-size: 12px; color: #86868b; margin-bottom: 4px; }
-.run-stat b { font-size: 18px; font-weight: 600; color: #1d1d1f; }
-.table-card { padding: 0 6px 14px; max-height: 56vh; overflow: auto; background: #fff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.05); }
-.table-card::-webkit-scrollbar { width: 8px; height: 8px; }
-.table-card::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); border-radius: 8px; }
-.table-card::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
-.hist-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
-.hist-tbl thead th { text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b; padding: 14px 18px; border-bottom: 1px solid #e8e8ed; }
-.hist-tbl tbody td { padding: 12px 18px; border-bottom: 1px solid #e8e8ed; color: #1d1d1f; vertical-align: middle; }
-.hist-tbl tbody tr:last-child td { border-bottom: none; }
-.hist-tbl td, .hist-tbl th { white-space: nowrap; }
-.hist-tbl thead th { position: sticky; top: 0; z-index: 2; background: #fff; border-bottom: 1px solid #e8e8ed; }
-.empty-row td { text-align: center; color: #86868b; padding: 40px 0; }
-.dlg-foot { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
-.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 980px; font-size: 12px; font-weight: 500; }
-.pill-blue { background: rgba(0,122,255,0.1); color: #007aff; }
-.pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
-.pill-red { background: rgba(255,59,48,0.1); color: #ff3b30; }
-.pill-orange { background: rgba(255,159,10,0.12); color: #c77700; }
-.pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
-.error-cell { color: #ff3b30; font-size: 12.5px; max-width: 320px; }
+/* 采集历史弹窗（对齐国内数据源管理页查看历史弹窗）
+   注意：本 <style> 块是非 scoped 全局样式（弹窗被 teleport 到 body，必须全局）。
+   因此以下所有规则必须以 .apple-dialog 作用域前缀限定，
+   否则 .table-card / .pill / .empty-row 等通用类名会泄漏成全局规则，
+   污染舆情列表、事件中心、关键词、预警中心、登录/操作日志等所有同名类的页面。 */
+.apple-dialog .run-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.apple-dialog .run-stat { min-height: 58px; padding: 10px 12px; border: 1px solid #e8e8ed; border-radius: 12px; background: #fafafc; box-sizing: border-box; }
+.apple-dialog .run-stat span { display: block; font-size: 12px; color: #86868b; margin-bottom: 4px; }
+.apple-dialog .run-stat b { font-size: 18px; font-weight: 600; color: #1d1d1f; }
+.apple-dialog .table-card { padding: 0 6px 14px; max-height: 56vh; overflow: auto; background: #fff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.05); }
+.apple-dialog .table-card::-webkit-scrollbar { width: 8px; height: 8px; }
+.apple-dialog .table-card::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); border-radius: 8px; }
+.apple-dialog .table-card::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
+.apple-dialog .hist-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.apple-dialog .hist-tbl thead th { text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b; padding: 14px 18px; border-bottom: 1px solid #e8e8ed; }
+.apple-dialog .hist-tbl tbody td { padding: 12px 18px; border-bottom: 1px solid #e8e8ed; color: #1d1d1f; vertical-align: middle; }
+.apple-dialog .hist-tbl tbody tr:last-child td { border-bottom: none; }
+.apple-dialog .hist-tbl td, .apple-dialog .hist-tbl th { white-space: nowrap; }
+.apple-dialog .hist-tbl thead th { position: sticky; top: 0; z-index: 2; background: #fff; border-bottom: 1px solid #e8e8ed; }
+.apple-dialog .empty-row td { text-align: center; color: #86868b; padding: 40px 0; }
+.apple-dialog .dlg-foot { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.apple-dialog .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 980px; font-size: 12px; font-weight: 500; }
+.apple-dialog .pill-blue { background: rgba(0,122,255,0.1); color: #007aff; }
+.apple-dialog .pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.apple-dialog .pill-red { background: rgba(255,59,48,0.1); color: #ff3b30; }
+.apple-dialog .pill-orange { background: rgba(255,159,10,0.12); color: #c77700; }
+.apple-dialog .pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
+.apple-dialog .error-cell { color: #ff3b30; font-size: 12.5px; max-width: 320px; }
 </style>
