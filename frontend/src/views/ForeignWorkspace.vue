@@ -1,17 +1,16 @@
 <template>
   <div class="foreign-page" v-loading="loading">
-        <span class="source-scope-label">已批准数据源：57-60</span>
-        <button class="btn btn-primary" :disabled="collecting" @click="collectNow">
-        {{ collecting ? '采集中...' : '采集外网 RSS' }}
-        </button>
-        <button class="btn btn-secondary" :disabled="collecting" @click="collectAll">采集全部数据源</button>
-      </div>
-    </div>
-
     <div class="tabs" role="tablist">
       <button v-for="tab in tabs" :key="tab.value" class="tab" :class="{ active: activeTab === tab.value }" @click="switchTab(tab.value)">
         {{ tab.label }}
       </button>
+      <div class="tab-actions">
+        <span class="source-scope-label">已批准数据源：57-60</span>
+        <button class="btn btn-primary btn-sm" :disabled="collecting" @click="collectNow">
+        {{ collecting ? '采集中...' : '采集外网 RSS' }}
+        </button>
+        <button class="btn btn-secondary btn-sm" :disabled="collecting" @click="collectAll">采集全部数据源</button>
+      </div>
     </div>
 
     <section v-if="activeTab === 'dashboard'" class="panel visualization-panel">
@@ -1425,6 +1424,14 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .alert-action-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f3; }
 .event-opinion { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid #f0f0f3; }
 /* ===== 外网 Dashboard：苹果风卡片（对齐驾驶舱视觉） ===== */
+.tabs { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.tab { padding: 8px 16px; border: 1px solid #e8e8ed; border-radius: 980px; background: #fff; color: #1d1d1f; font-size: 14px; font-weight: 500; cursor: pointer; transition: all .15s ease; }
+.tab:hover { background: #f5f5f7; }
+.tab.active { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+.tab-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.source-scope-label { font-size: 13px; color: #86868b; }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+
 .fw-dash-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
 .fw-dash-title { margin: 0 0 4px; font-size: 20px; font-weight: 600; color: #1d1d1f; letter-spacing: -0.01em; }
 .fw-dash { display: grid; gap: 16px; }

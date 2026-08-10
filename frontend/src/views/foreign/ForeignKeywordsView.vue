@@ -4,7 +4,7 @@
       <input v-model="keywordFilters.q" class="input" placeholder="搜索关键词" @keyup.enter="loadKeywords" />
       <select v-model="keywordFilters.category" class="input" @change="loadKeywords">
         <option value="">全部主题</option>
-        <option v-for="item in keywordCategories" :key="item" :value="item">{{ item }}</option>
+        <option v-for="item in keywordCategories" :key="item" :value="item">{{ categoryLabel(item) }}</option>
       </select>
       <select v-model="keywordFilters.type" class="input" @change="loadKeywords">
         <option value="">全部类型</option>

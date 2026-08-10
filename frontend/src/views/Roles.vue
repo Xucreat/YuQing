@@ -53,7 +53,7 @@
                   @change="toggle(p.code, ($event.target as HTMLInputElement).checked)"
                 />
                 <span class="perm-code">{{ p.code }}</span>
-                <span class="perm-name">{{ p.name }}</span>
+                <span class="perm-name">{{ permNameLabel(p) }}</span>
                 <span class="perm-desc" :title="p.description">{{ p.description }}</span>
               </label>
             </div>
@@ -97,7 +97,7 @@
                 <label v-for="p in g.perms" :key="p.code" class="perm-item">
                   <input type="checkbox" :checked="createSelected.has(p.code)" @change="toggleCreate(p.code, ($event.target as HTMLInputElement).checked)" />
                   <span class="perm-code">{{ p.code }}</span>
-                  <span class="perm-name">{{ p.name }}</span>
+                  <span class="perm-name">{{ permNameLabel(p) }}</span>
                 </label>
               </div>
             </div>
@@ -154,6 +154,38 @@ const GROUP_ORDER: Record<string, number> = {
   舆情管理: 1, 事件管理: 2, 关键词管理: 3, 用户管理: 4, 角色管理: 5, 权限管理: 6,
   预警管理: 7, 报告: 8, AI能力: 9, 数据源: 10,   采集管理: 11, 传播溯源: 12, 驾驶舱: 13, 审计: 14,
   外网风险: 15, 'Foreign sources': 16, 'Foreign alerts': 17, 'Foreign events': 18,
+}
+
+// 外网权限项中文名（后端 permission.name 为英文描述，弹窗内需中文化展示）
+const PERM_NAME_LABEL: Record<string, string> = {
+  'foreign:alerts:acknowledge': '确认外网告警',
+  'foreign:alerts:enable': '启用外网告警规则',
+  'foreign:alerts:evaluate': '评估外网告警',
+  'foreign:alerts:read': '查看外网告警',
+  'foreign:alerts:resolve': '处理外网告警',
+  'foreign:alerts:rules:read': '查看外网告警规则',
+  'foreign:alerts:rules:write': '编辑外网告警规则',
+  'foreign:alerts:suppress': '屏蔽外网告警',
+  'foreign:events:candidates:read': '查看外网事件候选',
+  'foreign:events:confirm': '确认外网事件候选',
+  'foreign:events:merge': '合并外网事件',
+  'foreign:events:read': '查看外网事件',
+  'foreign:events:rebuild': '重建外网事件候选',
+  'foreign:events:split': '拆分外网事件',
+  'foreign:events:status': '变更外网事件状态',
+  'foreign:ai:analyze': '用 AI 分析外网',
+  'foreign:alerts:ai-admit': '准入外网 AI 告警',
+  'foreign:events:auto-aggregate': '外网事件自动聚合',
+  'foreign:events:write': '外网事件写入',
+  'foreign:keywords:read': '查看外网关键词',
+  'foreign:keywords:write': '编辑外网关键词',
+  'foreign:opinions:read': '查看外网舆情',
+  'foreign:sources:read': '查看外网数据源',
+  'foreign:sources:test': '测试外网数据源',
+  'foreign:sources:write': '编辑外网数据源',
+}
+function permNameLabel(p: PermissionCatalogItem) {
+  return PERM_NAME_LABEL[p.code] || p.name
 }
 
 const groupedPermissions = computed(() => {

@@ -2,32 +2,19 @@
   <div class="fw-block">
     <div class="toolbar">
       <button class="btn btn-secondary" @click="loadSourcesView">刷新数据源</button>
-      <input v-model="sourceFilters.q" class="input" placeholder="搜索来源" @keyup.enter="sourcePage = 1; loadSourcesView()" />
+      <input v-model="sourceFilters.q" class="input" placeholder="搜索来源" @keyup.enter="sourcePage = 1" />
+      <select v-model="sourceFilters.language" class="input" @change="sourcePage = 1">
+        <option value="">全部语言</option>
+        <option v-for="it in languageOptions" :key="it.value" :value="it.value">{{ it.label }}</option>
+      </select>
+      <select v-model="sourceFilters.sourceKey" class="input" @change="sourcePage = 1">
+        <option value="">全部来源</option>
+        <option v-for="it in sourceFilterOptions" :key="it.key" :value="it.key">{{ it.name }}</option>
+      </select>
       <span class="scope-badge">来源与语言分布 · 无地图</span>
       <span v-if="visualizationStale" class="stale-badge">数据较旧</span>
     </div>
     <div v-if="visualizationError" class="error-state">{{ visualizationError }} <button class="btn btn-secondary" @click="loadSourcesView">重试</button></div>
-    <div v-else-if="sourceDistribution" class="visualization-content">
-      <div class="fw-viz-cards">
-        <article class="card fw-viz-card">
-          <h3>语言分布</h3>
-          <div v-for="item in languageDistribution?.items || []" :key="item.language" class="distribution-row">
-            <span>{{ item.language }}</span><strong>{{ item.count }}</strong>
-          </div>
-          <p v-if="!(languageDistribution?.items || []).length" class="empty">暂无语言分布数据</p>
-        </article>
-        <article class="card fw-viz-card">
-          <h3>外网来源</h3>
-          <div v-for="item in sourceDistribution.items" :key="item.source_key" class="distribution-row">
-            <span>{{ item.source }}<small>{{ item.source_key }}</small></span><strong>{{ item.opinion_count }}</strong>
-          </div>
-          <p v-if="!sourceDistribution.items.length" class="empty">暂无外网来源数据</p>
-        </article>
-      </div>
-
-      <div class="visualization-meta">数据范围：{{ formatTime(sourceDistribution.window_start) }} - {{ formatTime(sourceDistribution.window_end) }} · 更新于：{{ formatTime(sourceDistribution.data_as_of) }}</div>
-    </div>
-    <div v-else class="state">加载外网来源分布中...</div>
     <div class="source-management-note">下方为来源管理；可视化数据不会修改来源状态。</div>
     <div class="source-note">第一方外网来源默认停用，代理配置不展示。</div>
     <div class="toolbar source-editor-toolbar">
@@ -101,7 +88,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in mergedSources" :key="row.id">
+          <tr v-for="row in visibleSources" :key="row.id">
             <td><strong>{{ row.name }}</strong><div class="muted">{{ row.key }}</div></td>
             <td>{{ langLabel(row.language) }}</td>
             <td>{{ row.stats?.opinion_count ?? '-' }}</td>
@@ -121,7 +108,7 @@
               <button class="link-btn" @click="loadSourceRuns(row)">历史</button>
             </td>
           </tr>
-          <tr v-if="!mergedSources.length"><td colspan="14" class="empty">暂无外网来源</td></tr>
+          <tr v-if="!visibleSources.length"><td colspan="14" class="empty">暂无外网来源</td></tr>
         </tbody>
       </table>
     </div>
@@ -218,10 +205,10 @@ const selectedSourceRuns = ref<{ name: string; items: Run[] } | null>(null)
 const sourceRunsVisible = ref(false)
 const sourceRunsLoading = ref(false)
 const sourceDraft = reactive({ name: '', key: '', feedsText: '', language: 'unknown', proxyEnv: 'FOREIGN_HTTP_PROXY', timeout: 15, maxRetries: 2, maxItems: 100, requestInterval: 0.5, scheduleInterval: 60, maxContentLength: 200000, respectRobots: true })
-const sourceFilters = reactive({ q: '' })
+const sourceFilters = reactive({ q: '', language: '', sourceKey: '' })
 const sourcePage = ref(1)
 const sourceSize = 20
-const sourceTotal = ref(0)
+const sourceTotal = computed(() => filteredSources.value.length)
 const distMap = computed(() => {
   const m: Map<string, any> = new Map()
   for (const it of (sourceDistribution.value?.items || [])) m.set(it.source_key, it)
@@ -232,6 +219,37 @@ function langLabel(lang?: string) {
   const map: Record<string, string> = { unknown: '未知', en: '英文', zh: '中文', mixed: '中英混合' }
   return (map[lang || 'unknown'] || lang || '-')
 }
+
+// 语言分布筛选下拉选项（来自可视化接口，去重）
+const languageOptions = computed(() => {
+  const seen = new Set<string>()
+  const opts: { value: string; label: string }[] = []
+  for (const it of (languageDistribution.value?.items || []) as any[]) {
+    const lang = it.language || 'unknown'
+    if (seen.has(lang)) continue
+    seen.add(lang)
+    opts.push({ value: lang, label: langLabel(lang) })
+  }
+  return opts
+})
+// 外网来源筛选下拉选项（来自可视化接口）
+const sourceFilterOptions = computed(() =>
+  ((sourceDistribution.value?.items || []) as any[]).map((it) => ({ key: it.source_key, name: it.source || it.source_key }))
+)
+// 客户端按 搜索词 / 语言 / 来源 过滤（后端 /foreign/sources 仅支持 q，故在此统一过滤）
+const filteredSources = computed(() => {
+  let list = mergedSources.value
+  const q = (sourceFilters.q || '').trim().toLowerCase()
+  if (q) list = list.filter((s) => ((s.name || '') + ' ' + (s.key || '')).toLowerCase().includes(q))
+  if (sourceFilters.language) list = list.filter((s) => (s.language || 'unknown') === sourceFilters.language)
+  if (sourceFilters.sourceKey) list = list.filter((s) => s.key === sourceFilters.sourceKey)
+  return list
+})
+// 当前页可见来源（客户端分页）
+const visibleSources = computed(() => {
+  const start = (sourcePage.value - 1) * sourceSize
+  return filteredSources.value.slice(start, start + sourceSize)
+})
 
 function runPill(st: string): string {
   const m: Record<string, string> = { running: 'pill-blue', success: 'pill-green', partial: 'pill-orange', failed: 'pill-red', error: 'pill-red', unknown: 'pill-gray' }
@@ -275,12 +293,11 @@ async function loadSourcesView() {
     const [distribution, languages, management] = await Promise.all([
       api.get('/foreign/source-distribution', { params }),
       api.get('/foreign/language-distribution', { params }),
-      api.get('/foreign/sources', { params: { page: sourcePage.value, size: sourceSize, q: sourceFilters.q || undefined } }),
+      api.get('/foreign/sources', { params: { page: 1, size: 1000 } }),
     ])
     sourceDistribution.value = distribution.data
     languageDistribution.value = languages.data
     sources.value = management.data.items || []
-    sourceTotal.value = management.data.total || 0
     markVisualizationFresh(distribution.data)
   } catch (err: any) {
     visualizationError.value = visualizationFailure(err)
