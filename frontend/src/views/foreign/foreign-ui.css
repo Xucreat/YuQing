@@ -34,6 +34,8 @@
 .btn-primary { color: #fff; background: #0071e3; }.btn-secondary { color: #1d1d1f; background: #f0f0f3; }
 .btn:disabled { opacity: .5; cursor: default; }
 .table-wrap { background: #fff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.05); overflow-x: auto; padding: 4px 4px 8px; } table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 13px; }
+/* 外网数据源管理：14 列表头需保持单行，页面放不下时由 .table-wrap 提供横向滑动（对齐国内舆情列表 .tbl-scroll） */
+.fw-src-table table { min-width: 1320px; white-space: nowrap; }
 th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #e8e8ed; vertical-align: top; } th { color: #86868b; font-weight: 600; }
 tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width: 280px; font-weight: 600; }
 .tag { display: inline-block; color: #0071e3; background: #e8f1fd; border-radius: 999px; padding: 3px 7px; margin: 0 4px 3px 0; }

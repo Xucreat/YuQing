@@ -145,10 +145,15 @@ const GROUP_LABEL: Record<string, string> = {
   传播溯源: '传播',
   驾驶舱: '驾驶舱',
   审计: '审计/登录日志',
+  外网风险: '外网风险',
+  'Foreign alerts': '外网告警',
+  'Foreign events': '外网事件',
+  'Foreign sources': '外网数据源',
 }
 const GROUP_ORDER: Record<string, number> = {
   舆情管理: 1, 事件管理: 2, 关键词管理: 3, 用户管理: 4, 角色管理: 5, 权限管理: 6,
-  预警管理: 7, 报告: 8, AI能力: 9, 数据源: 10, 采集管理: 11, 传播溯源: 12, 驾驶舱: 13, 审计: 14,
+  预警管理: 7, 报告: 8, AI能力: 9, 数据源: 10,   采集管理: 11, 传播溯源: 12, 驾驶舱: 13, 审计: 14,
+  外网风险: 15, 'Foreign sources': 16, 'Foreign alerts': 17, 'Foreign events': 18,
 }
 
 const groupedPermissions = computed(() => {

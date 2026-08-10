@@ -93,7 +93,7 @@
         <button class="btn btn-primary" :disabled="sourceSaving || !sourceDraftTested" @click="saveSource">{{ sourceSaving ? '保存中...' : '保存' }}</button>
       </template>
     </el-dialog>
-    <div class="table-wrap">
+    <div class="table-wrap fw-src-table">
       <table>
         <thead>
           <tr>

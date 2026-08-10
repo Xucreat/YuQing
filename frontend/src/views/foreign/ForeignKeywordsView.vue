@@ -29,9 +29,9 @@
         <tbody>
           <tr v-for="row in keywords" :key="row.id">
             <td>{{ row.word }}</td>
-            <td>{{ row.category }}</td>
-            <td>{{ row.type || 'monitoring' }}</td>
-            <td>{{ row.source || 'system' }}</td>
+            <td>{{ categoryLabel(row.category) }}</td>
+            <td>{{ typeLabel(row.type) }}</td>
+            <td>{{ sourceLabel(row.source) }}</td>
             <td>{{ row.weight ?? 10 }}</td>
             <td>{{ row.severity_weight ?? 0 }}</td>
             <td><span class="status" :class="{ on: row.is_enabled }">{{ row.is_enabled ? '启用' : '停用' }}</span></td>
@@ -196,6 +196,20 @@ async function bulkToggleKeywords(isEnabled: boolean) {
 
 // 本地 loading 状态（供模板与共享样式使用）
 const loading = ref(false)
+
+// 主题/类型/来源列中文映射（后端存英文枚举，列表展示需中文化）
+function categoryLabel(c?: string) {
+  const m: Record<string, string> = { general: '通用' }
+  return (c && m[c]) || c || '-'
+}
+function typeLabel(t?: string) {
+  const m: Record<string, string> = { monitoring: '监测词', sensitive: '敏感词' }
+  return (t && m[t]) || t || '监测词'
+}
+function sourceLabel(s?: string) {
+  const m: Record<string, string> = { system: '系统', custom: '自定义' }
+  return (s && m[s]) || s || '系统'
+}
 
 onMounted(loadKeywords)
 </script>
