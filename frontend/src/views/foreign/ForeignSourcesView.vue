@@ -293,7 +293,8 @@ async function loadSourcesView() {
     const [distribution, languages, management] = await Promise.all([
       api.get('/foreign/source-distribution', { params }),
       api.get('/foreign/language-distribution', { params }),
-      api.get('/foreign/sources', { params: { page: 1, size: 1000 } }),
+      // 后端 /foreign/sources 的 size 上限为 le=100，故拉取上限设为 100（外网源数量少，足够客户端过滤/分页）
+      api.get('/foreign/sources', { params: { page: 1, size: 100 } }),
     ])
     sourceDistribution.value = distribution.data
     languageDistribution.value = languages.data

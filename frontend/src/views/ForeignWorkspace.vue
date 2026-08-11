@@ -37,6 +37,7 @@
           <div class="fw-kpi"><span class="fw-kpi-label">风险已完成</span><strong class="fw-kpi-value">{{ dashboardSummary.risk.completed }}</strong><small>{{ dashboardSummary.risk.failed }} 失败 · {{ dashboardSummary.risk.pending }} 待处理</small></div>
           <div class="fw-kpi"><span class="fw-kpi-label">已确认事件</span><strong class="fw-kpi-value">{{ dashboardSummary.events.confirmed }}</strong><small>{{ dashboardSummary.events.candidate }} 候选</small></div>
           <div class="fw-kpi"><span class="fw-kpi-label">外网告警</span><strong class="fw-kpi-value">{{ dashboardSummary.alerts.total }}</strong><small>{{ dashboardSummary.alerts.by_status?.triggered || 0 }} 已触发</small></div>
+          <div class="fw-kpi"><span class="fw-kpi-label">外网采集</span><strong class="fw-kpi-value">{{ dashboardSummary.collection?.success ?? 0 }}</strong><small>成功 / 失败 {{ dashboardSummary.collection?.failed ?? 0 }} · {{ zh(dashboardSummary.collection?.latest?.status || 'unknown') }}</small></div>
         </div>
                 <div class="fw-dash-grid">
           <article class="fw-card fw-card-trend fw-col-1">
@@ -108,7 +109,7 @@
             <p v-if="!hotwordItems.length" class="empty">该窗口内暂无外网热词</p>
           </article>
           <article class="fw-card fw-col-2"><h3>事件状态</h3><div v-for="(count, label) in dashboardEvents?.formal_events" :key="label" class="distribution-row"><span>{{ zh(label) }}</span><strong>{{ count }}</strong></div><p v-if="!dashboardEvents || !Object.keys(dashboardEvents.formal_events || {}).length" class="empty">暂无外网事件</p></article>
-          <article class="fw-card fw-col-2"><h3>采集状态</h3><div v-if="dashboardSummary.collection.latest" class="distribution-row"><span>最近一次</span><strong>{{ zh(dashboardSummary.collection.latest.status) }}</strong></div><div class="distribution-row"><span>成功 / 失败</span><strong>{{ dashboardSummary.collection.success }} / {{ dashboardSummary.collection.failed }}</strong></div><p v-if="!dashboardSummary.collection.latest" class="empty">暂无外网采集记录</p></article>
+
         </div>
 <div class="visualization-meta">数据范围：{{ formatTime(dashboardSummary.window_start) }} - {{ formatTime(dashboardSummary.window_end) }} · 更新于：{{ formatTime(dashboardSummary.data_as_of) }}</div>
       </div>
@@ -1546,10 +1547,10 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .alert-action-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f3; }
 .event-opinion { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid #f0f0f3; }
 /* ===== 外网 Dashboard：苹果风卡片（对齐驾驶舱视觉） ===== */
-.tabs { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
-.tab { padding: 8px 16px; border: 1px solid #e8e8ed; border-radius: 980px; background: #fff; color: #1d1d1f; font-size: 14px; font-weight: 500; cursor: pointer; transition: all .15s ease; }
-.tab:hover { background: #f5f5f7; }
-.tab.active { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+.tabs { display: flex; align-items: center; gap: 0; margin-bottom: 18px; border-bottom: 1px solid #e8e8ed; flex-wrap: wrap; }
+.tab { border: 0; background: transparent; padding: 12px 20px; color: #909399; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 14px; font-weight: 500; transition: color .15s ease, border-color .15s ease; }
+.tab:hover { color: #606266; }
+.tab.active { color: var(--el-color-primary, #409eff); border-bottom-color: var(--el-color-primary, #409eff); font-weight: 600; }
 .tab-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .source-scope-label { font-size: 13px; color: #86868b; }
 .btn-sm { padding: 6px 12px; font-size: 13px; }
@@ -1557,7 +1558,7 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .fw-dash-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
 .fw-dash-title { margin: 0 0 4px; font-size: 20px; font-weight: 600; color: #1d1d1f; letter-spacing: -0.01em; }
 .fw-dash { display: grid; gap: 16px; }
-.fw-kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.fw-kpi-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 .fw-kpi { display: grid; gap: 6px; align-content: start; padding: 16px 18px; background: #fff; border: 1px solid #e8e8ed; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
 .fw-kpi-label { font-size: 12.5px; font-weight: 600; color: #86868b; }
 .fw-kpi-value { font-size: 28px; font-weight: 700; color: #1d1d1f; line-height: 1.15; font-variant-numeric: tabular-nums; }
@@ -1615,6 +1616,7 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 /* ===== 舆情+风险合并表：横向滚动窗 ===== */
 .tbl-scroll { min-width: 0; overflow-x: auto; }
 .tbl-scroll table { min-width: 1720px; }
+.tbl-scroll th { white-space: nowrap; }
 .tbl-scroll .title-cell { min-width: 260px; }
 @media (max-width: 1100px) { .fw-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .fw-dash-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 820px) { .fw-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fw-dash-grid { grid-template-columns: 1fr; } .fw-dash-grid > .fw-col-1, .fw-dash-grid > .fw-col-2 { grid-column: 1; } }
