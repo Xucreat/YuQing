@@ -13,13 +13,13 @@
       </select>
       <span class="scope-badge">来源与语言分布 · 无地图</span>
       <span v-if="visualizationStale" class="stale-badge">数据较旧</span>
+      <div class="toolbar-right">
+        <button class="btn btn-primary" @click="beginNewSource">+ 新增外网源</button>
+      </div>
     </div>
     <div v-if="visualizationError" class="error-state">{{ visualizationError }} <button class="btn btn-secondary" @click="loadSourcesView">重试</button></div>
     <div class="source-management-note">下方为来源管理；可视化数据不会修改来源状态。</div>
     <div class="source-note">第一方外网来源默认停用，代理配置不展示。</div>
-    <div class="toolbar source-editor-toolbar">
-      <button class="btn btn-primary" @click="beginNewSource">新增外网源</button>
-    </div>
     <el-dialog class="apple-dialog" modal-class="apple-modal" align-center v-model="sourceEditorVisible" :title="editingSourceId ? '编辑外网数据源' : '新增外网数据源'" width="680px">
       <div class="source-editor-form">
         <el-form :model="sourceDraft" label-width="92px">

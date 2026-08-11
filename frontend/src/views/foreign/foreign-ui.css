@@ -70,6 +70,8 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .checkbox-inline input { width: auto; height: auto; }
 .source-feed-input { min-width: 320px; }
 .source-editor-toolbar { margin-top: 6px; }
+/* 外网数据源管理：新增按钮右置，对齐国内数据源管理「新建采集源」位置 */
+.toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .source-test-result { display: grid; gap: 6px; margin: 10px 0; padding: 12px; border: 1px solid #d9ead9; border-radius: 8px; background: #f4faf4; font-size: 13px; }
 .source-runs { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e8e8ed; }
 .history-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f3; font-size: 13px; color: #424245; }

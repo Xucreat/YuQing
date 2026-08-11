@@ -38,11 +38,8 @@
           <div class="fw-kpi"><span class="fw-kpi-label">已确认事件</span><strong class="fw-kpi-value">{{ dashboardSummary.events.confirmed }}</strong><small>{{ dashboardSummary.events.candidate }} 候选</small></div>
           <div class="fw-kpi"><span class="fw-kpi-label">外网告警</span><strong class="fw-kpi-value">{{ dashboardSummary.alerts.total }}</strong><small>{{ dashboardSummary.alerts.by_status?.triggered || 0 }} 已触发</small></div>
         </div>
-        <div class="fw-widget-grid">
-          <article class="fw-card"><h3>风险分布</h3><div v-for="(count, label) in dashboardRisk?.risk_levels" :key="label" class="distribution-row"><span>{{ zh(label) }}</span><strong>{{ count }}</strong></div><p v-if="!dashboardRisk || !Object.keys(dashboardRisk.risk_levels || {}).length" class="empty">暂无已完成风险结果</p></article>
-          <article class="fw-card"><h3>事件状态</h3><div v-for="(count, label) in dashboardEvents?.formal_events" :key="label" class="distribution-row"><span>{{ zh(label) }}</span><strong>{{ count }}</strong></div><p v-if="!dashboardEvents || !Object.keys(dashboardEvents.formal_events || {}).length" class="empty">暂无外网事件</p></article>
-          <article class="fw-card"><h3>采集状态</h3><div v-if="dashboardSummary.collection.latest" class="distribution-row"><span>最近一次</span><strong>{{ zh(dashboardSummary.collection.latest.status) }}</strong></div><div class="distribution-row"><span>成功 / 失败</span><strong>{{ dashboardSummary.collection.success }} / {{ dashboardSummary.collection.failed }}</strong></div><p v-if="!dashboardSummary.collection.latest" class="empty">暂无外网采集记录</p></article>
-          <article class="fw-card fw-card-wide">
+                <div class="fw-dash-grid">
+          <article class="fw-card fw-card-trend fw-col-1">
             <header class="fw-card-head">
               <h3>每日趋势</h3>
               <div class="fw-legend">
@@ -54,7 +51,55 @@
             <div v-show="(dashboardTrends?.items || []).length" ref="trendChartRef" class="fw-chart"></div>
             <p v-if="!(dashboardTrends?.items || []).length" class="empty">该窗口内暂无趋势数据</p>
           </article>
-          <article class="fw-card fw-card-wide">
+          <article class="fw-card fw-card-alert fw-col-2">
+            <header class="fw-card-head">
+              <h3>外网告警</h3>
+              <span class="muted">滚动播报 · 共 {{ alertFeed.length }} 条</span>
+            </header>
+            <div v-if="!alertFeed.length" class="empty">该窗口内暂无外网告警</div>
+            <div v-else class="fw-alert-feed">
+              <div class="fw-alert-summary">
+                <span class="fw-alert-sum"><i class="fw-sum-dot is-amber"></i>待处置 {{ alertPendingCount }}</span>
+                <span class="fw-alert-sum"><i class="fw-sum-dot is-teal"></i>已处置 {{ alertDoneCount }}</span>
+              </div>
+              <div ref="alertViewportEl" class="fw-alert-viewport">
+                <div ref="alertTrackEl" class="fw-alert-track" :class="{ scrolling: alertFeedOverflow }" :style="{ animationDuration: alertScrollDuration }">
+                  <ul class="fw-alert-list">
+                    <li v-for="a in alertFeed" :key="'a-' + a.id" class="fw-alert-row" @click="openAlertTarget(a)">
+                      <span class="fw-badge fw-mono" :class="severityBadge(a.severity)">{{ severityText(a.severity) }}</span>
+                      <div class="fw-alert-main">
+                        <div class="fw-alert-title">{{ a.title || '未命名告警' }}</div>
+                        <div class="fw-alert-meta">{{ a.rule_snapshot?.name || a.source_name_snapshot || '外网告警' }} · {{ shortTime(a.triggered_at) }}</div>
+                      </div>
+                      <span class="fw-badge" :class="isHandled(a.status) ? 'is-teal' : 'is-amber'">{{ zh(a.status) }}</span>
+                    </li>
+                  </ul>
+                  <div v-if="alertNeedScroll" class="fw-alert-copy">
+                    <ul class="fw-alert-list">
+                      <li v-for="a in alertFeed" :key="'b-' + a.id" class="fw-alert-row" @click="openAlertTarget(a)">
+                        <span class="fw-badge fw-mono" :class="severityBadge(a.severity)">{{ severityText(a.severity) }}</span>
+                        <div class="fw-alert-main">
+                          <div class="fw-alert-title">{{ a.title || '未命名告警' }}</div>
+                          <div class="fw-alert-meta">{{ a.rule_snapshot?.name || a.source_name_snapshot || '外网告警' }} · {{ shortTime(a.triggered_at) }}</div>
+                        </div>
+                        <span class="fw-badge" :class="isHandled(a.status) ? 'is-teal' : 'is-amber'">{{ zh(a.status) }}</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+          <article class="fw-card fw-card-source fw-col-1">
+            <header class="fw-card-head">
+              <h3>数据源分布</h3>
+              <span class="muted">近 {{ visualizationDays }} 天 · 各来源文章量</span>
+            </header>
+            <div v-show="(dashboardSources?.items || []).length" ref="sourceChartRef" class="fw-chart fw-chart-tall"></div>
+            <p v-if="!(dashboardSources?.items || []).length" class="empty">该窗口内暂无数据源分布</p>
+          </article>
+          <article class="fw-card fw-col-2"><h3>风险分布</h3><div v-for="(count, label) in dashboardRisk?.risk_levels" :key="label" class="distribution-row"><span>{{ zh(label) }}</span><strong>{{ count }}</strong></div><p v-if="!dashboardRisk || !Object.keys(dashboardRisk.risk_levels || {}).length" class="empty">暂无已完成风险结果</p></article>
+          <article class="fw-card fw-card-hotword fw-col-1">
             <header class="fw-card-head">
               <h3>外网热词</h3>
               <span class="muted">近 {{ visualizationDays }} 天 · 共 {{ hotwordItems.length }} 个热词</span>
@@ -62,8 +107,10 @@
             <div v-show="hotwordItems.length" ref="hotwordChartRef" class="fw-chart"></div>
             <p v-if="!hotwordItems.length" class="empty">该窗口内暂无外网热词</p>
           </article>
+          <article class="fw-card fw-col-2"><h3>事件状态</h3><div v-for="(count, label) in dashboardEvents?.formal_events" :key="label" class="distribution-row"><span>{{ zh(label) }}</span><strong>{{ count }}</strong></div><p v-if="!dashboardEvents || !Object.keys(dashboardEvents.formal_events || {}).length" class="empty">暂无外网事件</p></article>
+          <article class="fw-card fw-col-2"><h3>采集状态</h3><div v-if="dashboardSummary.collection.latest" class="distribution-row"><span>最近一次</span><strong>{{ zh(dashboardSummary.collection.latest.status) }}</strong></div><div class="distribution-row"><span>成功 / 失败</span><strong>{{ dashboardSummary.collection.success }} / {{ dashboardSummary.collection.failed }}</strong></div><p v-if="!dashboardSummary.collection.latest" class="empty">暂无外网采集记录</p></article>
         </div>
-        <div class="visualization-meta">数据范围：{{ formatTime(dashboardSummary.window_start) }} - {{ formatTime(dashboardSummary.window_end) }} · 更新于：{{ formatTime(dashboardSummary.data_as_of) }}</div>
+<div class="visualization-meta">数据范围：{{ formatTime(dashboardSummary.window_start) }} - {{ formatTime(dashboardSummary.window_end) }} · 更新于：{{ formatTime(dashboardSummary.data_as_of) }}</div>
       </div>
       <div v-else class="state">加载外网看板中...</div>
     </section>
@@ -607,6 +654,17 @@ const trendChartRef = ref<HTMLElement>()
 const hotwordChartRef = ref<HTMLElement>()
 let trendChart: echarts.ECharts | null = null
 let hotwordChart: echarts.ECharts | null = null
+const sourceChartRef = ref<HTMLElement>()
+let sourceChart: echarts.ECharts | null = null
+const alertFeed = ref<any[]>([])
+const alertViewportEl = ref<HTMLElement>()
+const alertTrackEl = ref<HTMLElement>()
+const alertFeedOverflow = ref(false)
+const alertNeedScroll = ref(false)
+const alertScrollDuration = ref('18s')
+const alertPendingCount = computed(() => (alertFeed.value || []).filter((a: any) => a.status === 'triggered').length)
+const alertDoneCount = computed(() => (alertFeed.value || []).length - alertPendingCount.value)
+let alertResizeObserver: ResizeObserver | null = null
 type TrendKey = 'articles' | 'risk_completed' | 'risk_failed' | 'events' | 'alerts'
 const trendSeriesOptions: Array<{ key: TrendKey; label: string; color: string }> = [
   { key: 'articles', label: '文章', color: '#0071e3' },
@@ -680,25 +738,87 @@ function renderHotwordChart() {
     }],
   }, { notMerge: true })
 }
+function severityText(s: string): string {
+  return zh(s)
+}
+function severityBadge(s: string): string {
+  if (s === 'critical' || s === 'high') return 'is-rose'
+  if (s === 'medium') return 'is-amber'
+  if (s === 'low') return 'is-teal'
+  return 'is-cyan'
+}
+function shortTime(s: string): string {
+  if (!s) return ''
+  const d = new Date(s)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+}
+function isHandled(status: string): boolean {
+  return status !== 'triggered'
+}
+function renderSourceChart() {
+  if (!sourceChart) return
+  const items: any[] = (dashboardSources.value as any)?.items || []
+  const top = [...items].sort((a: any, b: any) => (b.opinion_count || 0) - (a.opinion_count || 0)).slice(0, 10)
+  const names = top.map((it: any) => it.source_name_snapshot || it.source || it.source_key || '未知')
+  const values = top.map((it: any) => it.opinion_count || 0)
+  sourceChart.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: 'rgba(29,29,31,0.94)', borderColor: 'transparent', textStyle: { color: '#fff', fontSize: 12 } },
+    grid: { left: 8, right: 24, top: 10, bottom: 6, containLabel: true },
+    xAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#f0f0f2' } }, axisLabel: { color: '#86868b', fontSize: 11 } },
+    yAxis: { type: 'category', inverse: true, data: names, axisLine: { lineStyle: { color: '#e8e8ed' } }, axisTick: { show: false }, axisLabel: { color: '#1d1d1f', fontSize: 12 } },
+    series: [{
+      type: 'bar', data: values, barWidth: 14,
+      itemStyle: { borderRadius: [0, 6, 6, 0], color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#0a84ff' }, { offset: 1, color: '#0071e3' }]) },
+      label: { show: true, position: 'right', color: '#86868b', fontSize: 11 },
+    }],
+  }, { notMerge: true })
+}
+function measureAlertFeed() {
+  const vp = alertViewportEl.value
+  const tr = alertTrackEl.value
+  if (!vp || !tr) { alertFeedOverflow.value = false; alertNeedScroll.value = false; return }
+  const oneHeight = tr.scrollHeight
+  const portHeight = vp.clientHeight
+  const overflow = oneHeight > portHeight + 4
+  alertFeedOverflow.value = overflow
+  alertNeedScroll.value = overflow
+  if (overflow) {
+    alertScrollDuration.value = Math.max((alertFeed.value || []).length * 2.4, 10) + 's'
+  }
+}
+
 async function ensureDashboardCharts() {
   await nextTick()
   // tab 切换会销毁 DOM，实例失联后需要重建
   if (trendChart && !trendChart.getDom()?.isConnected) { trendChart.dispose(); trendChart = null }
   if (hotwordChart && !hotwordChart.getDom()?.isConnected) { hotwordChart.dispose(); hotwordChart = null }
+  if (sourceChart && !sourceChart.getDom()?.isConnected) { sourceChart.dispose(); sourceChart = null }
   if (trendChartRef.value && !trendChart) trendChart = echarts.init(trendChartRef.value)
   if (hotwordChartRef.value && !hotwordChart) hotwordChart = echarts.init(hotwordChartRef.value)
+  if (sourceChartRef.value && !sourceChart) sourceChart = echarts.init(sourceChartRef.value)
   renderTrendChart()
   renderHotwordChart()
+  renderSourceChart()
+  await nextTick()
+  measureAlertFeed()
+  if (alertViewportEl.value && !alertResizeObserver) {
+    alertResizeObserver = new ResizeObserver(() => measureAlertFeed())
+    alertResizeObserver.observe(alertViewportEl.value)
+  }
 }
 function handleDashboardResize() {
   trendChart?.resize()
   hotwordChart?.resize()
+  sourceChart?.resize()
 }
 onMounted(() => window.addEventListener('resize', handleDashboardResize))
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleDashboardResize)
   trendChart?.dispose(); trendChart = null
   hotwordChart?.dispose(); hotwordChart = null
+  sourceChart?.dispose(); sourceChart = null
+  alertResizeObserver?.disconnect(); alertResizeObserver = null
 })
 function markVisualizationFresh(data: any) {
   const asOf = data?.data_as_of ? new Date(data.data_as_of).getTime() : Date.now()
@@ -712,7 +832,7 @@ async function loadDashboard() {
     const hotwordParams: Record<string, string | number> = { days: visualizationDays.value, limit: 30 }
     if (hotwordLanguage.value) hotwordParams.language = hotwordLanguage.value
     const emptyItems = { data: { items: [] } }
-    const [summary, trends, risk, events, alerts, sourceStats, hotwords, hotwordTrends] = await Promise.all([
+    const [summary, trends, risk, events, alerts, sourceStats, hotwords, hotwordTrends, alertFeedData] = await Promise.all([
       api.get('/foreign/dashboard/summary', { params }),
       api.get('/foreign/dashboard/trends', { params }),
       api.get('/foreign/dashboard/risk', { params }),
@@ -722,6 +842,7 @@ async function loadDashboard() {
       // 热词接口单独降级：即使无权限或失败也不影响整个看板渲染
       api.get('/foreign/hotwords', { params: hotwordParams }).catch(() => emptyItems),
       api.get('/foreign/hotwords/trends', { params: hotwordParams }).catch(() => emptyItems),
+      api.get('/foreign/alerts', { params: { size: 30 } }).catch(() => ({ data: { items: [] } })),
     ])
     dashboardSummary.value = summary.data
     dashboardTrends.value = trends.data
@@ -729,6 +850,7 @@ async function loadDashboard() {
     dashboardEvents.value = events.data
     dashboardAlerts.value = alerts.data
     dashboardSources.value = sourceStats.data
+    alertFeed.value = (alertFeedData as any)?.data?.items || []
     hotwordItems.value = (hotwords as any).data.items || []
     hotwordTrendItems.value = (hotwordTrends as any).data.items || []
     hotwordMeta.value = (hotwords as any).data
@@ -1440,7 +1562,9 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .fw-kpi-label { font-size: 12.5px; font-weight: 600; color: #86868b; }
 .fw-kpi-value { font-size: 28px; font-weight: 700; color: #1d1d1f; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .fw-kpi small { font-size: 12px; color: #86868b; }
-.fw-widget-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.fw-dash-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: stretch; }
+.fw-dash-grid > .fw-col-1 { grid-column: 1; }
+.fw-dash-grid > .fw-col-2 { grid-column: 2; }
 .fw-card { padding: 16px 18px; background: #fff; border: 1px solid #e8e8ed; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); min-width: 0; }
 .fw-card h3 { margin: 0 0 10px; font-size: 15px; font-weight: 600; color: #1d1d1f; }
 .fw-card .empty { margin: 6px 0 0; color: #86868b; font-size: 13px; }
@@ -1449,6 +1573,32 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .fw-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 .fw-card-head h3 { margin: 0; }
 .fw-chart { width: 100%; height: 260px; }
+.fw-chart-tall { height: 300px; }
+.fw-card-alert { display: flex; flex-direction: column; }
+.fw-alert-feed { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.fw-alert-summary { display: flex; gap: 16px; margin-bottom: 8px; font-size: 12px; color: #86868b; }
+.fw-alert-sum { display: inline-flex; align-items: center; gap: 6px; }
+.fw-sum-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.fw-sum-dot.is-amber { background: #ff9f0a; }
+.fw-sum-dot.is-teal { background: #34c759; }
+.fw-alert-viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.fw-alert-track { display: flex; flex-direction: column; gap: 8px; }
+.fw-alert-track.scrolling { animation: fw-alert-scroll linear infinite; }
+.fw-alert-track:hover { animation-play-state: paused; }
+@keyframes fw-alert-scroll { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+.fw-alert-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.fw-alert-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #eef0f2; border-radius: 12px; background: #fafbfc; cursor: pointer; transition: background .15s ease; }
+.fw-alert-row:hover { background: #f2f4f7; }
+.fw-alert-main { flex: 1; min-width: 0; }
+.fw-alert-title { font-size: 13px; font-weight: 600; color: #1d1d1f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fw-alert-meta { font-size: 11px; color: #86868b; margin-top: 2px; }
+.fw-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.fw-badge.is-rose { color: #ff3b30; background: #ffeceb; }
+.fw-badge.is-amber { color: #8a5a00; background: #fff3da; }
+.fw-badge.is-teal { color: #1a8e3c; background: #eafaf0; }
+.fw-badge.is-cyan { color: #0071e3; background: #e8f1fd; }
+.fw-mono { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .fw-alert-track.scrolling { animation: none; } }
 .fw-legend { display: flex; flex-wrap: wrap; gap: 6px; }
 .fw-legend-item { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid #e8e8ed; border-radius: 980px; background: #fff; color: #1d1d1f; font-size: 12px; cursor: pointer; transition: opacity .15s ease, background .15s ease; }
 .fw-legend-item:hover { background: #f5f5f7; }
@@ -1466,7 +1616,7 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .tbl-scroll { min-width: 0; overflow-x: auto; }
 .tbl-scroll table { min-width: 1720px; }
 .tbl-scroll .title-cell { min-width: 260px; }
-@media (max-width: 1280px) { .fw-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .fw-widget-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 820px) { .fw-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fw-widget-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .fw-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .fw-dash-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 820px) { .fw-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fw-dash-grid { grid-template-columns: 1fr; } .fw-dash-grid > .fw-col-1, .fw-dash-grid > .fw-col-2 { grid-column: 1; } }
 @media (max-width: 700px) { .workspace-head { flex-direction: column; }.input { width: 100%; min-width: 0; } }
 </style>
