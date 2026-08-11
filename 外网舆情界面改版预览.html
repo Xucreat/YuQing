@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>外网舆情界面 · 布局改版预览</title>
+<style>
+  :root{
+    --fw-bg:#f5f5f7; --fw-surface:#fff; --fw-surface-2:#fbfbfd;
+    --fw-ink:#1d1d1f; --fw-ink-2:#6e6e73; --fw-ink-3:#86868b;
+    --fw-border:#e8e8ed; --fw-border-strong:#d2d2d7;
+    --fw-accent:#0071e3; --fw-accent-soft:#e8f1fd;
+    --fw-success:#34c759; --fw-warning:#ff9f0a; --fw-danger:#ff3b30;
+    --fw-radius-sm:12px; --fw-radius:16px; --fw-radius-lg:20px;
+    --fw-gap:16px; --fw-pad:18px;
+    --fw-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.05);
+    --fw-shadow-sm:0 1px 2px rgba(0,0,0,.04);
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",Inter,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fw-bg);color:var(--fw-ink);font-family:var(--font);-webkit-font-smoothing:antialiased;font-size:14px}
+  .page{max-width:1320px;margin:0 auto;padding:24px 20px 60px}
+  /* top bar */
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .topbar h1{margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em}
+  .topbar .sub{color:var(--fw-ink-3);font-size:13px;margin-top:4px}
+  .scope{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid var(--fw-border);border-radius:999px;color:var(--fw-ink-2);font-size:12px;background:var(--fw-surface)}
+  .btns{display:flex;gap:8px}
+  .btn{border:0;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer}
+  .btn-primary{background:var(--fw-accent);color:#fff}
+  .btn-secondary{background:#f0f0f3;color:var(--fw-ink)}
+  /* tabs */
+  .tabs{display:flex;gap:8px;border-bottom:1px solid var(--fw-border);margin-bottom:20px}
+  .tab{border:0;background:transparent;padding:10px 16px;color:var(--fw-ink-2);cursor:pointer;border-bottom:2px solid transparent;font-size:14px}
+  .tab.active{color:var(--fw-accent);border-bottom-color:var(--fw-accent);font-weight:600}
+  /* kpi */
+  .kpi-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:var(--fw-gap)}
+  .kpi{display:grid;gap:6px;align-content:start;padding:16px 18px;background:var(--fw-surface);border:1px solid var(--fw-border);border-radius:var(--fw-radius);box-shadow:var(--fw-shadow-sm);transition:box-shadow .2s,transform .2s}
+  .kpi:hover{box-shadow:var(--fw-shadow);transform:translateY(-2px)}
+  .kpi .l{font-size:12.5px;font-weight:600;color:var(--fw-ink-3)}
+  .kpi .v{font-size:28px;font-weight:700;line-height:1.15;font-variant-numeric:tabular-nums}
+  .kpi small{font-size:12px;color:var(--fw-ink-3)}
+  /* dash body */
+  .dash-body{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(320px,1fr);gap:var(--fw-gap);align-items:start}
+  .main{display:grid;gap:var(--fw-gap);min-width:0}
+  .side{display:grid;gap:var(--fw-gap);align-content:start;position:sticky;top:16px;min-width:0}
+  .card{background:var(--fw-surface);border:1px solid var(--fw-border);border-radius:var(--fw-radius);box-shadow:var(--fw-shadow-sm);padding:var(--fw-pad);transition:box-shadow .2s,border-color .2s}
+  .card:hover{box-shadow:var(--fw-shadow);border-color:var(--fw-border-strong)}
+  .card h3{margin:0 0 12px;font-size:15px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .card h3 .muted{font-size:12px;color:var(--fw-ink-3);font-weight:400}
+  .chart{width:100%;height:280px}
+  .chart.tall{height:320px}
+  .legend{display:flex;gap:6px;flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border:1px solid var(--fw-border);border-radius:999px;font-size:12px}
+  .legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+  /* alert ticker */
+  .alert-card{display:flex;flex-direction:column}
+  .alert-summary{display:flex;gap:18px;padding:6px 12px;margin-bottom:10px;border:1px solid var(--fw-border);border-radius:12px;background:#f5f5f7;font-size:13px}
+  .alert-sum{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .dot.amber{background:var(--fw-warning)} .dot.teal{background:var(--fw-success)}
+  .viewport{height:300px;overflow:hidden;position:relative}
+  .track{display:flex;flex-direction:column;gap:8px;animation:scroll 22s linear infinite}
+  .viewport:hover .track{animation-play-state:paused}
+  @keyframes scroll{from{transform:translateY(0)}to{transform:translateY(-50%)}}
+  .arow{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--fw-border);border-radius:12px;background:#fff}
+  .badge{flex-shrink:0;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid currentColor}
+  .badge.rose{color:var(--fw-danger)} .badge.amber{color:var(--fw-warning)} .badge.teal{color:var(--fw-success)} .badge.cyan{color:var(--fw-accent)}
+  .arow .main-txt{flex:1;min-width:0}
+  .arow .t{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .arow .m{font-size:12px;color:var(--fw-ink-3);margin-top:3px}
+  /* distribution */
+  .dist-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eeeeef;font-size:13px}
+  .dist-row:last-child{border-bottom:0}
+  /* TABLE demo: frozen first column + zebra + sticky header */
+  .tbl-wrap{overflow-x:auto;margin-top:28px}
+  table.demo{width:100%;border-collapse:collapse;min-width:1200px;font-size:13px}
+  table.demo th,table.demo td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--fw-border);vertical-align:top}
+  table.demo th{color:var(--fw-ink-3);font-weight:600;background:var(--fw-surface);position:sticky;top:0;z-index:4}
+  table.demo tbody tr:nth-child(even) td{background:var(--fw-surface-2)}
+  table.demo tbody tr:hover td{background:#f2f2f5}
+  table.demo th:first-child,table.demo td:first-child{position:sticky;left:0;z-index:3;background:var(--fw-surface);border-right:1px solid var(--fw-border)}
+  table.demo thead th:first-child{z-index:5}
+  table.demo tbody tr:nth-child(even) td:first-child{background:var(--fw-surface-2)}
+  table.demo tbody tr:hover td:first-child{background:#f2f2f5}
+  .pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600}
+  .pill.green{color:#1a8e3c;background:#eafaf0}.pill.gray{color:var(--fw-ink-3);background:#f0f0f3}
+  .tag{display:inline-block;color:var(--fw-accent);background:var(--fw-accent-soft);border-radius:999px;padding:3px 7px;margin:0 4px 3px 0;font-size:12px}
+  .section-h{font-size:13px;color:var(--fw-ink-3);margin:34px 0 10px;font-weight:600}
+  .note{font-size:12px;color:var(--fw-ink-3);margin-top:8px}
+  @media(max-width:1100px){.dash-body{grid-template-columns:1fr}.side{position:static}.kpi-grid{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:820px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(prefers-reduced-motion:reduce){.track{animation:none}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <div>
+      <h1>外网舆情看板</h1>
+      <div class="sub">面向外网公开来源采集的舆情概览（仅外网数据）· 统计窗口：近 7 天</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <span class="scope">已批准数据源：57-60</span>
+      <div class="btns">
+        <button class="btn btn-primary">采集外网 RSS</button>
+        <button class="btn btn-secondary">采集全部数据源</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active">外网 Dashboard</button>
+    <button class="tab">国外舆情</button>
+    <button class="tab">外网事件</button>
+    <button class="tab">外网告警</button>
+    <button class="tab">告警规则</button>
+  </div>
+
+  <!-- KPI -->
+  <div class="kpi-grid">
+    <div class="kpi"><span class="l">文章总数</span><strong class="v">12,480</strong><small>1,204 条在窗口内</small></div>
+    <div class="kpi"><span class="l">数据源</span><strong class="v">58</strong><small>41 英文 / 17 中文</small></div>
+    <div class="kpi"><span class="l">风险已完成</span><strong class="v">9,310</strong><small>12 失败 · 38 待处理</small></div>
+    <div class="kpi"><span class="l">已确认事件</span><strong class="v">23</strong><small>7 候选</small></div>
+    <div class="kpi"><span class="l">外网告警</span><strong class="v">64</strong><small>9 已触发</small></div>
+  </div>
+
+  <!-- Dashboard body: main + sticky side -->
+  <div class="dash-body">
+    <div class="main">
+      <div class="card">
+        <h3>数据源分布 <span class="muted">近 7 天 · 各来源文章量</span></h3>
+        <svg class="chart tall" viewBox="0 0 600 320" preserveAspectRatio="none">
+          <g fill="#0071e3">
+            <rect x="30" y="180" width="34" height="110" rx="6"/>
+            <rect x="80" y="120" width="34" height="170" rx="6"/>
+            <rect x="130" y="220" width="34" height="70" rx="6"/>
+            <rect x="180" y="90" width="34" height="200" rx="6"/>
+            <rect x="230" y="160" width="34" height="130" rx="6"/>
+            <rect x="280" y="60" width="34" height="230" rx="6"/>
+            <rect x="330" y="200" width="34" height="90" rx="6"/>
+            <rect x="380" y="140" width="34" height="150" rx="6"/>
+            <rect x="430" y="110" width="34" height="180" rx="6"/>
+          </g>
+        </svg>
+      </div>
+      <div class="card">
+        <h3>每日趋势
+          <span class="legend">
+            <span><i style="background:#0071e3"></i>文章量</span>
+            <span><i style="background:#34c759"></i>告警</span>
+            <span><i style="background:#ff9f0a"></i>事件</span>
+          </span>
+        </h3>
+        <svg class="chart" viewBox="0 0 600 280" preserveAspectRatio="none">
+          <polyline fill="none" stroke="#0071e3" stroke-width="3" points="20,210 90,170 160,190 230,120 300,150 370,90 440,130 510,70 580,100"/>
+          <polyline fill="none" stroke="#34c759" stroke-width="3" points="20,240 90,230 160,235 230,210 300,225 370,200 440,215 510,190 580,205"/>
+          <polyline fill="none" stroke="#ff9f0a" stroke-width="3" points="20,255 90,250 160,252 230,245 300,248 370,240 440,246 510,238 580,244"/>
+        </svg>
+      </div>
+      <div class="card">
+        <h3>外网热词 <span class="muted">近 7 天 · 共 86 个热词</span></h3>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;padding-top:6px">
+          <span class="tag" style="background:#e8f1fd;color:#0071e3;font-weight:600">election</span>
+          <span class="tag" style="background:#e8f1fd;color:#0071e3;font-weight:600">tariff</span>
+          <span class="tag" style="background:#e8f1fd;color:#0071e3;font-weight:600">sanction</span>
+          <span class="tag" style="background:#e8f1fd;color:#0071e3;font-weight:600">summit</span>
+          <span class="tag" style="background:#e8f1fd;color:#0071e3;font-weight:600">policy</span>
+          <span class="tag" style="background:#e8f1fd;color:#0071e3;font-weight:600">trade</span>
+          <span class="tag" style="background:#e8f1fd;color:#0071e3;font-weight:600">inflation</span>
+          <span class="tag" style="background:#e8f1fd;color:#0071e3;font-weight:600">energy</span>
+          <span class="tag" style="background:#e8f1fd;color:#0071e3;font-weight:600">climate</span>
+        </div>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="card alert-card">
+        <h3>外网告警 <span class="muted">滚动播报 · 共 64 条</span></h3>
+        <div class="alert-summary">
+          <span class="alert-sum"><i class="dot amber"></i>待处置 55</span>
+          <span class="alert-sum"><i class="dot teal"></i>已处置 9</span>
+        </div>
+        <div class="viewport">
+          <div class="track">
+            <div class="arow"><span class="badge rose">紧急</span><div class="main-txt"><div class="t">某国宣布对华新一轮关税清单</div><div class="m">规则·风险分阈值 · 2 分钟前</div></div><span class="badge amber">待处置</span></div>
+            <div class="arow"><span class="badge amber">高</span><div class="main-txt"><div class="t">外媒报道本地企业供应链风险</div><div class="m">DailyWire · 18 分钟前</div></div><span class="badge amber">待处置</span></div>
+            <div class="arow"><span class="badge cyan">中</span><div class="main-txt"><div class="t">国际峰会涉我方表态引关注</div><div class="m">GlobalPost · 42 分钟前</div></div><span class="badge teal">已处置</span></div>
+            <div class="arow"><span class="badge amber">高</span><div class="main-txt"><div class="t">海外社交平台出现集中负面情绪</div><div class="m">规则·关键词组合 · 1 小时前</div></div><span class="badge amber">待处置</span></div>
+            <div class="arow"><span class="badge rose">紧急</span><div class="main-txt"><div class="t">某智库发布不利我方研判报告</div><div class="m">PolicyBrief · 2 小时前</div></div><span class="badge teal">已处置</span></div>
+            <div class="arow"><span class="badge cyan">中</span><div class="main-txt"><div class="t">行业监管动态引发市场波动</div><div class="m">MarketWatch · 3 小时前</div></div><span class="badge amber">待处置</span></div>
+            <!-- duplicate for seamless loop -->
+            <div class="arow"><span class="badge rose">紧急</span><div class="main-txt"><div class="t">某国宣布对华新一轮关税清单</div><div class="m">规则·风险分阈值 · 2 分钟前</div></div><span class="badge amber">待处置</span></div>
+            <div class="arow"><span class="badge amber">高</span><div class="main-txt"><div class="t">外媒报道本地企业供应链风险</div><div class="m">DailyWire · 18 分钟前</div></div><span class="badge amber">待处置</span></div>
+            <div class="arow"><span class="badge cyan">中</span><div class="main-txt"><div class="t">国际峰会涉我方表态引关注</div><div class="m">GlobalPost · 42 分钟前</div></div><span class="badge teal">已处置</span></div>
+            <div class="arow"><span class="badge amber">高</span><div class="main-txt"><div class="t">海外社交平台出现集中负面情绪</div><div class="m">规则·关键词组合 · 1 小时前</div></div><span class="badge amber">待处置</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card"><h3>风险分布</h3>
+        <div class="dist-row"><span>高</span><strong>1,204</strong></div>
+        <div class="dist-row"><span>中</span><strong>3,860</strong></div>
+        <div class="dist-row"><span>低</span><strong>4,246</strong></div>
+      </div>
+      <div class="card"><h3>事件状态</h3>
+        <div class="dist-row"><span>监测中</span><strong>14</strong></div>
+        <div class="dist-row"><span>已关闭</span><strong>6</strong></div>
+        <div class="dist-row"><span>已归档</span><strong>3</strong></div>
+      </div>
+      <div class="card"><h3>采集状态</h3>
+        <div class="dist-row"><span>最近一次</span><strong>成功</strong></div>
+        <div class="dist-row"><span>成功 / 失败</span><strong>1,182 / 9</strong></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Frozen-column table demo -->
+  <div class="section-h">国外舆情表 · 冻结首列 + 斑马纹 + 表头吸附（横向滚动时标题始终可见）</div>
+  <div class="tbl-wrap">
+    <table class="demo">
+      <thead><tr><th>标题</th><th>来源快照</th><th>命中关键词</th><th>发布时间</th><th>采集时间</th><th>风险分</th><th>等级</th><th>情感</th><th>风险类别</th><th>命中风险词</th><th>分析状态</th><th>分析时间</th><th>版本</th></tr></thead>
+      <tbody>
+        <tr><td>某国宣布对华新一轮关税清单，涵盖多类商品</td><td>Reuters</td><td><span class="tag">tariff</span><span class="tag">trade</span></td><td>08-10 09:12</td><td>08-10 09:15</td><td>92</td><td><span class="pill green">高</span></td><td>负面</td><td>经贸</td><td><span class="tag">关税</span></td><td><span class="pill green">完成</span></td><td>08-10 09:20</td><td>v2</td></tr>
+        <tr><td>国际峰会联合声明涉我方核心利益表述引关注</td><td>AP News</td><td><span class="tag">summit</span></td><td>08-10 08:40</td><td>08-10 08:44</td><td>74</td><td><span class="pill green">高</span></td><td>中性</td><td>外交</td><td><span class="tag">峰会</span></td><td><span class="pill green">完成</span></td><td>08-10 08:50</td><td>v2</td></tr>
+        <tr><td>海外社交平台出现针对本地企业的集中讨论</td><td>X / Twitter</td><td><span class="tag">company</span></td><td>08-10 07:55</td><td>08-10 08:01</td><td>51</td><td><span class="pill gray">中</span></td><td>负面</td><td>企业</td><td><span class="tag">裁员</span></td><td><span class="pill green">完成</span></td><td>08-10 08:06</td><td>v2</td></tr>
+        <tr><td>某智库发布区域能源安全研判报告</td><td>PolicyBrief</td><td><span class="tag">energy</span></td><td>08-09 22:10</td><td>08-09 22:18</td><td>38</td><td><span class="pill gray">低</span></td><td>中性</td><td>能源</td><td>—</td><td><span class="pill green">完成</span></td><td>08-09 22:25</td><td>v2</td></tr>
+        <tr><td>外媒关注本地气候政策落地进展</td><td>BBC</td><td><span class="tag">climate</span></td><td>08-09 19:30</td><td>08-09 19:36</td><td>29</td><td><span class="pill gray">低</span></td><td>正面</td><td>环境</td><td>—</td><td><span class="pill green">完成</span></td><td>08-09 19:42</td><td>v2</td></tr>
+        <tr><td>某国监管机构对中资项目启动审查</td><td>FT</td><td><span class="tag">review</span></td><td>08-09 16:05</td><td>08-09 16:12</td><td>66</td><td><span class="pill green">高</span></td><td>负面</td><td>投资</td><td><span class="tag">审查</span></td><td><span class="pill green">完成</span></td><td>08-09 16:20</td><td>v2</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note">说明：本预览为静态示意，真实界面数据与交互来自 ForeignWorkspace.vue（已部署至生产静态目录）。横向拖动上表可观察首列「标题」与表头保持吸附。</div>
+</div>
+</body>
+</html>
