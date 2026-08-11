@@ -21,8 +21,8 @@ from app.api.admin_data_sources import (
     _validate_foreign_config,
 )
 from app.core.dependencies import get_current_user
-from app.core.permissions import require_admin, require_permission
-from app.core.task_manager import start_task
+from app.core.permissions import get_user_permissions, is_superuser_user, require_permission
+from app.core.task_manager import DuplicateTaskError, start_task
 from app.db.session import SessionLocal, get_db
 from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
@@ -33,7 +33,7 @@ from app.models.foreign_ai_result import ForeignAIResult
 from app.models.foreign_risk_result import ForeignRiskResult
 from app.models.foreign_risk_term import ForeignRiskTerm
 from app.models.user import User
-from app.services.audit_service import audit_write
+from app.services.audit_service import audit_write, log_operation
 from app.services.foreign_collection_service import collect_foreign
 from app.services.foreign_ai_service import (
     AI_MODEL_VERSION,
@@ -441,6 +441,25 @@ def list_foreign_sources(
     }
 
 
+@foreign_router.get("/sources/approved")
+def list_approved_foreign_sources(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:sources:read")),
+):
+    """Return the backend-owned manual collection scope.
+
+    Enabled foreign sources are the approved scope for a selected collection.
+    Domestic and disabled sources never leave this endpoint.
+    """
+    rows = db.scalars(select(DataSource).order_by(DataSource.priority.asc(), DataSource.id.asc())).all()
+    approved = [
+        _foreign_source_item(row)
+        for row in rows
+        if row.enabled and _is_foreign_config(row)
+    ]
+    return {"items": approved, "ids": [item["id"] for item in approved], "total": len(approved)}
+
+
 @foreign_router.post("/sources", status_code=201)
 def create_foreign_source(
     payload: ForeignSourcePayload,
@@ -501,7 +520,7 @@ def create_foreign_source(
             type="foreign_rss",
             class_path="app.collectors.foreign_rss.ForeignRSSCollector",
             enabled=payload.enabled,
-            schedule_enabled=False,
+            schedule_enabled=payload.schedule_enabled,
             schedule_interval_minutes=payload.schedule_interval_minutes,
             priority=payload.priority,
             scope_region_codes=None,
@@ -581,9 +600,8 @@ def update_foreign_source(
             source.enabled = bool(changes["enabled"])
         if "name" in changes:
             source.name = next_name
-        # Phase 1 keeps foreign scheduling manual-only.
         if "schedule_enabled" in changes:
-            source.schedule_enabled = False
+            source.schedule_enabled = bool(changes["schedule_enabled"])
         if "schedule_interval_minutes" in changes:
             source.schedule_interval_minutes = max(
                 5, int(changes["schedule_interval_minutes"])
@@ -714,6 +732,9 @@ def list_foreign_opinions(
     q: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    language: str | None = None,
+    risk_level: str | None = None,
+    analysis_status: str | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:opinions:read")),
 ):
@@ -733,6 +754,17 @@ def list_foreign_opinions(
         stmt = stmt.where(
             cast(ForeignOpinion.matched_keywords, String).ilike(f"%{keyword}%")
         )
+    if language or risk_level or analysis_status:
+        sub = select(ForeignRiskResult.foreign_opinion_id).where(
+            ForeignRiskResult.is_current.is_(True)
+        )
+        if language:
+            sub = sub.where(ForeignRiskResult.language == language)
+        if risk_level:
+            sub = sub.where(ForeignRiskResult.risk_level == risk_level)
+        if analysis_status:
+            sub = sub.where(ForeignRiskResult.analysis_status == analysis_status)
+        stmt = stmt.where(ForeignOpinion.id.in_(sub))
     if date_from:
         try:
             stmt = stmt.where(
@@ -1222,6 +1254,26 @@ def list_foreign_collection_runs(
     }
 
 
+@foreign_router.get("/collection-schedule/status")
+def foreign_collection_schedule_status(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:sources:read")),
+):
+    """Expose opt-in scheduler state and the current eligible source count."""
+    from app.core.scheduler import foreign_scheduler_status
+
+    status_payload = foreign_scheduler_status()
+    eligible = db.scalars(
+        select(DataSource).where(
+            DataSource.enabled.is_(True), DataSource.schedule_enabled.is_(True)
+        )
+    ).all()
+    status_payload["eligible_source_count"] = sum(
+        1 for source in eligible if _is_foreign_config(source)
+    )
+    return status_payload
+
+
 def _run_foreign_collect_task(
     task,
     source_ids: list[int] | None,
@@ -1266,9 +1318,24 @@ def _run_foreign_collect_task(
 @foreign_router.post("/collect")
 def collect_foreign_now(
     payload: ForeignCollectionPayload,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ):
+    permission = "foreign:sources:collect_all" if payload.all_sources else "foreign:sources:collect"
+    if not is_superuser_user(current_user) and permission not in get_user_permissions(current_user, db):
+        log_operation(
+            db,
+            action="FOREIGN_COLLECTION",
+            operator=current_user,
+            request=request,
+            resource_type="foreign_collection",
+            result="failed",
+            error_message="Permission denied",
+            details={"permission": permission},
+        )
+        db.commit()
+        raise HTTPException(status_code=403, detail="Permission denied")
     source_ids = payload.source_ids
     if payload.all_sources and source_ids is not None:
         raise HTTPException(status_code=422, detail="source_ids cannot be combined with all_sources=true")
@@ -1289,12 +1356,42 @@ def collect_foreign_now(
             raise HTTPException(status_code=422, detail="All selected sources must be foreign sources")
         if any(not source.enabled for source in selected):
             raise HTTPException(status_code=422, detail="All selected foreign sources must be enabled")
-    task_id = start_task(
-        "foreign-collector",
-        _run_foreign_collect_task,
-        source_ids,
-        payload.all_sources,
+    dedupe_key = "all" if payload.all_sources else ",".join(str(item) for item in sorted(source_ids or []))
+    try:
+        task_id = start_task(
+            "foreign-collector",
+            _run_foreign_collect_task,
+            source_ids,
+            payload.all_sources,
+            dedupe_key=dedupe_key,
+        )
+    except DuplicateTaskError as exc:
+        log_operation(
+            db,
+            action="FOREIGN_COLLECTION",
+            operator=current_user,
+            request=request,
+            resource_type="foreign_collection",
+            result="failed",
+            error_message="Duplicate collection task",
+            details={"all_sources": payload.all_sources, "source_ids": sorted(source_ids or [])},
+        )
+        db.commit()
+        raise HTTPException(status_code=409, detail="An equivalent foreign collection task is already running") from exc
+    log_operation(
+        db,
+        action="FOREIGN_COLLECTION",
+        operator=current_user,
+        request=request,
+        resource_type="foreign_collection",
+        resource_id=task_id,
+        details={
+            "all_sources": payload.all_sources,
+            "source_ids": sorted(source_ids or []),
+            "permission": permission,
+        },
     )
+    db.commit()
     return {
         "success": True,
         "task_id": task_id,

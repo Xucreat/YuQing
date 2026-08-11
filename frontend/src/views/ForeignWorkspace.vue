@@ -5,11 +5,11 @@
         {{ tab.label }}
       </button>
       <div class="tab-actions">
-        <span class="source-scope-label">已批准数据源：57-60</span>
-        <button class="btn btn-primary btn-sm" :disabled="collecting" @click="collectNow">
+        <span class="source-scope-label">已批准数据源：{{ approvedSourceLabel }}</span>
+        <button v-if="canCollectSelected" class="btn btn-primary btn-sm" :disabled="collecting || !approvedSourceIds.length" @click="collectNow">
         {{ collecting ? '采集中...' : '采集外网 RSS' }}
         </button>
-        <button class="btn btn-secondary btn-sm" :disabled="collecting" @click="collectAll">采集全部数据源</button>
+        <button v-if="canCollectAll" class="btn btn-secondary btn-sm" :disabled="collecting" @click="collectAll">采集全部数据源</button>
       </div>
     </div>
 
@@ -126,13 +126,13 @@
           <option v-for="source in opinionSources" :key="source" :value="source">{{ source }}</option>
         </select>
         <input v-model="opinionFilters.keyword" class="input" placeholder="命中关键词" @keyup.enter="loadOpinions" />
-        <select v-model="riskFilters.language" class="input" @change="loadRisk">
+        <select v-model="riskFilters.language" class="input" @change="loadOpinions(); loadRisk()">
           <option value="">全部语言</option><option value="zh">中文</option><option value="en">英文</option><option value="mixed">中英混合</option><option value="unknown">未知</option>
         </select>
-        <select v-model="riskFilters.risk_level" class="input" @change="loadRisk">
+        <select v-model="riskFilters.risk_level" class="input" @change="loadOpinions(); loadRisk()">
           <option value="">全部风险等级</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option><option value="unknown">未知</option>
         </select>
-        <select v-model="riskFilters.analysis_status" class="input" @change="loadRisk">
+        <select v-model="riskFilters.analysis_status" class="input" @change="loadOpinions(); loadRisk()">
           <option value="">全部分析状态</option><option value="completed">完成</option><option value="skipped">跳过</option><option value="failed">失败</option>
         </select>
         <input v-model="opinionFilters.date_from" class="input date-input" type="date" title="发布时间起始" @change="loadOpinions" />
@@ -505,6 +505,11 @@ function normalizeTab(value: unknown): Tab {
 const activeTab = ref<Tab>(normalizeTab(route.query.tab))
 const loading = ref(false)
 const collecting = ref(false)
+const approvedSources = ref<Array<{ id: number; name: string }>>([])
+const approvedSourceIds = computed(() => approvedSources.value.map((source) => source.id))
+const approvedSourceLabel = computed(() => approvedSources.value.length
+  ? approvedSources.value.map((source) => source.name || String(source.id)).join('、')
+  : '暂无')
 const keywords = ref<Keyword[]>([])
 const sources = ref<Source[]>([])
 const sourceEditorVisible = ref(false)
@@ -631,6 +636,17 @@ const canAcknowledgeAlerts = hasPermission('foreign:alerts:acknowledge')
 const canResolveAlerts = hasPermission('foreign:alerts:resolve')
 const canSuppressAlerts = hasPermission('foreign:alerts:suppress')
 const canEnableAlertRules = hasPermission('foreign:alerts:enable')
+const canCollectSelected = computed(() => hasPermission('foreign:sources:collect'))
+const canCollectAll = computed(() => hasPermission('foreign:sources:collect_all'))
+
+async function loadApprovedSources() {
+  try {
+    const { data } = await api.get('/foreign/sources/approved')
+    approvedSources.value = (data.items || []).map((item: any) => ({ id: item.id, name: item.name }))
+  } catch {
+    approvedSources.value = []
+  }
+}
 
 function switchTab(tab: Tab) {
   router.push({ path: '/foreign', query: { ...route.query, tab } })
@@ -978,6 +994,9 @@ async function loadOpinions() {
     if (opinionFilters.keyword) params.keyword = opinionFilters.keyword
     if (opinionFilters.date_from) params.date_from = opinionFilters.date_from
     if (opinionFilters.date_to) params.date_to = opinionFilters.date_to
+    if (riskFilters.language) params.language = riskFilters.language
+    if (riskFilters.risk_level) params.risk_level = riskFilters.risk_level
+    if (riskFilters.analysis_status) params.analysis_status = riskFilters.analysis_status
     const [list, sourceList] = await Promise.all([
       api.get('/foreign/opinions', { params }),
       api.get('/foreign/opinions/sources'),
@@ -1460,7 +1479,7 @@ async function loadSourceRuns(row: Source) {
 async function toggleSource(row: Source) {
   if (sourceBusyId.value) return
   sourceBusyId.value = row.id
-  try { await api.patch(`/foreign/sources/${row.id}`, { enabled: !row.enabled, schedule_enabled: false, fetch_full_text: false }); await loadSourcesView(); ElMessage.success('外网数据源状态已更新') } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '数据源状态更新失败') } finally { sourceBusyId.value = null }
+  try { await api.patch(`/foreign/sources/${row.id}`, { enabled: !row.enabled, fetch_full_text: false }); await loadSourcesView(); await loadApprovedSources(); ElMessage.success('外网数据源状态已更新') } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '数据源状态更新失败') } finally { sourceBusyId.value = null }
 }
 async function analyzeRisk(id: number) {
   if (!canAnalyzeRisk) {
@@ -1475,12 +1494,11 @@ async function analyzeRisk(id: number) {
     ElMessage.error(err?.response?.data?.detail || '外网规则分析失败')
   }
 }
-const approvedSourceIds = [57, 58, 59, 60]
 async function collectNow() {
   if (collecting.value) return
   collecting.value = true
   try {
-    const { data } = await api.post('/foreign/collect', { source_ids: approvedSourceIds })
+    const { data } = await api.post('/foreign/collect', { source_ids: approvedSourceIds.value })
     const result = await pollTask(data.task_id)
     if (result.status === 'success') { ElMessage.success(`外网采集完成：新增 ${result.result?.created || 0} 条，已自动规则研判 ${result.result?.analyzed || 0} 条`); await loadOpinions(); await loadRuns(); await loadRisk() }
     else ElMessage.error(result.error || '外网采集失败')
@@ -1515,6 +1533,7 @@ watch(
   },
   { immediate: true },
 )
+onMounted(loadApprovedSources)
 </script>
 
 <style scoped>
