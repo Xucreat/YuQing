@@ -190,6 +190,7 @@ def collect_foreign(
         "fetched_raw": 0,
         "matched": 0,
         "created": 0,
+        "created_ids": [],
         "duplicate": 0,
         "failed": 0,
         "dry_run": dry_run,
@@ -260,21 +261,22 @@ def collect_foreign(
                         result["duplicate"] += 1
                         run.duplicate += 1
                         continue
-                    db.add(
-                        ForeignOpinion(
-                            source_id=source.id,
-                            source_key=source.key,
-                            source_name_snapshot=source.name,
-                            title=title,
-                            summary=summary,
-                            content=content,
-                            url=url,
-                            published_at=item.get("publish_time"),
-                            collected_at=datetime.now(timezone.utc),
-                            matched_keywords=item.get("matched_keywords") or [],
-                            content_hash=digest,
-                        )
+                    opinion = ForeignOpinion(
+                        source_id=source.id,
+                        source_key=source.key,
+                        source_name_snapshot=source.name,
+                        title=title,
+                        summary=summary,
+                        content=content,
+                        url=url,
+                        published_at=item.get("publish_time"),
+                        collected_at=datetime.now(timezone.utc),
+                        matched_keywords=item.get("matched_keywords") or [],
+                        content_hash=digest,
                     )
+                    db.add(opinion)
+                    db.flush()
+                    result["created_ids"].append(opinion.id)
                     run.created += 1
                     result["created"] += 1
             failed_feeds = int(getattr(collector, "last_failed_feeds", 0))

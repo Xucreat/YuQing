@@ -1242,6 +1242,22 @@ def _run_foreign_collect_task(
             on_progress=progress,
         )
         task.step = "外网采集完成"
+        created_ids = result.get("created_ids") or []
+        if created_ids:
+            from app.services.foreign_risk_service import ForeignRiskService
+
+            svc = ForeignRiskService()
+            total = len(created_ids)
+            done = 0
+            for i in range(0, total, 50):
+                chunk = created_ids[i : i + 50]
+                try:
+                    svc.analyze_many(db, chunk)
+                    done += len(chunk)
+                    task.step = f"外网规则研判 {done}/{total}"
+                except Exception as exc:  # noqa: BLE001
+                    task.step = f"外网规则研判部分失败：{exc}"
+            result["analyzed"] = done
         return result
     finally:
         db.close()

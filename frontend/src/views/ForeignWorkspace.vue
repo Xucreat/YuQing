@@ -99,7 +99,7 @@
             <div v-show="(dashboardSources?.items || []).length" ref="sourceChartRef" class="fw-chart fw-chart-tall"></div>
             <p v-if="!(dashboardSources?.items || []).length" class="empty">该窗口内暂无数据源分布</p>
           </article>
-          <article class="fw-card fw-col-2"><h3>风险分布</h3><div v-for="(count, label) in dashboardRisk?.risk_levels" :key="label" class="distribution-row"><span>{{ zh(label) }}</span><strong>{{ count }}</strong></div><p v-if="!dashboardRisk || !Object.keys(dashboardRisk.risk_levels || {}).length" class="empty">暂无已完成风险结果</p></article>
+          <article class="fw-card fw-col-2"><h3>风险分布</h3><div v-show="(dashboardRisk?.risk_levels && Object.keys(dashboardRisk.risk_levels || {}).length)" ref="riskChartRef" class="fw-chart fw-chart-tall"></div><p v-if="!dashboardRisk || !Object.keys(dashboardRisk.risk_levels || {}).length" class="empty">暂无已完成风险结果</p></article>
           <article class="fw-card fw-card-hotword fw-col-1">
             <header class="fw-card-head">
               <h3>外网热词</h3>
@@ -162,7 +162,7 @@
               <td>{{ formatTime(riskOf(row.id)?.analyzed_at) }}</td>
               <td>{{ riskOf(row.id)?.model_version || '-' }}</td>
               <td class="actions">
-                <button class="link-btn" v-if="riskOf(row.id)" :disabled="!canAnalyzeRisk" @click.stop="analyzeRisk(riskOf(row.id)!)">重新分析</button>
+                <button class="link-btn" :disabled="!canAnalyzeRisk" @click.stop="analyzeRisk(row.id)">{{ riskOf(row.id) ? '重新分析' : '分析' }}</button>
               </td>
             </tr>
             <tr v-if="!opinions.length"><td colspan="14" class="empty">暂无外网舆情</td></tr>
@@ -657,6 +657,17 @@ let trendChart: echarts.ECharts | null = null
 let hotwordChart: echarts.ECharts | null = null
 const sourceChartRef = ref<HTMLElement>()
 let sourceChart: echarts.ECharts | null = null
+const riskChartRef = ref<HTMLElement>()
+let riskChart: echarts.ECharts | null = null
+const RISK_MAP: Record<string, { name: string; color: string }> = {
+  critical: { name: '紧急', color: '#ff3b30' },
+  high: { name: '高', color: '#ff6b35' },
+  medium: { name: '中', color: '#ff9f0a' },
+  low: { name: '低', color: '#34c759' },
+  unknown: { name: '未知', color: '#8e8e93' },
+  none: { name: '无', color: '#c7c7cc' },
+  other: { name: '其他', color: '#af52de' },
+}
 const alertFeed = ref<any[]>([])
 const alertViewportEl = ref<HTMLElement>()
 const alertTrackEl = ref<HTMLElement>()
@@ -775,6 +786,24 @@ function renderSourceChart() {
     }],
   }, { notMerge: true })
 }
+function renderRiskChart() {
+  if (!riskChart) return
+  const levels = (dashboardRisk.value as any)?.risk_levels
+  if (!levels || !Object.keys(levels).length) { riskChart.clear(); return }
+  const entries = Object.entries(levels) as Array<[string, number]>
+  const total = entries.reduce((acc: number, [, v]) => acc + (Number(v) || 0), 0) || 1
+  const data = entries.map(([label, count]) => {
+    const m = RISK_MAP[label] ?? { name: zh(label), color: '#8e8e93' }
+    return { name: m.name, value: Number(count) || 0, itemStyle: { color: m.color } }
+  })
+  const pctOf = (v: number) => ((v / total) * 100).toFixed(1)
+  riskChart.setOption({
+    tooltip: { trigger: 'item', backgroundColor: 'rgba(29,29,31,0.94)', borderColor: 'transparent', textStyle: { color: '#fff', fontSize: 12 }, formatter: (p: any) => `${p.name}<br/>${p.value} 条 · 占比 ${pctOf(p.value)}%` },
+    legend: { bottom: 0, left: 'center', itemWidth: 10, itemHeight: 10, textStyle: { color: '#515154', fontSize: 11 }, formatter: (name: string) => { const it = data.find((d) => d.name === name); return it ? `${name} ${pctOf(it.value)}%` : name } },
+    graphic: { type: 'text', left: 'center', top: '38%', style: { text: `${total}\n风险结果`, textAlign: 'center', fill: '#1d1d1f', fontSize: 20, fontWeight: 700, lineHeight: 22 } },
+    series: [{ type: 'pie', radius: ['46%', '68%'], center: ['50%', '44%'], avoidLabelOverlap: true, label: { show: false }, data }],
+  }, { notMerge: true })
+}
 function measureAlertFeed() {
   const vp = alertViewportEl.value
   const tr = alertTrackEl.value
@@ -795,12 +824,15 @@ async function ensureDashboardCharts() {
   if (trendChart && !trendChart.getDom()?.isConnected) { trendChart.dispose(); trendChart = null }
   if (hotwordChart && !hotwordChart.getDom()?.isConnected) { hotwordChart.dispose(); hotwordChart = null }
   if (sourceChart && !sourceChart.getDom()?.isConnected) { sourceChart.dispose(); sourceChart = null }
+  if (riskChart && !riskChart.getDom()?.isConnected) { riskChart.dispose(); riskChart = null }
   if (trendChartRef.value && !trendChart) trendChart = echarts.init(trendChartRef.value)
   if (hotwordChartRef.value && !hotwordChart) hotwordChart = echarts.init(hotwordChartRef.value)
   if (sourceChartRef.value && !sourceChart) sourceChart = echarts.init(sourceChartRef.value)
+  if (riskChartRef.value && !riskChart) riskChart = echarts.init(riskChartRef.value)
   renderTrendChart()
   renderHotwordChart()
   renderSourceChart()
+  renderRiskChart()
   await nextTick()
   measureAlertFeed()
   if (alertViewportEl.value && !alertResizeObserver) {
@@ -812,6 +844,7 @@ function handleDashboardResize() {
   trendChart?.resize()
   hotwordChart?.resize()
   sourceChart?.resize()
+  riskChart?.resize()
 }
 onMounted(() => window.addEventListener('resize', handleDashboardResize))
 onBeforeUnmount(() => {
@@ -819,6 +852,7 @@ onBeforeUnmount(() => {
   trendChart?.dispose(); trendChart = null
   hotwordChart?.dispose(); hotwordChart = null
   sourceChart?.dispose(); sourceChart = null
+  riskChart?.dispose(); riskChart = null
   alertResizeObserver?.disconnect(); alertResizeObserver = null
 })
 function markVisualizationFresh(data: any) {
@@ -1428,13 +1462,13 @@ async function toggleSource(row: Source) {
   sourceBusyId.value = row.id
   try { await api.patch(`/foreign/sources/${row.id}`, { enabled: !row.enabled, schedule_enabled: false, fetch_full_text: false }); await loadSourcesView(); ElMessage.success('外网数据源状态已更新') } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '数据源状态更新失败') } finally { sourceBusyId.value = null }
 }
-async function analyzeRisk(row: RiskResult) {
+async function analyzeRisk(id: number) {
   if (!canAnalyzeRisk) {
     ElMessage.warning('当前账号没有外网规则分析权限')
     return
   }
   try {
-    await api.post(`/foreign/risk/${row.foreign_opinion_id}/analyze`, {})
+    await api.post(`/foreign/risk/${id}/analyze`, {})
     ElMessage.success('外网规则分析完成')
     await loadRisk()
   } catch (err: any) {
@@ -1448,7 +1482,7 @@ async function collectNow() {
   try {
     const { data } = await api.post('/foreign/collect', { source_ids: approvedSourceIds })
     const result = await pollTask(data.task_id)
-    if (result.status === 'success') { ElMessage.success(`外网采集完成：新增 ${result.result?.created || 0} 条`); await loadOpinions(); await loadRuns() }
+    if (result.status === 'success') { ElMessage.success(`外网采集完成：新增 ${result.result?.created || 0} 条，已自动规则研判 ${result.result?.analyzed || 0} 条`); await loadOpinions(); await loadRuns(); await loadRisk() }
     else ElMessage.error(result.error || '外网采集失败')
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || err?.message || '外网采集失败') } finally { collecting.value = false }
 }
@@ -1468,7 +1502,7 @@ async function collectAll() {
   try {
     const { data } = await api.post('/foreign/collect', { all_sources: true })
     const result = await pollTask(data.task_id)
-    if (result.status === 'success') { ElMessage.success(`Full collection complete: ${result.result?.created || 0} new articles`); await loadOpinions(); await loadRuns() }
+    if (result.status === 'success') { ElMessage.success(`Full collection complete: ${result.result?.created || 0} new articles, ${result.result?.analyzed || 0} auto-analyzed`); await loadOpinions(); await loadRuns(); await loadRisk() }
     else ElMessage.error(result.error || 'Foreign collection failed')
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || err?.message || 'Foreign collection failed') } finally { collecting.value = false }
 }
