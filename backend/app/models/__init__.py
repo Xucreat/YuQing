@@ -43,6 +43,7 @@ from app.models.foreign_alert_admission import ForeignAlertAdmission
 from app.models.foreign_alert_admission_action import ForeignAlertAdmissionAction
 from app.models.foreign_manual_review import ForeignManualReview
 from app.models.foreign_ai_batch_run import ForeignAIBatchRun
+from app.models.foreign_ai_alert_candidate import ForeignAIAlertCandidate
 
 __all__ = [
     "Base",
@@ -87,4 +88,5 @@ __all__ = [
     "ForeignAlertAdmissionAction",
     "ForeignManualReview",
     "ForeignAIBatchRun",
+    "ForeignAIAlertCandidate",
 ]

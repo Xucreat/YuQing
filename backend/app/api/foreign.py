@@ -73,6 +73,12 @@ from app.services.foreign_risk_service import (
 )
 from app.services.foreign_event_service import ForeignEventService
 from app.services.foreign_alert_service import ForeignAlertService
+from app.services.foreign_manual_review_service import (
+    confirm_alert_for_review,
+    confirm_event_for_review,
+    ensure_foreign_manual_review,
+)
+from app.models.foreign_ai_alert_candidate import ForeignAIAlertCandidate
 
 
 foreign_router = APIRouter(
@@ -1158,10 +1164,28 @@ def analyze_foreign_opinion_ai(
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    # Single AI analysis enters the shared manual-review lifecycle, identical to
+    # the batch path. AI never creates a formal event/alert here.
+    review, review_created = ensure_foreign_manual_review(
+        db, opinion_id, result.id, batch_run_id=None, force=force
+    )
+    db.commit()
+    db.refresh(review)
     payload = serialize_ai_result(result) or {}
     payload["reused"] = reused
     # Return the canonical rule view alongside the historical AI result.
     payload.update(resolve_one(db, opinion_id))
+    payload.update(
+        {
+            "analysis_id": str(result.id),
+            "review_id": review.id,
+            "review_status": review.review_status,
+            "review_created": review_created,
+            "event_preview": review.event_preview or {},
+            "alert_preview": review.alert_preview or {},
+            "message": "AI 研判完成，已进入人工复核",
+        }
+    )
     return payload
 
 
@@ -1324,20 +1348,11 @@ def _run_foreign_ai_batch(task: Task, opinion_ids: list[int], force: bool, batch
                 )
                 if result.status == "completed":
                     success += 1
-                    existing = db.scalar(select(ForeignManualReview).where(
-                        ForeignManualReview.foreign_opinion_id == opinion_id,
-                        ForeignManualReview.review_status == "pending_review",
-                    ).order_by(ForeignManualReview.id.desc()))
-                    if existing is None:
-                        resolved = resolve_one(db, opinion_id)
-                        db.add(ForeignManualReview(
-                            foreign_opinion_id=opinion_id,
-                            source_type="ai",
-                            rule_risk_snapshot=resolved.get("rule_risk") or {},
-                            ai_risk_snapshot=resolved.get("latest_ai_risk") or {},
-                            batch_run_id=batch_run_id,
-                        ))
-                        db.commit()
+                    # Single and batch share the same review lifecycle.
+                    review, _ = ensure_foreign_manual_review(
+                        db, opinion_id, result.id, batch_run_id=batch_run_id, force=force
+                    )
+                    db.commit()
                 else:
                     failed += 1
                     failures.append({"opinion_id": opinion_id, "error": result.error_message or "AI analysis failed"})
@@ -1362,7 +1377,17 @@ def _run_foreign_ai_batch(task: Task, opinion_ids: list[int], force: bool, batch
             scoped_event = dict(event_preview)
             scoped_event["items"] = [item for item in (event_preview.get("items") or []) if review.foreign_opinion_id in (item.get("opinion_ids") or [])]
             review.event_preview = scoped_event
-            review.alert_preview = alert_preview
+            ai_candidate_count = int(
+                db.scalar(
+                    select(func.count()).select_from(ForeignAIAlertCandidate).where(
+                        ForeignAIAlertCandidate.review_id == review.id
+                    )
+                ) or 0
+            )
+            review.alert_preview = {
+                "candidate_count": ai_candidate_count,
+                "requires_manual_confirmation": True,
+            }
         db.commit()
         result = {"run_id": batch_run_id, "processed_count": processed, "success_count": success,
                 "failed_count": failed, "skipped_count": skipped, "failures": failures,
@@ -1530,20 +1555,43 @@ def list_foreign_manual_reviews(page: int = Query(1, ge=1), size: int = Query(50
         opinion.id: opinion
         for opinion in db.scalars(select(ForeignOpinion).where(ForeignOpinion.id.in_(opinion_ids))).all()
     } if opinion_ids else {}
-    return {"items": [_foreign_manual_review_item(row, opinions.get(row.foreign_opinion_id)) for row in rows], "total": total, "page": page, "size": size}
+    user_ids = {row.reviewed_by for row in rows if row.reviewed_by}
+    users = {u.id: u for u in db.scalars(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
+    return {"items": [_foreign_manual_review_item(row, opinions.get(row.foreign_opinion_id), users.get(row.reviewed_by), db=db) for row in rows], "total": total, "page": page, "size": size}
 
 
-def _foreign_manual_review_item(row: ForeignManualReview, opinion: ForeignOpinion | None = None) -> dict[str, Any]:
+def _foreign_manual_review_item(row: ForeignManualReview, opinion: ForeignOpinion | None = None, operator: User | None = None, db: Session | None = None) -> dict[str, Any]:
+    alert_candidate_count = 0
+    if db is not None:
+        alert_candidate_count = int(
+            db.scalar(
+                select(func.count()).select_from(ForeignAIAlertCandidate).where(
+                    ForeignAIAlertCandidate.review_id == row.id
+                )
+            ) or 0
+        )
+    display_source = {
+        "use_ai_display": "ai",
+        "keep_rule": "rule",
+        "confirm_event_change": "rule",
+        "confirm_alert_change": "ai",
+        "reject_change": "rule",
+    }.get(row.review_decision or "", "")
     return {"id": row.id, "foreign_opinion_id": row.foreign_opinion_id,
             "opinion_title": opinion.title if opinion else "",
             "opinion_source": opinion.source_name_snapshot if opinion else "",
             "opinion_published_at": opinion.published_at.isoformat() if opinion and opinion.published_at else None,
             "source_type": row.source_type,
             "rule_risk_snapshot": row.rule_risk_snapshot or {}, "ai_risk_snapshot": row.ai_risk_snapshot or {},
+            "display_source": display_source,
             "review_status": row.review_status, "review_decision": row.review_decision, "review_reason": row.review_reason,
-            "reviewed_by": row.reviewed_by, "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
+            "reviewed_by": row.reviewed_by, "reviewed_by_name": operator.username if operator else None,
+            "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
             "batch_run_id": row.batch_run_id, "event_preview_id": row.event_preview_id, "alert_preview_id": row.alert_preview_id,
-            "confirmation_version": row.confirmation_version, "event_preview": row.event_preview or {}, "alert_preview": row.alert_preview or {}, "created_at": row.created_at.isoformat() if row.created_at else None}
+            "confirmation_version": row.confirmation_version,
+            "event_candidate_count": (row.event_preview or {}).get("candidate_count", 0),
+            "alert_candidate_count": alert_candidate_count,
+            "event_preview": row.event_preview or {}, "alert_preview": row.alert_preview or {}, "created_at": row.created_at.isoformat() if row.created_at else None}
 
 
 def _stamp_confirmed_alerts(
@@ -1589,8 +1637,19 @@ def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisio
     row = db.get(ForeignManualReview, review_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Foreign manual review not found")
+    idempotent = False
     if row.review_status != "pending_review":
-        return _foreign_manual_review_item(row, db.get(ForeignOpinion, row.foreign_opinion_id))
+        idempotent = True
+        return {
+            "review": _foreign_manual_review_item(row, db.get(ForeignOpinion, row.foreign_opinion_id), db.get(User, row.reviewed_by) if row.reviewed_by else None, db=db),
+            "decision": row.review_decision,
+            "review_status": row.review_status,
+            "event_result": {},
+            "alert_result": {},
+            "idempotent": True,
+            "message": "该复核记录已处理，本次调用未产生新的正式事件或预警。",
+        }
+    # Already-decided reviews fall through to the unified return above.
     required = "foreign:ai:review:reject" if payload.decision == "reject_change" else (
         "foreign:events:review:confirm" if payload.decision == "confirm_event_change" else
         "foreign:alerts:review:confirm" if payload.decision == "confirm_alert_change" else
@@ -1598,62 +1657,66 @@ def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisio
     )
     if not is_superuser_user(current_user) and required not in get_user_permissions(current_user, db):
         raise HTTPException(status_code=403, detail="Permission denied")
-    row.review_status = "confirmed" if payload.decision != "reject_change" else "rejected"
-    row.review_decision = payload.decision
+
+    # Audit timestamp is computed once, up front, so the confirmation_version
+    # derived from it is stable and available before any formal record is minted.
+    row.reviewed_at = datetime.now(timezone.utc)
+
+    if payload.decision in ("keep_rule", "use_ai_display"):
+        # Display-choice decisions: never create formal events/alerts and never
+        # mutate effective_risk. They only record which risk view the operator
+        # prefers for this opinion.
+        row.review_status = "confirmed"
+        row.review_decision = payload.decision
+        event_result: dict[str, Any] = {}
+        alert_result: dict[str, Any] = {}
+        message = "已采用" + ("AI 风险展示" if payload.decision == "use_ai_display" else "系统规则风险展示") + "，未生成正式事件或预警。"
+    elif payload.decision == "confirm_event_change":
+        row.review_status = "confirmed"
+        row.review_decision = payload.decision
+        row.confirmation_version = f"manual-review-{row.id}-{int(row.reviewed_at.timestamp())}"
+        event_result = confirm_event_for_review(
+            db, row, user_id=current_user.id, reason=payload.reason,
+            request_id=payload.request_id, commit=False,
+        )
+        alert_result = {}
+        message = "已确认复核关联的事件候选为正式外网事件。" if event_result.get("candidate_count") else event_result.get("reason") or "未找到可确认的事件候选。"
+    elif payload.decision == "confirm_alert_change":
+        row.review_status = "confirmed"
+        row.review_decision = payload.decision
+        row.confirmation_version = f"manual-review-{row.id}-{int(row.reviewed_at.timestamp())}"
+        alert_result = confirm_alert_for_review(
+            db, row, user_id=current_user.id, reason=payload.reason,
+            request_id=payload.request_id, commit=False,
+        )
+        event_result = {}
+        message = ("已依据 AI 预警候选生成正式外网预警。" if alert_result.get("matched")
+                   else alert_result.get("reason") or "未命中 AI 预警规则候选。")
+    else:  # reject_change
+        row.review_status = "rejected"
+        row.review_decision = payload.decision
+        event_result = {}
+        alert_result = {}
+        message = "已驳回该条外网人工复核，未生成正式事件或预警。"
+
+    # Common audit fields (display/reject branches do not mint a
+    # confirmation_version, since no formal record is produced).
     row.review_reason = payload.reason.strip() or None
     row.reviewed_by = current_user.id
-    row.reviewed_at = datetime.now(timezone.utc)
-    row.confirmation_version = f"manual-review-{row.id}-{int(row.reviewed_at.timestamp())}"
-    if payload.decision == "confirm_event_change":
-        preview_items = (row.event_preview or {}).get("items") or []
-        preview_ids = sorted({int(item_id) for item in preview_items for item_id in (item.get("opinion_ids") or [])})
-        if not preview_ids:
-            preview_ids = [row.foreign_opinion_id]
-        if preview_ids:
-            try:
-                event_run, candidates, _ = ForeignEventService().rebuild_candidates(
-                    db, user_id=current_user.id, dry_run=False, opinion_ids=preview_ids, commit=False
-                )
-                for candidate in candidates:
-                    if candidate.candidate_status == "candidate":
-                        try:
-                            ForeignEventService().confirm_candidate(
-                                db, candidate.id, user_id=current_user.id,
-                                reason=payload.reason or "AI manual review confirmed event change",
-                                request_id=payload.request_id,
-                                commit=False,
-                                rule_risk_snapshot=row.rule_risk_snapshot,
-                                ai_risk_snapshot=row.ai_risk_snapshot,
-                                confirmation_version=row.confirmation_version,
-                            )
-                        except ValueError:
-                            continue
-                row.event_preview_id = event_run.id
-            except ValueError:
-                row.event_preview_id = None
-    elif payload.decision == "confirm_alert_change":
-        # The evaluator remains rule-only; this explicit human action is the
-        # gate that permits the existing formal alert transaction to run. We
-        # keep the evaluation inside the surrounding transaction
-        # (commit=False) so the whole batch review is atomic and can be rolled
-        # back as a unit. The formal alert keeps its rule source but records
-        # the human confirmation provenance.
-        alert_run = ForeignAlertService.evaluate(
-            db, user_id=current_user.id, dry_run=False, max_items=200,
-            opinion_ids=[row.foreign_opinion_id], commit=False,
-        )
-        row.alert_preview_id = alert_run.id
-        _stamp_confirmed_alerts(
-            db, opinion_id=row.foreign_opinion_id, user_id=current_user.id,
-            reason=payload.reason, confirmation_version=row.confirmation_version,
-            rule_risk_snapshot=row.rule_risk_snapshot,
-            ai_risk_snapshot=row.ai_risk_snapshot,
-        )
+
     log_operation(db, action="FOREIGN_AI_MANUAL_REVIEW", operator=current_user, request=request, resource_type="foreign_manual_review", resource_id=str(row.id), details={"decision": payload.decision, "reason": payload.reason})
     if not getattr(request.state, "batch_mode", False):
         db.commit()
     db.refresh(row)
-    return _foreign_manual_review_item(row, db.get(ForeignOpinion, row.foreign_opinion_id))
+    return {
+        "review": _foreign_manual_review_item(row, db.get(ForeignOpinion, row.foreign_opinion_id), db.get(User, row.reviewed_by) if row.reviewed_by else None, db=db),
+        "decision": payload.decision,
+        "review_status": row.review_status,
+        "event_result": event_result,
+        "alert_result": alert_result,
+        "idempotent": False,
+        "message": message,
+    }
 
 
 @foreign_router.post("/ai-analysis/reviews/batch")

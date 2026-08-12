@@ -208,19 +208,38 @@ def get_dashboard_alerts(db: Session, *, days: int = 7) -> dict[str, Any]:
 def get_dashboard_trends(db: Session, *, days: int = 7) -> dict[str, Any]:
     start, end, days = _window(days)
     dates = _trend_dates(start, end, days)
+    date_set = set(dates)
+    first_date, last_date = dates[0], dates[-1]
+
+    def _bucket(dt: datetime | None) -> str:
+        """Map a (naive local) timestamp onto the rolling window axis.
+
+        Stored timestamps are naive local time while the axis is derived from
+        UTC bounds, so a few rows near the timezone boundary can fall just
+        outside the axis. Clamp them to the nearest axis edge instead of
+        raising KeyError.
+        """
+        d = _date(dt) if dt is not None else last_date
+        if d in date_set:
+            return d
+        try:
+            dt_obj = datetime.fromisoformat(d)
+        except ValueError:
+            return last_date
+        return first_date if dt_obj < datetime.fromisoformat(first_date) else last_date
+
     trend = {key: {date: 0 for date in dates} for key in ("articles", "risk_completed", "risk_failed", "events", "alerts")}
     for row in _opinions(db, start, end):
-        trend["articles"].setdefault(_date(row.collected_at), 0)
-        trend["articles"][_date(row.collected_at)] += 1
+        trend["articles"][_bucket(row.collected_at)] += 1
     risks = _current_risks(db)
-    opinion_dates = {row.id: _date(row.collected_at) for row in db.scalars(select(ForeignOpinion).where(ForeignOpinion.collected_at >= start, ForeignOpinion.collected_at < end)).all()}
+    opinion_dates = {row.id: _bucket(row.collected_at) for row in db.scalars(select(ForeignOpinion).where(ForeignOpinion.collected_at >= start, ForeignOpinion.collected_at < end)).all()}
     for row in risks:
         if row.foreign_opinion_id in opinion_dates and row.analysis_status in {"completed", "failed"}:
             trend["risk_completed" if row.analysis_status == "completed" else "risk_failed"][opinion_dates[row.foreign_opinion_id]] += 1
     for row in db.scalars(select(ForeignEvent).where(ForeignEvent.created_at >= start, ForeignEvent.created_at < end)).all():
-        trend["events"][_date(row.created_at)] += 1
+        trend["events"][_bucket(row.created_at)] += 1
     for row in db.scalars(select(ForeignAlert).where(ForeignAlert.triggered_at >= start, ForeignAlert.triggered_at < end)).all():
-        trend["alerts"][_date(row.triggered_at)] += 1
+        trend["alerts"][_bucket(row.triggered_at)] += 1
     return {**_base_meta(start, end, days), "items": [{"date": date, **{key: trend[key][date] for key in trend}} for date in dates]}
 
 

@@ -55,16 +55,15 @@ MAX_SIZE = 100
 
 
 def _visible_rule_alert_or_404(db: Session, alert_id: int) -> ForeignAlert:
-    """Return only current-product rule alerts.
+    """Return a formal foreign alert (rule-sourced or human-confirmed AI).
 
-    The cleanup migration removes legacy AI rows, but this guard keeps old
+    The cleanup migration removes legacy auto AI rows, but this guard keeps old
     databases from exposing or mutating them through an ID-based endpoint.
     """
     alert = db.get(ForeignAlert, alert_id)
     if (
         alert is None
-        or alert.evaluation_source != "rule"
-        or alert.foreign_ai_result_id is not None
+        or alert.evaluation_source not in {"rule", "manual_review_ai"}
     ):
         raise HTTPException(status_code=404, detail="Foreign alert not found")
     return alert
@@ -73,7 +72,7 @@ def _visible_rule_alert_or_404(db: Session, alert_id: int) -> ForeignAlert:
 class ForeignAlertRuleCreate(BaseModel):
     name: str = Field(min_length=1, max_length=256)
     description: str = Field(default="", max_length=5000)
-    rule_type: Literal["risk_score", "risk_level", "risk_category", "confirmed_event", "keyword_combo"]
+    rule_type: Literal["risk_score", "risk_level", "risk_category", "confirmed_event", "keyword_combo", "ai_risk_score"]
     conditions: dict[str, Any] = Field(default_factory=dict)
     severity: Literal["low", "medium", "high", "critical"] = "medium"
     is_enabled: bool = False
@@ -86,7 +85,7 @@ class ForeignAlertRuleCreate(BaseModel):
 class ForeignAlertRuleUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
     description: str | None = Field(default=None, max_length=5000)
-    rule_type: Literal["risk_score", "risk_level", "risk_category", "confirmed_event", "keyword_combo"] | None = None
+    rule_type: Literal["risk_score", "risk_level", "risk_category", "confirmed_event", "keyword_combo", "ai_risk_score"] | None = None
     conditions: dict[str, Any] | None = None
     severity: Literal["low", "medium", "high", "critical"] | None = None
     is_enabled: bool | None = None
@@ -162,6 +161,14 @@ def _validate_rule_definition(rule_type: str, conditions: dict[str, Any]) -> Non
                         raise ValueError
                 except (TypeError, ValueError) as exc:
                     raise HTTPException(status_code=422, detail=f"{key} must be a non-negative integer") from exc
+    elif rule_type == "ai_risk_score":
+        threshold = conditions.get("threshold", conditions.get("min_score"))
+        if threshold is None or isinstance(threshold, bool):
+            raise HTTPException(status_code=422, detail="ai_risk_score requires numeric conditions.threshold")
+        try:
+            float(threshold)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="ai_risk_score threshold must be numeric") from exc
     elif rule_type == "keyword_combo":
         risk_terms = conditions.get("risk_terms")
         if not isinstance(risk_terms, list) or not risk_terms or not all(str(item).strip() for item in risk_terms):
@@ -186,11 +193,11 @@ def list_foreign_alerts(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:alerts:read")),
 ):
-    # The normal alert center contains rule-driven alerts only. Legacy AI
-    # alerts are retired and excluded even before the cleanup migration runs.
+    # The alert center shows formal foreign alerts: rule-sourced alerts and
+    # human-confirmed AI alerts (evaluation_source='manual_review_ai'). Legacy
+    # auto AI admission alerts are retired and excluded.
     stmt = select(ForeignAlert).where(
-        ForeignAlert.evaluation_source == "rule",
-        ForeignAlert.foreign_ai_result_id.is_(None),
+        ForeignAlert.evaluation_source.in_(["rule", "manual_review_ai"])
     )
     if status_filter:
         if status_filter not in {"triggered", "acknowledged", "resolved", "suppressed", "failed"}:

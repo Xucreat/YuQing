@@ -25,6 +25,7 @@ class ForeignEventCandidate(Base):
         Index("ix_foreign_event_candidates_language", "language"),
         Index("ix_foreign_event_candidates_last_seen", "last_seen_at"),
         Index("ix_foreign_event_candidates_review_source", "review_source"),
+        Index("ix_foreign_event_candidates_review", "review_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -58,6 +59,9 @@ class ForeignEventCandidate(Base):
         String(64), nullable=False, default="foreign-event-v1"
     )
     evidence_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    review_id: Mapped[int | None] = mapped_column(
+        ForeignKey("foreign_manual_reviews.id", ondelete="SET NULL"), nullable=True
+    )
     representative_opinion_id: Mapped[int | None] = mapped_column(
         ForeignKey("foreign_opinions.id", ondelete="SET NULL"), nullable=True
     )

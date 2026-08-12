@@ -703,7 +703,7 @@ class ForeignEventService:
                 return existing
         if candidate.candidate_status != "candidate":
             raise ValueError("Only a pending candidate can be confirmed")
-        if confirmation_source not in {"manual", "auto"}:
+        if confirmation_source not in {"manual", "auto", "manual_review_ai"}:
             raise ValueError("Invalid foreign event confirmation source")
         if candidate.language == "mixed" and confirmation_source == "auto":
             raise ValueError("Cross-language candidates require manual confirmation")

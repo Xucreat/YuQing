@@ -321,6 +321,14 @@ class ForeignAlertService:
                                 continue
                             if _keyword_combo_matches(rule, opinion, result):
                                 targets.append((opinion, result, None, {"monitoring_keywords": opinion.matched_keywords or [], "risk_terms": result.matched_terms or [], "evaluation_source": "rule"}))
+                    elif rule.rule_type == "ai_risk_score":
+                        # Formal foreign alerts are never produced from AI risk
+                        # scores. AI alert *candidates* are generated only
+                        # during the human review gate (see
+                        # foreign_manual_review_service). Skip the formal
+                        # evaluation path entirely so the AI branch can never
+                        # auto-create a ForeignAlert here.
+                        continue
                     elif rule.rule_type == "confirmed_event":
                         for event in db.scalars(select(ForeignEvent).where(ForeignEvent.event_status == "confirmed").order_by(ForeignEvent.id.asc())).all():
                             if _event_matches(rule, event):
@@ -443,7 +451,7 @@ class ForeignAlertService:
             )
             if alert is None:
                 raise LookupError("Foreign alert not found")
-            if alert.evaluation_source != "rule" or alert.foreign_ai_result_id is not None:
+            if alert.evaluation_source not in {"rule", "manual_review_ai"}:
                 raise LookupError("Foreign alert not found")
             previous_status = alert.status
             expected_previous, new_status = transitions[action_type]
@@ -558,8 +566,7 @@ class ForeignAlertService:
         alert = db.get(ForeignAlert, alert_id)
         if (
             alert is None
-            or alert.evaluation_source != "rule"
-            or alert.foreign_ai_result_id is not None
+            or alert.evaluation_source not in {"rule", "manual_review_ai"}
         ):
             return []
         return list(

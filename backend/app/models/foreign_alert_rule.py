@@ -17,7 +17,7 @@ class ForeignAlertRule(Base):
     __tablename__ = "foreign_alert_rules"
     __table_args__ = (
         CheckConstraint(
-            "rule_type IN ('risk_score','risk_level','risk_category','confirmed_event','keyword_combo')",
+            "rule_type IN ('risk_score','risk_level','risk_category','confirmed_event','keyword_combo','ai_risk_score')",
             name="ck_foreign_alert_rules_type",
         ),
         CheckConstraint(

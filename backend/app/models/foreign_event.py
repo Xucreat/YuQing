@@ -21,7 +21,7 @@ class ForeignEvent(Base):
             name="ck_foreign_events_status",
         ),
         CheckConstraint(
-            "confirmation_source IN ('manual','auto')",
+            "confirmation_source IN ('manual','auto','manual_review_ai')",
             name="ck_foreign_events_confirmation_source",
         ),
         Index("ix_foreign_events_status", "event_status"),
