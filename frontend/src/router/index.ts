@@ -31,6 +31,8 @@ const router = createRouter({
       component: () => import('@/views/ForeignWorkspace.vue'),
       meta: { requiresAuth: true, module: ['keywords', 'sources', 'foreign'] },
     },
+    { path: '/foreign/alerts', redirect: { path: '/alerts', query: { tab: 'records', scope: 'foreign' } } },
+    { path: '/foreign/alert-rules', redirect: { path: '/alerts', query: { tab: 'rules', scope: 'foreign' } } },
     // AI 检索：需 ai:search（后端 /bocha/*、/anspire/* 已同步收敛为 ai:search）
     {
       path: '/ai-search',
@@ -87,7 +89,7 @@ const router = createRouter({
       path: '/data',
       name: 'data',
       component: DataManagePage,
-      meta: { requiresAuth: true, module: ['keywords', 'sources', 'collectors'] },
+      meta: { requiresAuth: true, module: ['keywords', 'sources', 'collectors', 'foreign'] },
     },
     // 旧路由重定向到数据管理聚合页的对应子页，保留已有书签
     { path: '/keywords', redirect: { name: 'data', query: { tab: 'keywords' } } },

@@ -17,6 +17,7 @@ from app.models.foreign_alert_rule import ForeignAlertRule
 from app.models.foreign_alert_run import ForeignAlertRun
 from app.models.user import User
 from app.services.audit_service import audit_write
+from app.services.foreign_effective_risk import attach_effective_risk, resolve_one
 from app.services.foreign_alert_service import (
     MAX_EVALUATION_ITEMS,
     ForeignAlertService,
@@ -51,6 +52,22 @@ def foreign_alert_auto_evaluation_status(
     }
 
 MAX_SIZE = 100
+
+
+def _visible_rule_alert_or_404(db: Session, alert_id: int) -> ForeignAlert:
+    """Return only current-product rule alerts.
+
+    The cleanup migration removes legacy AI rows, but this guard keeps old
+    databases from exposing or mutating them through an ID-based endpoint.
+    """
+    alert = db.get(ForeignAlert, alert_id)
+    if (
+        alert is None
+        or alert.evaluation_source != "rule"
+        or alert.foreign_ai_result_id is not None
+    ):
+        raise HTTPException(status_code=404, detail="Foreign alert not found")
+    return alert
 
 
 class ForeignAlertRuleCreate(BaseModel):
@@ -169,7 +186,12 @@ def list_foreign_alerts(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:alerts:read")),
 ):
-    stmt = select(ForeignAlert)
+    # The normal alert center contains rule-driven alerts only. Legacy AI
+    # alerts are retired and excluded even before the cleanup migration runs.
+    stmt = select(ForeignAlert).where(
+        ForeignAlert.evaluation_source == "rule",
+        ForeignAlert.foreign_ai_result_id.is_(None),
+    )
     if status_filter:
         if status_filter not in {"triggered", "acknowledged", "resolved", "suppressed", "failed"}:
             raise HTTPException(status_code=422, detail="invalid foreign alert status")
@@ -196,7 +218,10 @@ def list_foreign_alerts(
         .offset((page - 1) * size)
         .limit(size)
     ).all()
-    return {"items": [serialize_alert(row) for row in rows], "total": total, "page": page, "size": size}
+    items = [serialize_alert(row) for row in rows]
+    # The alert center reads the same rule-only resolver as the opinion list.
+    attach_effective_risk(db, items, id_key="foreign_opinion_id")
+    return {"items": items, "total": total, "page": page, "size": size}
 
 
 @foreign_alerts_router.get("/evaluate")
@@ -238,9 +263,7 @@ def list_foreign_alert_actions(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:alerts:read")),
 ):
-    alert = db.get(ForeignAlert, alert_id)
-    if alert is None:
-        raise HTTPException(status_code=404, detail="Foreign alert not found")
+    _visible_rule_alert_or_404(db, alert_id)
     actions = ForeignAlertService.list_actions(db, alert_id)
     return {"items": [serialize_action(action) for action in actions], "total": len(actions)}
 
@@ -251,10 +274,14 @@ def get_foreign_alert(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:alerts:read")),
 ):
-    alert = db.get(ForeignAlert, alert_id)
-    if alert is None:
-        raise HTTPException(status_code=404, detail="Foreign alert not found")
+    alert = _visible_rule_alert_or_404(db, alert_id)
     payload = serialize_alert(alert)
+    if alert.foreign_opinion_id:
+        payload.update(resolve_one(db, alert.foreign_opinion_id))
+    else:
+        payload.update(
+            {"effective_risk": None, "rule_risk": None, "latest_ai_risk": None, "alert": None}
+        )
     payload["rule"] = serialize_rule(db.get(ForeignAlertRule, alert.rule_id)) if alert.rule_id and db.get(ForeignAlertRule, alert.rule_id) else None
     payload["actions"] = [serialize_action(item) for item in ForeignAlertService.list_actions(db, alert_id)]
     if alert.foreign_opinion_id:
@@ -293,6 +320,7 @@ def acknowledge_foreign_alert(
         details=audit_details,
     ):
         try:
+            _visible_rule_alert_or_404(db, alert_id)
             transition = ForeignAlertService.transition(
                 db,
                 alert_id,
@@ -335,6 +363,7 @@ def resolve_foreign_alert(
         details=audit_details,
     ):
         try:
+            _visible_rule_alert_or_404(db, alert_id)
             transition = ForeignAlertService.transition(
                 db,
                 alert_id,
@@ -377,6 +406,7 @@ def suppress_foreign_alert(
         details=audit_details,
     ):
         try:
+            _visible_rule_alert_or_404(db, alert_id)
             transition = ForeignAlertService.transition(
                 db,
                 alert_id,

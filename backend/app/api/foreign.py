@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
@@ -22,7 +22,7 @@ from app.api.admin_data_sources import (
 )
 from app.core.dependencies import get_current_user
 from app.core.permissions import get_user_permissions, is_superuser_user, require_permission
-from app.core.task_manager import DuplicateTaskError, start_task
+from app.core.task_manager import DuplicateTaskError, Task, start_task
 from app.db.session import SessionLocal, get_db
 from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
@@ -40,22 +40,25 @@ from app.services.foreign_ai_service import (
     ForeignAIService,
     serialize_ai_result,
 )
-from app.services.foreign_alert_admission_service import (
-    ForeignAlertAdmissionService,
-    serialize_admission,
-    serialize_admission_action,
-)
 from app.services.foreign_keyword_service import (
     create_foreign_keyword_row,
     delete_foreign_keyword_row,
     get_foreign_keyword_row,
     get_foreign_keywords,
+    get_foreign_monitoring_keywords,
     list_foreign_keyword_categories,
     list_foreign_keyword_rows,
     update_foreign_keyword_row,
 )
 from app.services.foreign_collection_service import test_foreign_source
 from app.services.foreign_content_sanitizer import sanitize_foreign_html
+from app.services.foreign_effective_risk import (
+    RULE_SOURCE,
+    RiskSource,
+    attach_effective_risk,
+    effective_risk_level_expression,
+    resolve_one,
+)
 from app.services.foreign_risk_service import (
     RULE_MODEL_VERSION,
     ForeignRiskService,
@@ -272,6 +275,137 @@ def _foreign_source_item(source: DataSource) -> dict[str, Any]:
     }
 
 
+def _foreign_source_runtime(db: Session, sources: list[DataSource]) -> dict[int, dict[str, Any]]:
+    """Attach authoritative run, quality, and schedule fields to foreign sources.
+
+    Foreign collection writes ``collector_name`` using ``DataSource.name`` and
+    marks each row with ``scope='foreign'``. Keeping this join in the listing
+    endpoint makes the management table independent of visualization grouping.
+    """
+    names = [source.name for source in sources]
+    runs_by_name: dict[str, list[CollectorRun]] = {name: [] for name in names}
+    if names:
+        runs = db.scalars(
+            select(CollectorRun)
+            .where(
+                CollectorRun.scope == "foreign",
+                CollectorRun.collector_name.in_(names),
+            )
+            .order_by(CollectorRun.start_time.desc(), CollectorRun.id.desc())
+        ).all()
+        for run in runs:
+            runs_by_name.setdefault(run.collector_name, []).append(run)
+
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
+    result: dict[int, dict[str, Any]] = {}
+    for source in sources:
+        all_runs = runs_by_name.get(source.name, [])
+        recent_runs = [run for run in all_runs if run.start_time and run.start_time >= cutoff]
+        latest = all_runs[0] if all_runs else None
+        failed_streak = 0
+        empty_streak = 0
+        for run in all_runs:
+            if run.status in {"failed", "error", "partial"} or (run.failed or 0) > 0:
+                failed_streak += 1
+            else:
+                break
+        for run in all_runs:
+            if (run.fetched_raw or 0) == 0:
+                empty_streak += 1
+            else:
+                break
+        if latest is None:
+            empty_fetch_risk = "unknown"
+        elif empty_streak >= 3:
+            empty_fetch_risk = "high"
+        elif (latest.fetched_raw or 0) == 0:
+            empty_fetch_risk = "warning"
+        else:
+            empty_fetch_risk = "normal"
+        next_collect_time = source.next_collect_time
+        # Older foreign sources may have been enabled before the scheduling
+        # timestamp was introduced. Keep the read-only list useful without
+        # mutating existing rows; the next update persists the canonical value.
+        if source.enabled and source.schedule_enabled and next_collect_time is None:
+            next_collect_time = datetime.now() + timedelta(minutes=source.schedule_interval_minutes)
+        result[source.id] = {
+            "latest_run_status": latest.status if latest else None,
+            "latest_run_at": (
+                (latest.end_time or latest.start_time).isoformat()
+                if latest and (latest.end_time or latest.start_time)
+                else None
+            ),
+            "next_collect_time": next_collect_time.isoformat() if next_collect_time else None,
+            "collection_quality": {
+                "empty_fetch_risk": empty_fetch_risk,
+                "latest_fetched_raw": latest.fetched_raw if latest else None,
+                "latest_created": latest.created if latest else None,
+                "run_count": len(recent_runs),
+                "success_rate": round(
+                    sum(run.status == "success" for run in recent_runs) / len(recent_runs), 4
+                ) if recent_runs else None,
+                "consecutive_failed_count": failed_streak,
+                "consecutive_empty_fetch_count": empty_streak,
+            },
+        }
+    return result
+
+
+def _rescore_foreign_worker(task: Task) -> dict:
+    """后台任务：对全部国外舆情用最新敏感词库重新评分。"""
+    from app.db.session import SessionLocal
+    from app.services.foreign_risk_service import ForeignRiskService
+
+    db = SessionLocal()
+    try:
+        return ForeignRiskService().rescore_all(db, task=task)
+    finally:
+        db.close()
+
+
+def _trigger_rescore_if_sensitive(db: Session, ids: list[int], *, force: bool = False) -> None:
+    """若涉及 sensitive 类型关键词变更，触发一次可控的后台重新评分。
+
+    重新评分使用项目既有 task_manager，去重键避免并发重复执行；
+    失败不影响关键词本身的写操作（best-effort）。
+
+    force=True 用于「删除」场景：被删词已从表中移除，无法再用
+    id 命中 sensitive 行，但调用方已知 was_sensitive，需强制触发重评分。
+    """
+    if not ids and not force:
+        return
+    if not force:
+        has_sensitive = db.scalar(
+            select(func.count())
+            .select_from(ForeignKeyword)
+            .where(ForeignKeyword.id.in_(ids), ForeignKeyword.type == "sensitive")
+        )
+        if not has_sensitive:
+            return
+    try:
+        start_task("foreign_rescore", _rescore_foreign_worker, dedupe_key="foreign_rescore")
+    except DuplicateTaskError:
+        # 已有重新评分任务在执行，忽略重复触发。
+        pass
+
+
+@foreign_router.post("/opinions/rescore")
+def rescore_foreign_opinions(
+    request: Request,
+    _: User = Depends(require_permission("foreign:keywords:write")),
+    db: Session = Depends(get_db),
+):
+    """手动触发全部国外舆情重新评分（用最新启用的敏感词库）。
+
+    后台任务执行，立即返回 task_id；前端轮询 GET /api/tasks/{task_id} 查看进度。
+    """
+    try:
+        task_id = start_task("foreign_rescore", _rescore_foreign_worker, dedupe_key="foreign_rescore")
+    except DuplicateTaskError:
+        raise HTTPException(status_code=409, detail="已有国外舆情重新评分任务在执行")
+    return {"task_id": task_id}
+
+
 @foreign_router.get("/keywords")
 def list_foreign_keywords(
     page: int = Query(1, ge=1),
@@ -331,6 +465,7 @@ def create_foreign_keyword(
                 raise HTTPException(status_code=409, detail=f"Foreign keyword already exists: {word}") from exc
             raise
         ctx["resource_id"] = str(row["id"])
+    _trigger_rescore_if_sensitive(db, [row["id"]])
     return row
 
 
@@ -369,6 +504,7 @@ def update_foreign_keyword(
             if "uq_foreign_keywords_word" in str(exc) or "duplicate key" in str(exc).lower():
                 raise HTTPException(status_code=409, detail="Foreign keyword already exists") from exc
             raise
+    _trigger_rescore_if_sensitive(db, [keyword_id])
     return result
 
 
@@ -389,6 +525,7 @@ def bulk_update_foreign_keywords(
                 db, keyword_id, {"is_enabled": payload.is_enabled}
             )))
         db.commit()
+    _trigger_rescore_if_sensitive(db, payload.keyword_ids)
     return {"changed": changed, "is_enabled": payload.is_enabled}
 
 
@@ -402,6 +539,8 @@ def delete_foreign_keyword(
     row, _ = get_foreign_keyword_row(db, keyword_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Foreign keyword not found")
+    # 删除前记住类型，便于敏感词删除后触发重新评分。
+    was_sensitive = row.get("type") == "sensitive"
     with audit_write(
         db,
         action="DELETE",
@@ -413,6 +552,8 @@ def delete_foreign_keyword(
     ):
         delete_foreign_keyword_row(db, keyword_id)
         db.commit()
+    if was_sensitive:
+        _trigger_rescore_if_sensitive(db, [keyword_id], force=True)
     return {"detail": "Foreign keyword deleted", "id": keyword_id}
 
 
@@ -433,8 +574,14 @@ def list_foreign_sources(
         rows = [row for row in rows if needle in row.name.casefold() or needle in row.key.casefold()]
     total = len(rows)
     offset = (page - 1) * size
+    runtime = _foreign_source_runtime(db, rows[offset:offset + size])
+    items = []
+    for row in rows[offset:offset + size]:
+        item = _foreign_source_item(row)
+        item.update(runtime.get(row.id, {}))
+        items.append(item)
     return {
-        "items": [_foreign_source_item(row) for row in rows[offset:offset + size]],
+        "items": items,
         "total": total,
         "page": page,
         "size": size,
@@ -452,11 +599,13 @@ def list_approved_foreign_sources(
     Domestic and disabled sources never leave this endpoint.
     """
     rows = db.scalars(select(DataSource).order_by(DataSource.priority.asc(), DataSource.id.asc())).all()
-    approved = [
-        _foreign_source_item(row)
-        for row in rows
-        if row.enabled and _is_foreign_config(row)
-    ]
+    approved_rows = [row for row in rows if row.enabled and _is_foreign_config(row)]
+    runtime = _foreign_source_runtime(db, approved_rows)
+    approved = []
+    for row in approved_rows:
+        item = _foreign_source_item(row)
+        item.update(runtime.get(row.id, {}))
+        approved.append(item)
     return {"items": approved, "ids": [item["id"] for item in approved], "total": len(approved)}
 
 
@@ -478,7 +627,7 @@ def create_foreign_source(
         "feeds": [feed.strip() for feed in payload.feeds if feed.strip()],
         "language": payload.language,
         "proxy_env": payload.proxy_env,
-        "keywords": get_foreign_keywords(db),
+        "keywords": get_foreign_monitoring_keywords(db),
         "collection_mode": "foreign",
         "fetch_full_text": False,
         "max_items": payload.max_items,
@@ -545,7 +694,7 @@ def update_foreign_source(
     changes = payload.model_dump(exclude_unset=True)
     cfg = _source_config(source)
     next_name = str(changes.get("name", source.name)).strip() or source.name
-    cfg["keywords"] = get_foreign_keywords(db)
+    cfg["keywords"] = get_foreign_monitoring_keywords(db)
     if "feeds" in changes:
         cfg["feeds"] = changes["feeds"]
     if "language" in changes:
@@ -608,6 +757,15 @@ def update_foreign_source(
             )
         if "priority" in changes:
             source.priority = int(changes["priority"])
+        # Keep the management view's next-run column authoritative. A foreign
+        # source is scheduled independently, so its next run is recalculated
+        # whenever scheduling is toggled or its interval changes.
+        if source.schedule_enabled:
+            source.next_collect_time = (
+                datetime.now() + timedelta(minutes=source.schedule_interval_minutes)
+            )
+        elif "schedule_enabled" in changes or "enabled" in changes:
+            source.next_collect_time = None
         source.config_json = json.dumps(cfg, ensure_ascii=False)
         db.commit()
     db.refresh(source)
@@ -681,8 +839,11 @@ def _foreign_opinion_item(row: ForeignOpinion) -> dict[str, Any]:
     }
 
 
-def _foreign_opinion_detail(db: Session, row: ForeignOpinion) -> dict[str, Any]:
+def _foreign_opinion_detail(
+    db: Session, row: ForeignOpinion, *, risk_source: RiskSource = RULE_SOURCE
+) -> dict[str, Any]:
     payload = _foreign_opinion_item(row)
+    payload.update(resolve_one(db, row.id, risk_source=risk_source))
     current_rule = db.scalar(
         select(ForeignRiskResult)
         .where(
@@ -705,14 +866,6 @@ def _foreign_opinion_detail(db: Session, row: ForeignOpinion) -> dict[str, Any]:
             .order_by(ForeignAIResult.id.desc())
         )
         payload["ai_result"] = serialize_ai_result(ai_result)
-        if inspect(db.get_bind()).has_table("foreign_alert_admissions"):
-            admission = ForeignAlertAdmissionService.get_current(db, row.id)
-            payload["ai_alert_admission"] = serialize_admission(admission)
-            if admission is not None:
-                payload["ai_alert_admission_actions"] = [
-                    serialize_admission_action(action)
-                    for action in ForeignAlertAdmissionService.list_actions(db, admission.id)
-                ]
     runs = db.scalars(
         select(ForeignAnalysisRun)
         .where(ForeignAnalysisRun.foreign_opinion_id == row.id)
@@ -735,6 +888,7 @@ def list_foreign_opinions(
     language: str | None = None,
     risk_level: str | None = None,
     analysis_status: str | None = None,
+    risk_source: RiskSource = Query(RULE_SOURCE),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:opinions:read")),
 ):
@@ -754,17 +908,26 @@ def list_foreign_opinions(
         stmt = stmt.where(
             cast(ForeignOpinion.matched_keywords, String).ilike(f"%{keyword}%")
         )
-    if language or risk_level or analysis_status:
+    if language or analysis_status:
         sub = select(ForeignRiskResult.foreign_opinion_id).where(
             ForeignRiskResult.is_current.is_(True)
         )
         if language:
             sub = sub.where(ForeignRiskResult.language == language)
-        if risk_level:
-            sub = sub.where(ForeignRiskResult.risk_level == risk_level)
         if analysis_status:
             sub = sub.where(ForeignRiskResult.analysis_status == analysis_status)
         stmt = stmt.where(ForeignOpinion.id.in_(sub))
+    if risk_level:
+        # The filter must use the same selected source as the serialized
+        # display_risk column. Formal alert and dashboard queries remain rule-only.
+        query_source = risk_source
+        if risk_source == "ai" and not inspect(db.get_bind()).has_table("foreign_ai_results"):
+            # During a rolling deployment the AI table may not exist yet; the
+            # resolver will mark the serialized view as a rule fallback.
+            query_source = RULE_SOURCE
+        stmt = stmt.where(
+            effective_risk_level_expression(risk_source=query_source) == risk_level
+        )
     if date_from:
         try:
             stmt = stmt.where(
@@ -787,8 +950,12 @@ def list_foreign_opinions(
         .offset((page - 1) * size)
         .limit(size)
     ).all()
+    items = [_foreign_opinion_item(row) for row in rows]
+    # One resolver call for the whole page: the list and the alert center then
+    # render exactly the same effective risk.
+    attach_effective_risk(db, items, risk_source=risk_source)
     return {
-        "items": [_foreign_opinion_item(row) for row in rows],
+        "items": items,
         "total": total,
         "page": page,
         "size": size,
@@ -812,13 +979,14 @@ def list_foreign_opinion_sources(
 @foreign_router.get("/opinions/{opinion_id}")
 def get_foreign_opinion(
     opinion_id: int,
+    risk_source: RiskSource = Query(RULE_SOURCE),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:opinions:read")),
 ):
     row = db.get(ForeignOpinion, opinion_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Foreign opinion not found")
-    return _foreign_opinion_detail(db, row)
+    return _foreign_opinion_detail(db, row, risk_source=risk_source)
 
 
 @foreign_router.get("/opinions/{opinion_id}/original")
@@ -844,28 +1012,43 @@ def get_foreign_opinion_original(
 @foreign_router.get("/opinions/{opinion_id}/detail")
 def get_foreign_opinion_detail(
     opinion_id: int,
+    risk_source: RiskSource = Query(RULE_SOURCE),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:opinions:read")),
 ):
     row = db.get(ForeignOpinion, opinion_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Foreign opinion not found")
-    return _foreign_opinion_detail(db, row)
+    return _foreign_opinion_detail(db, row, risk_source=risk_source)
 
 
 @foreign_router.post("/opinions/{opinion_id}/ai-analyze")
 def analyze_foreign_opinion_ai(
     opinion_id: int,
+    force: bool = Query(False),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:ai:analyze")),
 ):
+    """The one and only manual AI review entry point.
+
+    Collection, scheduling and list queries never reach this handler; a human
+    request with ``foreign:ai:analyze`` is always required. Repeated calls on
+    unchanged content reuse the stored evaluation instead of calling the
+    provider again.
+    """
     if not inspect(db.get_bind()).has_table("foreign_ai_results"):
         raise HTTPException(status_code=503, detail="Foreign AI storage migration is not applied")
     try:
-        result = ForeignAIService().analyze_opinion(db, opinion_id)
+        result, reused = ForeignAIService().analyze_opinion_manual(
+            db, opinion_id, force=force
+        )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return serialize_ai_result(result)
+    payload = serialize_ai_result(result) or {}
+    payload["reused"] = reused
+    # Return the canonical rule view alongside the historical AI result.
+    payload.update(resolve_one(db, opinion_id))
+    return payload
 
 
 @foreign_router.post("/opinions/{opinion_id}/ai-alert-admission")
@@ -876,32 +1059,10 @@ def set_foreign_ai_alert_admission(
     current_user: User = Depends(require_permission("foreign:alerts:ai-admit")),
     db: Session = Depends(get_db),
 ):
-    with audit_write(
-        db,
-        action="SET_FOREIGN_AI_ALERT_ADMISSION",
-        operator=current_user,
-        request=request,
-        resource_type="foreign_alert_admission",
-        resource_id=str(opinion_id),
-        details={"included": payload.included, "note": payload.note.strip(), "evaluation_source": "ai"},
-    ) as ctx:
-        try:
-            admission, action = ForeignAlertAdmissionService.set_status(
-                db,
-                opinion_id,
-                included=payload.included,
-                actor_id=current_user.id,
-                note=payload.note.strip(),
-            )
-        except LookupError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        ctx["resource_id"] = str(admission.id)
-    return {
-        "admission": serialize_admission(admission),
-        "action": serialize_admission_action(action),
-    }
+    raise HTTPException(
+        status_code=410,
+        detail="Foreign AI results are historical only; AI alert admission is retired",
+    )
 
 
 def _foreign_risk_item(result: ForeignRiskResult, opinion: ForeignOpinion) -> dict[str, Any]:
@@ -1003,8 +1164,12 @@ def list_foreign_risk(
         .offset((page - 1) * size)
         .limit(size)
     ).all()
+    items = [_foreign_risk_item(result, opinion) for result, opinion in rows]
+    # Rule rows keep their own values; the resolver only adds the shared
+    # effective-risk view so this endpoint cannot drift from the list page.
+    attach_effective_risk(db, items, id_key="foreign_opinion_id")
     return {
-        "items": [_foreign_risk_item(result, opinion) for result, opinion in rows],
+        "items": items,
         "total": total,
         "page": page,
         "size": size,
@@ -1278,9 +1443,11 @@ def _run_foreign_collect_task(
     task,
     source_ids: list[int] | None,
     all_sources: bool,
+    batch_id: str,
 ) -> dict:
     db = SessionLocal()
     try:
+        task.batch_id = batch_id
         task.step = "外网 RSS 采集中"
 
         def progress(done: int, total: int, name: str) -> None:
@@ -1291,6 +1458,7 @@ def _run_foreign_collect_task(
             db,
             source_ids=source_ids,
             all_sources=all_sources,
+            batch_id=batch_id,
             on_progress=progress,
         )
         task.step = "外网采集完成"
@@ -1357,14 +1525,26 @@ def collect_foreign_now(
         if any(not source.enabled for source in selected):
             raise HTTPException(status_code=422, detail="All selected foreign sources must be enabled")
     dedupe_key = "all" if payload.all_sources else ",".join(str(item) for item in sorted(source_ids or []))
+    batch_id = uuid.uuid4().hex
     try:
-        task_id = start_task(
-            "foreign-collector",
-            _run_foreign_collect_task,
-            source_ids,
-            payload.all_sources,
-            dedupe_key=dedupe_key,
-        )
+        try:
+            task_id = start_task(
+                "foreign-collector",
+                _run_foreign_collect_task,
+                source_ids,
+                payload.all_sources,
+                batch_id,
+                dedupe_key=dedupe_key,
+            )
+        except TypeError as exc:
+            # Keep lightweight test doubles and older embedders compatible;
+            # the production task manager accepts dedupe_key.
+            if "dedupe_key" not in str(exc):
+                raise
+            task_id = start_task(
+                "foreign-collector", _run_foreign_collect_task,
+                source_ids, payload.all_sources, batch_id,
+            )
     except DuplicateTaskError as exc:
         log_operation(
             db,
@@ -1395,7 +1575,7 @@ def collect_foreign_now(
     return {
         "success": True,
         "task_id": task_id,
-        "batch_id": uuid.uuid4().hex,
+        "batch_id": batch_id,
         "scope": "foreign",
         "message": "外网采集任务已接受",
     }

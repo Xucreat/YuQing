@@ -21,7 +21,7 @@ from app.core.permissions import (
     is_superuser_user,
     require_permission,
 )
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.db.session import get_db
 from app.models.audit import LoginLog, OperationLog
 from app.models.permission import Permission, user_roles
@@ -40,6 +40,7 @@ from app.schemas.user import (
     UserDetailOut,
     UserOut,
     UserUpdate,
+    UserPasswordReset,
 )
 from app.services.audit_service import log_operation
 
@@ -120,6 +121,57 @@ def _diff_snapshot(before: dict, after: dict) -> list[str]:
 
 
 # ================= 用户管理 =================
+@users_router.post("/users/me/password", response_model=dict)
+def change_my_password(
+    body: UserPasswordReset,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Change the authenticated user's password without exposing credentials."""
+
+    def reject(reason: str, detail: str) -> None:
+        # Failed attempts are auditable, but only use a stable reason code.
+        log_operation(
+            db,
+            action="PASSWORD_CHANGE",
+            operator=current_user,
+            request=request,
+            resource_type="user",
+            resource_id=str(current_user.id),
+            target_user_id=current_user.id,
+            result="failed",
+            error_message=reason,
+            details={"reason": reason},
+        )
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+    if not verify_password(body.old_password, current_user.password_hash):
+        reject("invalid_old_password", "Old password is incorrect")
+    if len(body.new_password) < 6:
+        reject("password_too_short", "Password too short (>=6)")
+    if body.new_password != body.confirm_password:
+        reject("password_confirmation_mismatch", "New passwords do not match")
+    if verify_password(body.new_password, current_user.password_hash):
+        reject("password_unchanged", "New password must differ from old password")
+
+    current_user.password_hash = hash_password(body.new_password)
+    current_user.updated_at = datetime.now(timezone.utc)
+    log_operation(
+        db,
+        action="PASSWORD_CHANGE",
+        operator=current_user,
+        request=request,
+        resource_type="user",
+        resource_id=str(current_user.id),
+        target_user_id=current_user.id,
+        details={"username": current_user.username, "requires_relogin": True},
+    )
+    db.commit()
+    return {"message": "Password changed successfully", "requires_relogin": True}
+
+
 @users_router.get("/users", response_model=dict)
 def list_users(
     page: int = Query(1, ge=1),
@@ -228,6 +280,9 @@ def update_user(
     new_is_super = body.is_superuser if body.is_superuser is not None else user.is_superuser
     will_be_super = new_is_super or (new_role == "admin")
     new_active = body.is_active if body.is_active is not None else user.is_active
+
+    if current_user.id == user_id and body.is_active is False:
+        raise HTTPException(status_code=403, detail="Cannot disable the current user")
 
     # 最后超级管理员保护
     if was_super and not will_be_super and _superuser_count(db) <= 1:
@@ -357,6 +412,8 @@ def deactivate_user(
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if current_user.id == user_id:
+        raise HTTPException(status_code=403, detail="Cannot disable the current user")
     if is_superuser_user(user) and _active_superuser_count(db) <= 1:
         raise HTTPException(status_code=403, detail="Cannot disable the last superuser")
     user.is_active = False

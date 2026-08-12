@@ -34,16 +34,24 @@ DEFAULT_KEYWORDS: List[Tuple[str, int]] = [
     ("伤亡", 9),
     ("死亡", 8),
     ("冲突", 7),
-    ("群体", 7),
+    ("群体", 0),
     ("上访", 8),
-    ("维权", 6),
-    ("投诉", 4),
+    ("维权", 0),
+    ("投诉", 0),
     ("谣言", 8),
     ("诈骗", 8),
     ("腐败", 7),
     ("贪污", 7),
     ("涉警", 8),
-    ("舆情", 3),
+    ("舆情", 0),
+]
+
+# Extended incident vocabulary used by the standalone fallback analyzer. It
+# is intentionally separate from DEFAULT_KEYWORDS: the latter is the stable
+# 16-word system lexicon seeded into ``keywords`` and covered by governance
+# tests, while these newer terms remain available to direct rule analysis.
+EXTENDED_DEFAULT_KEYWORDS: List[Tuple[str, int]] = [
+    *DEFAULT_KEYWORDS,
     *SCHOOL_HARM_FALLBACK_WEIGHTS.items(),
     *LAW_ENFORCEMENT_HARM_FALLBACK_WEIGHTS.items(),
     *LAW_ENFORCEMENT_CONTEXT_FALLBACK_WEIGHTS.items(),
@@ -80,7 +88,9 @@ class RuleFallbackProvider(BaseAIProvider):
     ) -> None:
         # 敏感词列表：外部注入（如未来从 keywords 表加载），
         # 为空则退回内置 DEFAULT_KEYWORDS。本类不查数据库。
-        self.keywords: List[Tuple[str, int]] = list(keywords) if keywords else list(DEFAULT_KEYWORDS)
+        self.keywords: List[Tuple[str, int]] = (
+            list(keywords) if keywords else list(EXTENDED_DEFAULT_KEYWORDS)
+        )
 
     def analyze(self, text: str) -> AIAnalysisResult:
         """对文本做规则分析，返回 AIAnalysisResult。"""

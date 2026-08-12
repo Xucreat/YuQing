@@ -122,7 +122,7 @@ def _cleanup(db, suffix: str) -> None:
     db.commit()
 
 
-def test_dual_alert_path_prefers_rule_and_uses_admitted_ai_fallback(monkeypatch):
+def test_alert_evaluation_ignores_admitted_ai_fallback(monkeypatch):
     db = SessionLocal()
     suffix = _suffix()
     try:
@@ -153,7 +153,7 @@ def test_dual_alert_path_prefers_rule_and_uses_admitted_ai_fallback(monkeypatch)
         run = ForeignAlertService.evaluate(db, rule_ids=[rule.id], dry_run=False)
         alerts = db.query(ForeignAlert).filter(ForeignAlert.rule_id == rule.id).all()
         _ALERT_RUN_IDS.add(run.id)
-        assert run.triggered_count == 3
+        assert run.triggered_count == 2
         assert db.query(ForeignAlert).filter(
             ForeignAlert.foreign_opinion_id == rule_only_opinion.id,
             ForeignAlert.evaluation_source == "rule",
@@ -161,14 +161,14 @@ def test_dual_alert_path_prefers_rule_and_uses_admitted_ai_fallback(monkeypatch)
         assert {(row.foreign_opinion_id, row.evaluation_source) for row in alerts} == {
             (rule_opinion.id, "rule"),
             (rule_only_opinion.id, "rule"),
-            (ai_opinion.id, "ai"),
         }
-        assert all(row.foreign_ai_result_id is None for row in alerts if row.evaluation_source == "rule")
+        assert all(row.foreign_ai_result_id is None for row in alerts)
+        assert db.query(ForeignAlert).filter(ForeignAlert.foreign_opinion_id == ai_opinion.id).count() == 0
         assert db.query(ForeignAlert).filter(ForeignAlert.foreign_opinion_id == low_ai_opinion.id).count() == 0
         second = ForeignAlertService.evaluate(db, rule_ids=[rule.id], dry_run=False)
         _ALERT_RUN_IDS.add(second.id)
-        assert second.deduplicated_count == 3
-        assert db.query(ForeignAlert).filter(ForeignAlert.rule_id == rule.id).count() == 3
+        assert second.deduplicated_count == 2
+        assert db.query(ForeignAlert).filter(ForeignAlert.rule_id == rule.id).count() == 2
         monkeypatch.setattr(settings, "foreign_alert_auto_evaluation_enabled", True)
         auto_run = ForeignAlertService.auto_evaluate(db, rule_ids=[rule.id], dry_run=True)
         _ALERT_RUN_IDS.add(auto_run.id)

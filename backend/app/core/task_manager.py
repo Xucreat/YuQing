@@ -77,9 +77,10 @@ def _reap_tasks() -> None:
 class Task:
     """单个后台任务的状态容器（属性由 worker 线程更新）。"""
 
-    def __init__(self, task_id: str, task_type: str) -> None:
+    def __init__(self, task_id: str, task_type: str, dedupe_key: str | None = None) -> None:
         self.task_id = task_id
         self.task_type = task_type
+        self.dedupe_key = dedupe_key
         self.batch_id: Optional[str] = None
         self.status = STATUS_PENDING
         self.progress: int = 0          # 0-100
@@ -95,6 +96,7 @@ class Task:
         return {
             "task_id": self.task_id,
             "task_type": self.task_type,
+            "dedupe_key": self.dedupe_key,
             "batch_id": self.batch_id,
             "status": self.status,
             "progress": self.progress,
@@ -108,7 +110,17 @@ class Task:
         }
 
 
-def start_task(task_type: str, func: Callable[..., Any], *args: Any, **kwargs: Any) -> str:
+class DuplicateTaskError(RuntimeError):
+    """Raised when an equivalent task is already pending or running."""
+
+
+def start_task(
+    task_type: str,
+    func: Callable[..., Any],
+    *args: Any,
+    dedupe_key: str | None = None,
+    **kwargs: Any,
+) -> str:
     """启动一个后台任务。
 
     func 签名为 ``func(task: Task, *args, **kwargs)``；worker 会在调用前注入
@@ -118,8 +130,15 @@ def start_task(task_type: str, func: Callable[..., Any], *args: Any, **kwargs: A
     """
     _reap_tasks()
     task_id = uuid.uuid4().hex
-    task = Task(task_id, task_type)
+    task = Task(task_id, task_type, dedupe_key=dedupe_key)
     with _tasks_lock:
+        if dedupe_key is not None and any(
+            existing.task_type == task_type
+            and existing.dedupe_key == dedupe_key
+            and existing.status in (STATUS_PENDING, STATUS_RUNNING)
+            for existing in _tasks.values()
+        ):
+            raise DuplicateTaskError(f"Task already running: {task_type}")
         _tasks[task_id] = task
 
     def _runner() -> None:

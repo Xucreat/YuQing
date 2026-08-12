@@ -16,6 +16,7 @@
 - 沿用 test_events.py 的 clean_events / seeded_region_id 隔离夹具（此处重定义以保证独立）。
 """
 import uuid
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -29,6 +30,7 @@ from app.models.opinion import Opinion
 from app.models.propagation import PropagationNode
 from app.models.alert import AlertRecord
 from app.services.event.aggregator import EventAggregator
+from app.core import task_manager
 
 SRC = "evt_v2"
 
@@ -36,8 +38,21 @@ SRC = "evt_v2"
 @pytest.fixture
 def clean_events():
     """清空 events / event_opinions / 本测试产生的 opinions，保证隔离。"""
+    def wait_for_background_tasks() -> None:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            with task_manager._tasks_lock:
+                running = any(
+                    task.status in (task_manager.STATUS_PENDING, task_manager.STATUS_RUNNING)
+                    for task in task_manager._tasks.values()
+                )
+            if not running:
+                return
+            time.sleep(0.05)
+
     db = SessionLocal()
     try:
+        wait_for_background_tasks()
         # 先清理可能引用 events 的外键行（aggregate 会触发传播重建产生 propagation_nodes / alert_records）
         db.query(PropagationNode).delete()
         # AlertRecord 引用 opinion_id（FK），必须在删除 Opinion 之前整表清空。
@@ -55,6 +70,7 @@ def clean_events():
     yield
     db = SessionLocal()
     try:
+        wait_for_background_tasks()
         # 先清理可能引用 events 的外键行（aggregate 会触发传播重建产生 propagation_nodes / alert_records）
         db.query(PropagationNode).delete()
         # AlertRecord 引用 opinion_id（FK），必须在删除 Opinion 之前整表清空。

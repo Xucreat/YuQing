@@ -479,7 +479,10 @@ def _parse_event_dt(raw: Optional[str], end_of_day: bool = False) -> Optional[da
     对 ``_end`` 区间终点，若仅给了日期（时间为 00:00:00），自动补齐到当天 23:59:59，
     使“选到某天”即包含当天全天。解析失败返回 None（该参数被忽略，不做过滤）。
     """
-    if not raw:
+    # Direct Python callers can observe FastAPI's Query default object rather
+    # than the resolved request value. Treat that sentinel as an omitted
+    # filter instead of attempting string operations on it.
+    if not raw or not isinstance(raw, str):
         return None
     s = raw.strip().replace("T", " ")
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):

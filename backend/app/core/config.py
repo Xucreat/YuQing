@@ -241,13 +241,24 @@ class Settings(BaseSettings):
     # Foreign-only remediation gates. Both remain disabled by default and are
     # never implied by the domestic scheduler switches.
     foreign_alert_auto_evaluation_enabled: bool = False
+    # 外网告警有效期（小时）。0 = 永不过期（默认，保持既有行为）。
+    # 大于 0 时，触发后超过该时长的告警视为「过期」，等同已解除：
+    # 统一有效风险 resolver 不再采用其 AI 结果，回退到规则结果。
+    foreign_alert_active_ttl_hours: int = 0
     foreign_event_auto_aggregation_enabled: bool = False
+    # Foreign collection is opt-in and remains disabled by default.
+    foreign_collection_schedule_enabled: bool = False
+    foreign_collection_schedule_interval_seconds: int = 60
     foreign_event_auto_confidence_threshold: float = 0.72
     foreign_event_auto_time_window_hours: int = 72
     # Cross-language candidates are isolated from same-language confirmation.
     foreign_event_cross_language_enabled: bool = False
     # Reserved for a separately approved future phase; this implementation never honors it.
     foreign_event_cross_language_auto_confirm_enabled: bool = False
+    # 外网 AI 研判总开关：由 pydantic-settings 从 .env 的 FOREIGN_AI_REVIEW_ENABLED 读取（默认关闭）。
+    # 启用后外网舆情详情「触发 AI 分析」才真正调用 DeepSeek provider；
+    # 同时供 foreign_risk_service.foreign_ai_is_enabled() 复用，使 .env 配置真正生效。
+    foreign_ai_review_enabled: bool = False
 
 
     # ===== Phase 6 可靠性收口配置（集中阈值，禁止散落 magic number）=====

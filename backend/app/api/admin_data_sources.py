@@ -43,6 +43,7 @@ from app.collectors.source_config import (
     validate_data_source_config,
     _validate_legacy_collection_config,
 )
+from app.collectors.common import is_safe_rss_url
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.core.permissions import require_admin, require_permission
@@ -115,7 +116,7 @@ _TYPE_CLASS_PATH: dict = {
     "news_site": "app.collectors.generic_site.GenericSiteCollector",
     "gov_site": "app.collectors.generic_site.GenericSiteCollector",
     "search": "app.collectors.generic_site.GenericSiteCollector",
-    "rss": "app.collectors.generic_site.GenericSiteCollector",
+    "rss": "app.collectors.rss_collector.RSSCollector",
     "foreign_rss": "app.collectors.foreign_rss.ForeignRSSCollector",
     "social": (
         "app.collectors.media_crawler_platform_collector."
@@ -128,6 +129,8 @@ _TYPE_CLASS_PATH: dict = {
 # 等逻辑写在类内部，config_json 必须为空（{}）；通用型（GenericSiteCollector）
 # 依赖 config_json 驱动，需校验其支持的字段。
 GENERIC_CLASS_PATH = "app.collectors.generic_site.GenericSiteCollector"
+# 通用国内 RSS 采集器：从数据源 config_json.feeds 读取地址（Phase RSS-Support）。
+RSS_CLASS_PATH = "app.collectors.rss_collector.RSSCollector"
 MEDIACRAWLER_CLASS_PATH = (
     "app.collectors.media_crawler_weibo_collector.MediaCrawlerWeiboCollector"
 )
@@ -229,6 +232,51 @@ def _has_foreign_config(raw: str | None) -> bool:
 
 def _is_foreign_source(ds: DataSource) -> bool:
     return _is_foreign(ds.class_path) or _has_foreign_config(ds.config_json)
+
+
+def _is_rss(class_path: str) -> bool:
+    return (class_path or "") == RSS_CLASS_PATH
+
+
+RSS_URL_SCHEME_PREFIXES = ("http://", "https://")
+
+
+def _validate_rss_config(cfg: dict) -> str | None:
+    """校验通用 RSS 数据源的 config_json。返回首个错误；无错误返回 None。
+
+    - feeds 缺省（旧 RSS_URLS 兼容路径）-> 允许（运行时回退环境变量）。
+    - feeds 必须非空 list，每项为字符串 URL 或 {"url": "..."} 对象。
+    - 每项地址必须是 http/https，且不能是本地/内网地址（创建期静态拦截，
+      运行时由 RSSCollector 再做完整 DNS 级 SSRF 防护）。
+    """
+    if not isinstance(cfg, dict):
+        return "RSS config_json must be a JSON object"
+    if "feeds" not in cfg:
+        # 旧配置：仅靠 RSS_URLS 环境变量（兼容 fallback）
+        return None
+    feeds = cfg.get("feeds")
+    if not isinstance(feeds, list) or not feeds:
+        return "RSS 数据源需要至少一个 feed（config_json.feeds 不能为空）"
+    urls: list[str] = []
+    for f in feeds:
+        if isinstance(f, str):
+            url = f
+        elif isinstance(f, dict):
+            url = f.get("url")
+        else:
+            return "RSS feed 必须是字符串 URL 或 {\"url\": \"...\"} 对象"
+        if not isinstance(url, str) or not url.strip():
+            return "RSS feed 地址不能为空"
+        url = url.strip()
+        if not url.lower().startswith(RSS_URL_SCHEME_PREFIXES):
+            return f"RSS feed 地址仅支持 http/https：{url}"
+        ok, reason = is_safe_rss_url(url, resolve_dns=False)
+        if not ok:
+            return f"RSS feed 地址不安全（{reason}）：{url}"
+        urls.append(url)
+    if not urls:
+        return "RSS 数据源需要至少一个有效 feed 地址"
+    return None
 
 
 FOREIGN_ALLOWED_KEYS = {
@@ -593,6 +641,11 @@ def _build_test(
     data_source_key: str | None = None,
 ) -> dict:
     """构建采集器并做一次轻量真实抓取校验。返回 {ok, error, verified, ...}。"""
+    # 策略键（max_items/filter_mode/keyword_scope）不是构造函数参数，装配时由
+    # registry 剥离后注入 source_config；此处若函数拿到的是完整 config_json，
+    # 需同样剥离，否则专用型采集器会因未知关键字参数 TypeError。
+    # 必须在 foreign/rss 分支之前计算，否则 RSS 分支会引用未定义的 build_cfg。
+    build_cfg = {k: v for k, v in (config or {}).items() if k not in STRATEGY_KEYS}
     if _is_foreign(class_path):
         # Foreign sources are intentionally kept in a dry-run/gray-rollout state.
         # Creating or editing one must never make a live network request.
@@ -602,10 +655,33 @@ def _build_test(
             "network_test_skipped": True,
             "note": "外网数据源跳过实时网络校验，仅执行结构校验",
         }
-    # 策略键（max_items/filter_mode/keyword_scope）不是构造函数参数，装配时由
-    # registry 剥离后注入 source_config；此处若函数拿到的是完整 config_json，
-    # 需同样剥离，否则专用型采集器会因未知关键字参数 TypeError。
-    build_cfg = {k: v for k, v in (config or {}).items() if k not in STRATEGY_KEYS}
+    if _is_rss(class_path):
+        # RSS 源：构建采集器并做一次真实抓取校验（含 SSRF 防护），返回命中条数。
+        try:
+            cls = import_class(class_path)
+            collector = cls(**build_cfg)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "verified": False,
+                "error": f"采集器构建失败（{class_path}）：{type(exc).__name__}: {exc}",
+            }
+        try:
+            items = collector.fetch()
+            return {
+                "ok": True,
+                "verified": True,
+                "note": f"RSS 实时抓取成功，命中 {len(items)} 条",
+                "count": len(items),
+                "feeds": len(collector.feeds),
+            }
+        except Exception as exc:
+            return {
+                "ok": False,
+                "verified": False,
+                "error": f"RSS 实时抓取失败：{type(exc).__name__}: {exc}",
+            }
+    # 策略键已在函数开头剥离为 build_cfg（见上方）。
     try:
         cls = import_class(class_path)
         if is_mediacrawler_collector(cls):
@@ -715,6 +791,11 @@ def _validate_create(body) -> str | None:
         if err:
             return err
         return _validate_mediacrawler_config(cfg, body.get("scope_region_codes"))
+    if _is_rss(class_path):
+        cfg, err = _parse_config_json(raw_cfg)
+        if err:
+            return err
+        return _validate_rss_config(cfg)
     if _is_generic(class_path):
         if _is_config_empty(raw_cfg):
             return "通用型采集器必须提供 config_json（至少包含 list_urls）"
@@ -1212,6 +1293,17 @@ def update_data_source(
                 ferr = _validate_foreign_config(cfg)
                 if ferr:
                     raise HTTPException(status_code=422, detail=ferr)
+                ds.config_json = json.dumps(cfg, ensure_ascii=False)
+            elif _is_rss(ds.class_path):
+                # 通用 RSS 源：校验 feeds 并保存（新建/编辑一律走 config_json）
+                if raw is None:
+                    raise HTTPException(status_code=422, detail="RSS 数据源不能清空 config_json")
+                cfg, err = _parse_config_json(raw)
+                if err:
+                    raise HTTPException(status_code=422, detail=err)
+                rerr = _validate_rss_config(cfg)
+                if rerr:
+                    raise HTTPException(status_code=422, detail=rerr)
                 ds.config_json = json.dumps(cfg, ensure_ascii=False)
             elif _is_generic(ds.class_path):
                 # 通用型（GenericSiteCollector）：允许设置合法 config；禁止清空

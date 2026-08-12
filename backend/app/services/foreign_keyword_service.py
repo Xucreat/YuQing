@@ -174,9 +174,28 @@ def list_foreign_keyword_categories(db: Session) -> list[str]:
 
 
 def get_foreign_keywords(db: Session) -> list[str]:
+    """返回所有启用关键词（兼容旧调用）。
+
+    注意：采集/监测应改用 :func:`get_foreign_monitoring_keywords`，
+    风险评分应改用 foreign_risk_service 的敏感词加载逻辑，避免敏感词进入采集。
+    """
     rows = db.scalars(
         select(ForeignKeyword.word)
         .where(ForeignKeyword.is_enabled.is_(True))
+        .order_by(ForeignKeyword.id)
+    ).all()
+    return [word.strip() for word in rows if word and word.strip()]
+
+
+def get_foreign_monitoring_keywords(db: Session) -> list[str]:
+    """仅返回 type='monitoring' 且启用的词，用于采集/监测范围过滤。
+
+    敏感词(type='sensitive') 绝不进入采集关键词列表，从而避免扩大或改变
+    采集范围。这是与风险评分职责分离的关键边界。
+    """
+    rows = db.scalars(
+        select(ForeignKeyword.word)
+        .where(ForeignKeyword.type == "monitoring", ForeignKeyword.is_enabled.is_(True))
         .order_by(ForeignKeyword.id)
     ).all()
     return [word.strip() for word in rows if word and word.strip()]

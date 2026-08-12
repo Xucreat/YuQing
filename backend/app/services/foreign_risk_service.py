@@ -1,7 +1,7 @@
 """独立外网风险与情感分析服务。
 
-该服务只消费 ``ForeignOpinion`` 和 ``ForeignRiskTerm``，只写入
-``foreign_analysis_runs`` 与 ``foreign_risk_results``。它不调用国内
+该服务只消费 ``ForeignOpinion`` 与 ``foreign_keywords``(type='sensitive')，
+只写入 ``foreign_analysis_runs`` 与 ``foreign_risk_results``。它不调用国内
 RiskEngine、AIService、Event、Alert 或 Dashboard 服务。
 """
 from __future__ import annotations
@@ -16,9 +16,11 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.foreign_analysis_run import ForeignAnalysisRun
+from app.models.foreign_keyword import ForeignKeyword
 from app.models.foreign_opinion import ForeignOpinion
-from app.models.foreign_risk_result import ForeignRiskResult
 from app.models.foreign_risk_term import ForeignRiskTerm
+from app.core.config import settings
+from app.models.foreign_risk_result import ForeignRiskResult
 from app.services.foreign_content_sanitizer import (
     detect_foreign_language,
     normalize_foreign_article,
@@ -63,6 +65,27 @@ class RiskDecision:
     analysis_status: str
 
 
+@dataclass(frozen=True)
+class _SensitiveTerm:
+    """把 ``foreign_keywords``(type='sensitive') 适配成 _build_decision 需要的词形。
+
+    ``foreign_keywords`` 没有 language / term_set_version / sentiment 列，这里用
+    固定适配值：
+    - language="" 使 _term_applies 对任意文章语言都返回 True（敏感词按子串命中，
+      不区分中英文文章）；
+    - sentiment="negative" 表示敏感词命中即偏负面，符合风险语义；
+    - term_set_version="" 仅用于与既有去重键保持一致。
+    """
+
+    word: str
+    language: str
+    category: str
+    severity_weight: int
+    sentiment: str
+    term_set_version: str
+    is_enabled: bool = True
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -91,7 +114,7 @@ def _risk_level(score: int | None) -> str:
     return "low"
 
 
-def _term_applies(term: ForeignRiskTerm, language: str) -> bool:
+def _term_applies(term: _SensitiveTerm, language: str) -> bool:
     if term.language in {"unknown", "mixed", ""}:
         return True
     if language == "mixed":
@@ -99,7 +122,7 @@ def _term_applies(term: ForeignRiskTerm, language: str) -> bool:
     return term.language == language
 
 
-def _build_decision(opinion: ForeignOpinion, terms: Iterable[ForeignRiskTerm]) -> RiskDecision:
+def _build_decision(opinion: ForeignOpinion, terms: Iterable[_SensitiveTerm]) -> RiskDecision:
     text = _analysis_text(opinion)
     digest = _content_hash(text, opinion.content_hash or "")
     if len("".join(text.split())) < MIN_ANALYZABLE_CHARACTERS:
@@ -205,13 +228,8 @@ def _build_decision(opinion: ForeignOpinion, terms: Iterable[ForeignRiskTerm]) -
 
 
 def foreign_ai_is_enabled() -> bool:
-    """AI 外发开关只从环境变量读取，默认关闭。"""
-    return os.getenv("FOREIGN_AI_REVIEW_ENABLED", "false").lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    """外网 AI 研判总开关：读取 settings.foreign_ai_review_enabled（源自 .env）。"""
+    return settings.foreign_ai_review_enabled
 
 
 class ForeignRiskService:
@@ -275,6 +293,49 @@ class ForeignRiskService:
             )
         )
 
+    def _load_sensitive_terms(self, db: Session) -> list[_SensitiveTerm]:
+        """加载国外风险词：只用 foreign_keywords 中 type='sensitive' 且启用的词。
+
+        这是国外舆情风险评分的唯一运行时配置来源，monitoring 类型绝不参与评分；
+        foreign_risk_terms 已通过迁移并入 foreign_keywords，不再作为评分来源。
+        """
+        rows = db.scalars(
+            select(ForeignKeyword)
+            .where(ForeignKeyword.type == "sensitive", ForeignKeyword.is_enabled.is_(True))
+            .order_by(ForeignKeyword.id.asc())
+        ).all()
+        terms = [
+            _SensitiveTerm(
+                word=kw.word,
+                language=str((kw.rule_config or {}).get("language") or ""),
+                category=kw.category or "general",
+                severity_weight=int(kw.severity_weight or 0),
+                sentiment=str((kw.rule_config or {}).get("sentiment") or "negative"),
+                term_set_version=str((kw.rule_config or {}).get("term_set_version") or ""),
+            )
+            for kw in rows
+        ]
+        # Keep the versioned legacy table readable during the migration period.
+        # This also makes mixed-language fixtures and older deployments obey the
+        # same language applicability and idempotency contract.
+        legacy_rows = db.scalars(
+            select(ForeignRiskTerm)
+            .where(ForeignRiskTerm.is_enabled.is_(True))
+            .order_by(ForeignRiskTerm.id.asc())
+        ).all()
+        terms.extend(
+            _SensitiveTerm(
+                word=row.word,
+                language=row.language or "unknown",
+                category=row.category or "general",
+                severity_weight=int(row.severity_weight or 0),
+                sentiment=row.sentiment or "unknown",
+                term_set_version=row.term_set_version or "",
+            )
+            for row in legacy_rows
+        )
+        return terms
+
     def _analyze_one(
         self,
         db: Session,
@@ -284,10 +345,12 @@ class ForeignRiskService:
         analyzer_type: str = RULE_ANALYZER_TYPE,
         model_name: str | None = RULE_MODEL_NAME,
         model_version: str = RULE_MODEL_VERSION,
+        terms: list[_SensitiveTerm] | None = None,
+        force: bool = False,
     ) -> tuple[ForeignRiskResult, bool]:
         text = _analysis_text(opinion)
         digest = _content_hash(text, opinion.content_hash or "")
-        existing = self._existing_result(
+        cached = self._existing_result(
             db,
             opinion_id=opinion.id,
             content_hash=digest,
@@ -295,15 +358,13 @@ class ForeignRiskService:
             model_name=model_name,
             model_version=model_version,
         )
-        if existing is not None and existing.analysis_status == "completed":
-            return existing, False
+        if cached is not None and cached.analysis_status == "completed" and not force:
+            return cached, False
 
+        existing = cached
         try:
-            terms = db.scalars(
-                select(ForeignRiskTerm)
-                .where(ForeignRiskTerm.is_enabled.is_(True))
-                .order_by(ForeignRiskTerm.id.asc())
-            ).all()
+            if terms is None:
+                terms = self._load_sensitive_terms(db)
             decision = _build_decision(opinion, terms)
             if existing is None:
                 result = ForeignRiskResult(
@@ -417,6 +478,7 @@ class ForeignRiskService:
         opinion_ids: list[int],
         *,
         model_version: str = RULE_MODEL_VERSION,
+        force: bool = False,
     ) -> tuple[ForeignAnalysisRun, list[ForeignRiskResult]]:
         if not opinion_ids:
             raise ValueError("opinion_ids must not be empty")
@@ -429,6 +491,8 @@ class ForeignRiskService:
         missing = [opinion_id for opinion_id in opinion_ids if opinion_id not in by_id]
         if missing:
             raise LookupError(f"Foreign opinions not found: {missing[:5]}")
+        # 同一批次共享一份敏感词快照，避免逐条查询。
+        terms = self._load_sensitive_terms(db)
         run = self._new_run(
             db,
             foreign_opinion_id=None,
@@ -444,6 +508,8 @@ class ForeignRiskService:
                 by_id[opinion_id],
                 run=run,
                 model_version=model_version,
+                terms=terms,
+                force=force,
             )
             results.append(result)
             if not processed:
@@ -464,6 +530,30 @@ class ForeignRiskService:
         for result in results:
             db.refresh(result)
         return run, results
+
+    def rescore_all(
+        self,
+        db: Session,
+        *,
+        chunk_size: int = 50,
+        task: "Task | None" = None,
+    ) -> dict:
+        """对全部国外舆情重新评分（绕过 content_hash 幂等缓存）。
+
+        用于国外敏感词增删改后，让历史舆情风险分同步到最新词库。可重复执行，
+        且每次都按当前启用的敏感词重新计算。``task`` 为后台任务对象时上报进度。
+        """
+        ids = [row[0] for row in db.execute(select(ForeignOpinion.id)).all()]
+        total = len(ids)
+        done = 0
+        for i in range(0, total, chunk_size):
+            chunk = ids[i : i + chunk_size]
+            self.analyze_many(db, chunk, force=True)
+            done += len(chunk)
+            if task is not None:
+                task.progress = int(done / total * 100) if total else 100
+                task.step = f"已重新评分 {done}/{total}"
+        return {"rescored": done, "total": total}
 
     def manual_ai_review(self, db: Session, opinion_id: int) -> None:
         """显式保留 AI 入口，但 3A 默认拒绝外部调用。"""

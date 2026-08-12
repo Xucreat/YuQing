@@ -6,7 +6,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Callable
 
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.collectors.registry import import_class
@@ -14,7 +15,7 @@ from app.collectors.foreign_rss import ForeignRSSCollector
 from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
 from app.models.foreign_opinion import ForeignOpinion
-from app.services.foreign_keyword_service import get_foreign_keywords
+from app.services.foreign_keyword_service import get_foreign_monitoring_keywords
 
 
 def _config(source: DataSource) -> dict:
@@ -47,6 +48,13 @@ def _safe_error(value: object) -> str:
     return "Foreign feed test failed"
 
 
+def _lock_dedupe_key(db: Session, key: str) -> None:
+    """Serialize same-key inserts across worker processes without a schema change."""
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": key})
+
+
 def _probe_config(*, feeds: list[str], keywords: list[str], source_name: str, proxy_env: str | None,
                   timeout: int, connect_timeout: float | None, read_timeout: float | None,
                   max_items: int, max_retries: int, respect_robots: bool) -> dict:
@@ -77,7 +85,7 @@ def _probe_config(*, feeds: list[str], keywords: list[str], source_name: str, pr
     elif collector.last_failed_feeds:
         status = "failed"
     else:
-        status = "no_valid_articles"
+        status = "empty_feed"
     return {
         "source_name": source_name,
         "scope": "foreign",
@@ -138,7 +146,7 @@ def test_foreign_source(
     feeds = [str(feed).strip() for feed in (feeds or []) if str(feed).strip()]
     if not feeds:
         raise ValueError("At least one RSS feed is required")
-    keywords = [str(word).strip() for word in (keywords if keywords is not None else get_foreign_keywords(db)) if str(word).strip()]
+    keywords = [str(word).strip() for word in (keywords if keywords is not None else get_foreign_monitoring_keywords(db)) if str(word).strip()]
     result = _probe_config(
         feeds=feeds,
         keywords=keywords,
@@ -161,7 +169,9 @@ def collect_foreign(
     source_ids: list[int] | None = None,
     *,
     all_sources: bool = False,
+    batch_id: str | None = None,
     dry_run: bool = False,
+    trigger_type: str = "manual",
     on_progress: Callable[[int, int, str], None] | None = None,
 ) -> dict:
     if all_sources and source_ids is not None:
@@ -181,8 +191,8 @@ def collect_foreign(
         if any(not _is_foreign(source) for source in selected):
             raise ValueError("All selected sources must be foreign sources")
     sources = [source for source in selected if _is_foreign(source)]
-    keywords = get_foreign_keywords(db)
-    batch_id = uuid.uuid4().hex
+    keywords = get_foreign_monitoring_keywords(db)
+    batch_id = batch_id or uuid.uuid4().hex
     result = {
         "batch_id": batch_id,
         "scope": "foreign",
@@ -194,6 +204,7 @@ def collect_foreign(
         "duplicate": 0,
         "failed": 0,
         "dry_run": dry_run,
+        "source_results": [],
     }
     if not keywords:
         return result
@@ -203,7 +214,7 @@ def collect_foreign(
         run = CollectorRun(
             collector_name=source.name,
             batch_id=batch_id,
-            trigger_type="manual",
+            trigger_type=trigger_type,
             scope="foreign",
             start_time=started,
             status="running",
@@ -246,6 +257,9 @@ def collect_foreign(
                     digest = hashlib.sha256(
                         f"{title}\n{summary}\n{content}".encode("utf-8")
                     ).hexdigest()
+                    if url:
+                        _lock_dedupe_key(db, f"foreign:url:{url}")
+                    _lock_dedupe_key(db, f"foreign:content:{digest}")
                     existing = None
                     if url:
                         existing = db.scalar(
@@ -261,21 +275,30 @@ def collect_foreign(
                         result["duplicate"] += 1
                         run.duplicate += 1
                         continue
-                    opinion = ForeignOpinion(
-                        source_id=source.id,
-                        source_key=source.key,
-                        source_name_snapshot=source.name,
-                        title=title,
-                        summary=summary,
-                        content=content,
-                        url=url,
-                        published_at=item.get("publish_time"),
-                        collected_at=datetime.now(timezone.utc),
-                        matched_keywords=item.get("matched_keywords") or [],
-                        content_hash=digest,
-                    )
-                    db.add(opinion)
-                    db.flush()
+                    try:
+                        with db.begin_nested():
+                            opinion = ForeignOpinion(
+                                source_id=source.id,
+                                source_key=source.key,
+                                source_name_snapshot=source.name,
+                                title=title,
+                                summary=summary,
+                                content=content,
+                                url=url,
+                                published_at=item.get("publish_time"),
+                                collected_at=datetime.now(timezone.utc),
+                                matched_keywords=item.get("matched_keywords") or [],
+                                content_hash=digest,
+                            )
+                            db.add(opinion)
+                            db.flush()
+                    except IntegrityError:
+                        # The URL partial unique index is the final cross-process
+                        # guard.  A concurrent winner is a duplicate, not a run
+                        # failure, and the savepoint keeps the batch usable.
+                        result["duplicate"] += 1
+                        run.duplicate += 1
+                        continue
                     result["created_ids"].append(opinion.id)
                     run.created += 1
                     result["created"] += 1
@@ -296,6 +319,15 @@ def collect_foreign(
         finally:
             run.end_time = datetime.now(timezone.utc)
             db.commit()
+        result["source_results"].append(
+            {
+                "source_id": source.id,
+                "status": run.status,
+                "failed": int(run.failed or 0),
+                "created": int(run.created or 0),
+                "duplicate": int(run.duplicate or 0),
+            }
+        )
         result["sources"] += 1
         if on_progress:
             on_progress(index, len(sources), source.name)

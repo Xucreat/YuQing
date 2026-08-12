@@ -231,4 +231,6 @@ def test_analysis_runs_and_terms_api_are_foreign_only(client, auth_headers):
         headers=auth_headers,
     )
     assert runs.status_code == 200, runs.text
-    assert all(item["analyzer_type"] == "rule" for item in runs.json()["items"])
+    # Rule and explicitly enabled AI reviews are both foreign analysis runs;
+    # the endpoint must never leak a domestic analyzer type into this view.
+    assert all(item["analyzer_type"] in {"rule", "ai"} for item in runs.json()["items"])

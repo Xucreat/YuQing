@@ -42,6 +42,7 @@ class ForeignAlert(Base):
         Index("ix_foreign_alerts_event_id", "foreign_event_id"),
         Index("ix_foreign_alerts_evaluation_source", "evaluation_source"),
         Index("ix_foreign_alerts_ai_result", "foreign_ai_result_id"),
+        Index("ix_foreign_alerts_expires_at", "expires_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -79,6 +80,9 @@ class ForeignAlert(Base):
     risk_level: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
     deduplication_key: Mapped[str] = mapped_column(String(512), nullable=False)
     triggered_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    # Optional validity deadline. NULL keeps the historical behaviour where only
+    # an explicit resolve/suppress action ends the alert.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     suppressed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

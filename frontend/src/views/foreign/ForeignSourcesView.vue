@@ -14,7 +14,7 @@
       <span class="scope-badge">来源与语言分布 · 无地图</span>
       <span v-if="visualizationStale" class="stale-badge">数据较旧</span>
       <div class="toolbar-right">
-        <button class="btn btn-primary" @click="beginNewSource">+ 新增外网源</button>
+        <button v-if="canManageSource" class="btn btn-primary" @click="beginNewSource">+ 新增外网源</button>
       </div>
     </div>
     <div v-if="visualizationError" class="error-state">{{ visualizationError }} <button class="btn btn-secondary" @click="loadSourcesView">重试</button></div>
@@ -80,11 +80,11 @@
         <button class="btn btn-primary" :disabled="sourceSaving || !sourceDraftTested" @click="saveSource">{{ sourceSaving ? '保存中...' : '保存' }}</button>
       </template>
     </el-dialog>
-    <div class="table-wrap fw-src-table">
-      <table>
+    <div class="card source-table-card fw-src-table">
+      <table class="tbl">
         <thead>
           <tr>
-            <th>来源</th><th>语言</th><th>文章数</th><th>风险完成</th><th>告警</th><th>失败次数</th><th>最近运行</th><th>RSS</th><th>采集器</th><th>状态</th><th>调度</th><th>间隔</th><th>代理</th><th>操作</th>
+            <th>来源</th><th>语言</th><th>文章数</th><th>风险完成</th><th>告警</th><th>失败次数</th><th>最近运行</th><th>最近抓取 / 新增</th><th>采集质量</th><th>最近运行时间</th><th>下一次采集</th><th>RSS</th><th>采集器</th><th>状态</th><th>调度</th><th>间隔</th><th>代理</th><th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -95,20 +95,32 @@
             <td>{{ row.stats?.risk_completed_count ?? '-' }}</td>
             <td>{{ row.stats?.alert_count ?? '-' }}</td>
             <td>{{ row.stats?.failed_count ?? '-' }}</td>
-            <td>{{ row.stats?.latest_run?.status || '-' }}</td>
+            <td><span v-if="row.latest_run_status" class="pill" :class="runPill(row.latest_run_status)">{{ runText(row.latest_run_status) }}</span><span v-else class="muted">从未运行</span></td>
+            <td>
+              <span v-if="row.collection_quality">{{ row.collection_quality.latest_fetched_raw ?? '-' }} / {{ row.collection_quality.latest_created ?? '-' }}</span>
+              <span v-else class="muted">-</span>
+            </td>
+            <td>
+              <template v-if="row.collection_quality">
+                <span class="pill" :class="qualityPill(row.collection_quality.empty_fetch_risk)">{{ qualityText(row.collection_quality.empty_fetch_risk) }}</span>
+              </template>
+              <span v-else class="muted">暂无运行</span>
+            </td>
+            <td>{{ formatTime(row.latest_run_at) }}</td>
+            <td>{{ formatTime(row.next_collect_time) }}</td>
             <td><div v-for="feed in row.feeds" :key="feed" class="feed">{{ feed }}</div></td>
             <td><div class="muted">{{ row.class_path || 'foreign_rss' }}</div></td>
-            <td><button class="status-toggle" :class="{ on: row.enabled }" :disabled="sourceBusyId === row.id" @click="toggleSource(row)">{{ row.enabled ? '已启用' : '已停用' }}</button></td>
-            <td>{{ row.schedule_enabled ? '自动' : '手动' }}</td>
+            <td><el-switch :model-value="row.enabled" :loading="sourceBusyId === row.id" :disabled="!canManageSource" @change="() => toggleSource(row)" /></td>
+            <td><el-switch :model-value="row.schedule_enabled" :loading="sourceBusyId === row.id" :disabled="!row.enabled || !canManageSource" :title="!row.enabled ? '启用数据源后才能开启定时采集' : undefined" @change="() => toggleSchedule(row)" /></td>
             <td>{{ row.schedule_interval_minutes || '-' }} 分钟</td>
             <td>{{ row.proxy_env || '直连' }}<span v-if="row.proxy_configured" class="proxy-mark">已配置</span></td>
             <td class="actions">
-              <button class="link-btn" @click="editSource(row)">编辑</button>
-              <button class="link-btn" @click="testSource(row)">测试</button>
+              <button v-if="canManageSource" class="link-btn" @click="editSource(row)">编辑</button>
+              <button v-if="canTestSource" class="link-btn" @click="testSource(row)">测试</button>
               <button class="link-btn" @click="loadSourceRuns(row)">历史</button>
             </td>
           </tr>
-          <tr v-if="!visibleSources.length"><td colspan="14" class="empty">暂无外网来源</td></tr>
+          <tr v-if="!visibleSources.length"><td colspan="18" class="empty">暂无外网来源</td></tr>
         </tbody>
       </table>
     </div>
@@ -165,6 +177,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import Pager from '@/components/Pager.vue'
 import api from '@/api'
+import { usePermission } from '@/composables/usePermission'
 
 type Source = {
   id: number
@@ -184,6 +197,18 @@ type Source = {
   request_interval?: number
   max_content_length?: number
   respect_robots?: boolean
+  latest_run_status?: string | null
+  latest_run_at?: string | null
+  next_collect_time?: string | null
+  collection_quality?: {
+    empty_fetch_risk: 'normal' | 'warning' | 'high' | 'unknown'
+    latest_fetched_raw?: number | null
+    latest_created?: number | null
+    run_count?: number
+    success_rate?: number | null
+    consecutive_failed_count?: number
+    consecutive_empty_fetch_count?: number
+  } | null
 }
 type Run = { id: number; collector_name: string; start_time?: string | null; end_time?: string | null; status: string; fetched_raw: number; matched: number; created: number; duplicate: number; proxy_used: boolean; error_msg?: string | null }
 
@@ -205,6 +230,9 @@ const selectedSourceRuns = ref<{ name: string; items: Run[] } | null>(null)
 const sourceRunsVisible = ref(false)
 const sourceRunsLoading = ref(false)
 const sourceDraft = reactive({ name: '', key: '', feedsText: '', language: 'unknown', proxyEnv: 'FOREIGN_HTTP_PROXY', timeout: 15, maxRetries: 2, maxItems: 100, requestInterval: 0.5, scheduleInterval: 60, maxContentLength: 200000, respectRobots: true })
+const { hasPermission } = usePermission()
+const canManageSource = computed(() => hasPermission('foreign:data:manage') || hasPermission('foreign:sources:write'))
+const canTestSource = computed(() => hasPermission('foreign:data:manage') || hasPermission('foreign:sources:test'))
 const sourceFilters = reactive({ q: '', language: '', sourceKey: '' })
 const sourcePage = ref(1)
 const sourceSize = 20
@@ -342,7 +370,7 @@ function sourceTestPayload() {
   }
 }
 async function testSourceDraft() {
-  if (sourceTesting.value) return
+  if (sourceTesting.value || !canTestSource.value) return
   sourceTesting.value = true
   sourceDraftTested.value = false
   try {
@@ -354,7 +382,7 @@ async function testSourceDraft() {
   } catch (err: any) { sourceTestResult.value = null; ElMessage.error(err?.response?.data?.detail || '外网源连通性测试失败') } finally { sourceTesting.value = false }
 }
 async function saveSource() {
-  if (sourceSaving.value || !sourceDraftTested.value) return
+  if (sourceSaving.value || !sourceDraftTested.value || !canManageSource.value) return
   sourceSaving.value = true
   try {
     const payload = sourcePayload()
@@ -368,6 +396,7 @@ async function saveSource() {
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网数据源保存失败') } finally { sourceSaving.value = false }
 }
 async function testSource(row: Source) {
+  if (!canTestSource.value) return
   sourceTesting.value = true
   try {
     const response = await api.post('/foreign/sources/test', { source_id: row.id, fetch_full_text: false })
@@ -387,9 +416,30 @@ async function loadSourceRuns(row: Source) {
   }
 }
 async function toggleSource(row: Source) {
-  if (sourceBusyId.value) return
+  if (sourceBusyId.value || !canManageSource.value) return
   sourceBusyId.value = row.id
   try { await api.patch(`/foreign/sources/${row.id}`, { enabled: !row.enabled, schedule_enabled: false, fetch_full_text: false }); await loadSourcesView(); ElMessage.success('外网数据源状态已更新') } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '数据源状态更新失败') } finally { sourceBusyId.value = null }
+}
+function qualityPill(risk: string): string {
+  return ({ normal: 'pill-green', warning: 'pill-orange', high: 'pill-red', unknown: 'pill-gray' } as Record<string, string>)[risk] || 'pill-gray'
+}
+function qualityText(risk: string): string {
+  return ({ normal: '正常', warning: '空抓取', high: '高风险', unknown: '未运行' } as Record<string, string>)[risk] || '未知'
+}
+async function toggleSchedule(row: Source) {
+  if (sourceBusyId.value || !row.enabled || !canManageSource.value) return
+  sourceBusyId.value = row.id
+  try {
+    await api.patch(`/foreign/sources/${row.id}`, {
+      schedule_enabled: !row.schedule_enabled,
+      schedule_interval_minutes: row.schedule_interval_minutes || 60,
+      fetch_full_text: false,
+    })
+    await loadSourcesView()
+    ElMessage.success('定时采集设置已更新')
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '定时采集设置更新失败')
+  } finally { sourceBusyId.value = null }
 }
 function resetSourceDraft() {
   sourceDraft.name = ''
@@ -479,4 +529,55 @@ onMounted(loadSourcesView)
 .apple-dialog .pill-orange { background: rgba(255,159,10,0.12); color: #c77700; }
 .apple-dialog .pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
 .apple-dialog .error-cell { color: #ff3b30; font-size: 12.5px; max-width: 320px; }
+
+/* Match the domestic source table: same card frame, density, and horizontal scroll behavior. */
+.fw-src-table {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 6px 14px;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 12px 32px rgba(0, 0, 0, .05);
+}
+.fw-src-table .tbl {
+  width: max-content;
+  min-width: 1780px;
+  border-collapse: collapse;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.fw-src-table .tbl thead th {
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #86868b;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e8e8ed;
+}
+.fw-src-table .tbl tbody td {
+  padding: 13px 18px;
+  border-bottom: 1px solid #e8e8ed;
+  color: #1d1d1f;
+  vertical-align: middle;
+}
+.fw-src-table .tbl tbody tr:last-child td { border-bottom: none; }
+.fw-src-table .tbl tbody tr:hover { background: #fafafc; cursor: default; }
+.fw-src-table .actions { white-space: nowrap; }
+.fw-src-table .pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 980px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.fw-src-table .pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.fw-src-table .pill-orange { background: rgba(255,159,10,0.12); color: #c77700; }
+.fw-src-table .pill-red { background: rgba(255,59,48,0.1); color: #ff3b30; }
+.fw-src-table .pill-blue { background: rgba(0,122,255,0.1); color: #007aff; }
+.fw-src-table .pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
 </style>

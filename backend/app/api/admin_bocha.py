@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.permissions import require_admin
 from app.db.session import get_db
@@ -271,7 +271,10 @@ def promote_bocha_lead(
         select(BochaLead)
         .where(BochaLead.id == lead_id)
         .with_for_update()
-        .options(joinedload(BochaLead.creator))
+        # ``created_by`` is nullable; a joined eager load turns the lock into
+        # a LEFT JOIN, which PostgreSQL rejects for FOR UPDATE.  Load the
+        # optional creator in a separate query after locking the lead row.
+        .options(selectinload(BochaLead.creator))
     )
     if lead is None:
         raise HTTPException(

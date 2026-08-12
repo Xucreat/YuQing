@@ -543,9 +543,19 @@ class CollectorService:
                     batch_id=batch_id,
                 ) or []
             else:
-                items = collector.fetch(
-                    keywords=monitoring_kw, region_kw=region_kw, topic_kw=topic_kw
-                ) or []
+                try:
+                    items = collector.fetch(
+                        keywords=monitoring_kw,
+                        region_kw=region_kw,
+                        topic_kw=topic_kw,
+                    ) or []
+                except TypeError as exc:
+                    # Keep older/test collectors that only accept ``keywords``
+                    # compatible with the richer regional collector contract.
+                    # Do not hide unrelated TypeErrors raised inside fetch().
+                    if "unexpected keyword argument" not in str(exc):
+                        raise
+                    items = collector.fetch(keywords=monitoring_kw) or []
             # 统计采集器实际抓取并完成基础解析的条数；微博展开评论行会在 Collector 内合并为主帖 item，
             # 因此优先读取采集器暴露的 last_fetched_raw，普通采集器仍回退为 len(items)。
             fetched_raw = int(getattr(collector, "last_fetched_raw", len(items)) or 0)

@@ -69,6 +69,10 @@
       <el-form-item label="权重">
         <el-input-number v-model="keywordDraft.weight" :min="0" :max="100" />
       </el-form-item>
+      <el-form-item label="风险权重">
+        <el-input-number v-model="keywordDraft.severity_weight" :min="0" :max="100" />
+        <span style="margin-left:8px;color:#86868b;font-size:12px;">敏感词命中后按此值累加风险分（监测词不参与评分）</span>
+      </el-form-item>
       <el-form-item label="启用">
         <el-switch v-model="keywordDraft.is_enabled" />
       </el-form-item>
@@ -106,7 +110,7 @@ const keywordPage = ref(1)
 const keywordSize = 50
 const keywordTotal = ref(0)
 const keywordFilters = reactive({ q: '', category: '', type: '', enabled: '' })
-const keywordDraft = reactive({ word: '', category: 'general', type: 'monitoring' as 'monitoring' | 'sensitive', weight: 10, is_enabled: true })
+const keywordDraft = reactive({ word: '', category: 'general', type: 'monitoring' as 'monitoring' | 'sensitive', weight: 10, severity_weight: 0, is_enabled: true })
 const editingKeywordId = ref<number | null>(null)
 const keywordDialogVisible = ref(false)
 
@@ -136,6 +140,7 @@ function openCreate() {
   keywordDraft.category = 'general'
   keywordDraft.type = 'monitoring'
   keywordDraft.weight = 10
+  keywordDraft.severity_weight = 0
   keywordDraft.is_enabled = true
   keywordDialogVisible.value = true
 }
@@ -145,7 +150,7 @@ async function saveKeyword() {
   if (!word) { ElMessage.warning('请输入关键词'); return }
   keywordSaving.value = true
   try {
-    const payload = { word, category: keywordDraft.category.trim() || 'general', type: keywordDraft.type, weight: keywordDraft.weight, severity_weight: 0, is_enabled: keywordDraft.is_enabled, source: editingKeywordId.value ? undefined : 'custom' }
+    const payload = { word, category: keywordDraft.category.trim() || 'general', type: keywordDraft.type, weight: keywordDraft.weight, severity_weight: keywordDraft.severity_weight, is_enabled: keywordDraft.is_enabled, source: editingKeywordId.value ? undefined : 'custom' }
     if (editingKeywordId.value) {
       await api.patch(`/foreign/keywords/${editingKeywordId.value}`, payload)
       ElMessage.success('外网关键词已更新')
@@ -184,6 +189,7 @@ function editKeyword(row: Keyword) {
   keywordDraft.category = row.category
   keywordDraft.type = row.type || 'monitoring'
   keywordDraft.weight = row.weight ?? 10
+  keywordDraft.severity_weight = row.severity_weight ?? 0
   keywordDraft.is_enabled = row.is_enabled
   keywordDialogVisible.value = true
 }

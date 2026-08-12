@@ -150,6 +150,7 @@ class AdminPasswordReset(BaseModel):
 class UserPasswordReset(BaseModel):
     old_password: str
     new_password: str
+    confirm_password: str
 
 
 # ---------------- 审计日志 ----------------

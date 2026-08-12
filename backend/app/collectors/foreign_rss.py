@@ -3,14 +3,20 @@ from __future__ import annotations
 import os
 import time
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import requests
 from bs4 import BeautifulSoup
 
 from app.collectors.base import BaseCollector
-from app.collectors.common import DEFAULT_UA, extract_article_text, parse_rss
+from app.collectors.common import (
+    DEFAULT_UA,
+    RSSParseError,
+    extract_article_text,
+    is_safe_rss_url,
+    parse_rss,
+)
 from app.services.foreign_content_sanitizer import sanitize_foreign_html
 
 
@@ -32,6 +38,7 @@ class ForeignRSSCollector(BaseCollector):
         max_content_length: int = 200_000,
         request_interval: float = 0.5,
         max_retries: int = 2,
+        max_redirects: int = 5,
         fetch_full_text: bool = False,
         respect_robots: bool = True,
         source_name: str | None = None,
@@ -53,6 +60,7 @@ class ForeignRSSCollector(BaseCollector):
         self.max_content_length = max(1, int(max_content_length))
         self.request_interval = max(0.0, float(request_interval))
         self.max_retries = max(0, int(max_retries))
+        self.max_redirects = max(0, min(int(max_redirects), 10))
         self.fetch_full_text = bool(fetch_full_text)
         self.respect_robots = bool(respect_robots)
         self.is_foreign = bool(is_foreign)
@@ -75,21 +83,36 @@ class ForeignRSSCollector(BaseCollector):
         last_error: Exception | None = None
         for attempt in range(self.max_retries + 1):
             try:
-                response = requests.get(
-                    url,
-                    headers={"User-Agent": DEFAULT_UA},
-                    timeout=(self.connect_timeout, self.read_timeout),
-                    proxies=self._proxies(),
-                )
-                self.last_http_status = response.status_code
-                response.raise_for_status()
-                response.encoding = response.encoding or response.apparent_encoding or "utf-8"
-                return response
+                current = url
+                for hop in range(self.max_redirects + 1):
+                    safe, reason = is_safe_rss_url(current, resolve_dns=True)
+                    if not safe:
+                        raise ValueError(f"RSS URL blocked: {reason or 'unsafe URL'}")
+                    response = requests.get(
+                        current,
+                        headers={"User-Agent": DEFAULT_UA},
+                        timeout=(self.connect_timeout, self.read_timeout),
+                        proxies=self._proxies(),
+                        allow_redirects=False,
+                    )
+                    self.last_http_status = response.status_code
+                    if response.status_code in (301, 302, 303, 307, 308):
+                        location = response.headers.get("Location")
+                        if not location:
+                            raise RuntimeError("RSS redirect missing Location")
+                        if hop >= self.max_redirects:
+                            raise RuntimeError("RSS redirect limit exceeded")
+                        current = urljoin(current, location)
+                        continue
+                    response.raise_for_status()
+                    response.encoding = response.encoding or response.apparent_encoding or "utf-8"
+                    return response
+                raise RuntimeError("RSS redirect limit exceeded")
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 if attempt < self.max_retries:
                     time.sleep(min(2**attempt, 5))
-        raise RuntimeError(str(last_error) if last_error else "request failed")
+        raise RuntimeError(str(last_error) if last_error else "RSS request failed")
 
     @staticmethod
     def _feed_label(url: str) -> str:
@@ -155,11 +178,20 @@ class ForeignRSSCollector(BaseCollector):
                     ).casefold()
                     if any(word.casefold() in text for word in self.keywords):
                         report["matched_count"] += 1
-            except Exception as exc:  # noqa: BLE001
+            except RSSParseError:
                 self.last_failed_feeds += 1
-                self.last_error = str(exc)
+                self.last_error = "invalid RSS/Atom XML"
                 report["failure_count"] = 1
-                report["error"] = "RSS feed request or XML parsing failed"
+                report["error"] = "invalid_xml"
+                report["status"] = "invalid_xml"
+            except Exception:  # noqa: BLE001
+                self.last_failed_feeds += 1
+                self.last_error = "RSS request failed"
+                report["failure_count"] = 1
+                report["error"] = "request_failed"
+                report["status"] = "request_failed"
+            if not report["failure_count"]:
+                report["status"] = "success" if report["valid_count"] else "empty_feed"
             self.last_feed_reports.append(report)
         return list(self.last_feed_reports)
 
@@ -205,16 +237,33 @@ class ForeignRSSCollector(BaseCollector):
         for feed_url in self.feeds:
             try:
                 parsed = parse_rss(self._get(feed_url))
-            except Exception as exc:  # noqa: BLE001
-                self.last_error = str(exc)
+            except RSSParseError:
+                self.last_error = "invalid RSS/Atom XML"
                 self.last_failed_feeds += 1
                 continue
+            except Exception:  # noqa: BLE001
+                self.last_error = "RSS request failed"
+                self.last_failed_feeds += 1
+                continue
+            seen: set[tuple[str, str]] = set()
             for item in parsed:
                 title = str(item.get("title") or "").strip()
-                summary = str(item.get("content") or "").strip()
+                summary = str(item.get("summary") or item.get("content") or "").strip()
+                raw_content = str(item.get("content") or summary).strip()
                 url = str(item.get("url") or "").strip()
                 summary = sanitize_foreign_html(summary)[: self.max_content_length]
-                content = sanitize_foreign_html(self._fetch_full_text(url) or summary)[: self.max_content_length]
+                content = sanitize_foreign_html(self._fetch_full_text(url) or raw_content or summary)[: self.max_content_length]
+                external_id = str(item.get("external_id") or item.get("guid") or "").strip()
+                content_key = (title + "\n" + summary + "\n" + content).casefold()
+                if external_id:
+                    dedupe_key = ("external_id", external_id)
+                elif url:
+                    dedupe_key = ("url", url)
+                else:
+                    dedupe_key = ("content", content_key)
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
                 merged = f"{title}\n{summary}\n{content}".lower()
                 matched = [
                     word for word in self.keywords if word.lower() in merged
@@ -227,6 +276,9 @@ class ForeignRSSCollector(BaseCollector):
                         "summary": summary[: self.max_content_length],
                         "content": content,
                         "url": url,
+                        "author": item.get("author") or "",
+                        "external_id": external_id or None,
+                        "guid": item.get("guid") or external_id or None,
                         "source": self.source_name,
                         "publish_time": item.get("publish_time"),
                         "matched_keywords": list(dict.fromkeys(matched)),

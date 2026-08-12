@@ -319,6 +319,12 @@ def test_foreign_source_api_validates_feeds_and_keeps_schedule_manual(
     # Patch the module-level requests.get used by ForeignRSSCollector._get_response,
     # so this API contract test cannot make a real network request.
     monkeypatch.setattr("app.collectors.foreign_rss.requests.get", fake_get)
+    # The fixture hostname is intentionally offline; provide a public DNS
+    # answer so the production DNS-level SSRF guard remains exercised.
+    monkeypatch.setattr(
+        "app.collectors.common.socket.getaddrinfo",
+        lambda *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 0))],
+    )
     response = client.post(
         "/api/foreign/sources",
         headers=auth_headers,
@@ -343,7 +349,9 @@ def test_foreign_source_api_validates_feeds_and_keeps_schedule_manual(
         )
         assert updated.status_code == 200, updated.text
         assert updated.json()["enabled"] is True
-        assert updated.json()["schedule_enabled"] is False
+        # Source-level scheduling is independent from the deployment-level
+        # FOREIGN_COLLECTION_SCHEDULE_ENABLED switch.
+        assert updated.json()["schedule_enabled"] is True
         assert updated.json()["config_json"]
     finally:
         db = SessionLocal()

@@ -64,6 +64,7 @@ def test_foreign_collect_requires_explicit_scope(client, auth_headers, monkeypat
         assert response.status_code == 200, response.text
         assert calls[-1][2] == [source.id]
         assert calls[-1][3] is False
+        assert response.json()["batch_id"] == calls[-1][4]
     finally:
         db.delete(source)
         db.commit()
@@ -85,6 +86,7 @@ def test_foreign_collect_full_scope_requires_explicit_flag(client, auth_headers,
     assert response.status_code == 200, response.text
     assert calls[-1][2] is None
     assert calls[-1][3] is True
+    assert response.json()["batch_id"] == calls[-1][4]
     conflict = client.post(
         "/api/foreign/collect",
         headers=auth_headers,
@@ -132,7 +134,8 @@ def test_foreign_workspace_uses_explicit_scope_operations():
     workspace = (
         Path(__file__).resolve().parents[2] / "frontend" / "src" / "views" / "ForeignWorkspace.vue"
     ).read_text(encoding="utf-8")
-    assert "const approvedSourceIds = [57, 58, 59, 60]" in workspace
-    assert "{ source_ids: approvedSourceIds }" in workspace
+    assert "api.get('/foreign/sources/approved')" in workspace
+    assert "const selectedSourceIds = ref<number[]>([])" in workspace
+    assert "{ source_ids: selectedSourceIds.value }" in workspace
     assert "{ all_sources: true }" in workspace
     assert "{ source_ids: null }" not in workspace

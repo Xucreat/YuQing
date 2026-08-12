@@ -63,12 +63,7 @@ def _safe_error(value: object) -> str:
 
 
 def foreign_ai_is_enabled() -> bool:
-    return os.getenv("FOREIGN_AI_REVIEW_ENABLED", "false").lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    return settings.foreign_ai_review_enabled
 
 
 class ForeignAIService:
@@ -102,6 +97,35 @@ class ForeignAIService:
         run.success_count = success
         run.failed_count = failed
         run.error_message = error_message
+
+    def analyze_opinion_manual(
+        self, db: Session, opinion_id: int, *, force: bool = False
+    ) -> tuple[ForeignAIResult, bool]:
+        """Manual entry point with click-level idempotency.
+
+        Returns ``(result, reused)``. ``reused`` is True when a completed
+        evaluation for exactly the same content and model already exists, in
+        which case the provider is *not* called again. This is what keeps a
+        double click from producing a second AI result or a second alert.
+        Pass ``force=True`` to deliberately re-run the review.
+        """
+        opinion = db.get(ForeignOpinion, opinion_id)
+        if opinion is None:
+            raise LookupError("Foreign opinion not found")
+        if not force:
+            digest = _content_hash(_analysis_text(opinion), opinion.content_hash or "")
+            existing = db.scalar(
+                select(ForeignAIResult).where(
+                    ForeignAIResult.foreign_opinion_id == opinion.id,
+                    ForeignAIResult.model_name == AI_MODEL_NAME,
+                    ForeignAIResult.model_version == AI_MODEL_VERSION,
+                    ForeignAIResult.content_hash == digest,
+                    ForeignAIResult.status == "completed",
+                )
+            )
+            if existing is not None:
+                return existing, True
+        return self.analyze_opinion(db, opinion_id), False
 
     def analyze_opinion(self, db: Session, opinion_id: int) -> ForeignAIResult:
         opinion = db.get(ForeignOpinion, opinion_id)

@@ -292,8 +292,10 @@ def test_foreign_alert_api_isolated_and_frontend_contract(client, auth_headers):
     finally:
         db.close()
     contract = (
-        __import__("pathlib").Path(__file__).parents[2] / "frontend" / "src" / "views" / "ForeignWorkspace.vue"
+        __import__("pathlib").Path(__file__).parents[2] / "frontend" / "src" / "views" / "Alerts.vue"
     ).read_text(encoding="utf-8")
-    assert "value: 'alerts'" in contract
-    assert "api.get('/foreign/alerts'" in contract
-    assert "api.post('/foreign/alerts/evaluate'" in contract
+    # Alert rules and records are intentionally hosted by the unified alert
+    # center; ForeignWorkspace only links to it and renders a read-only feed.
+    assert 'label="foreign"' in contract
+    assert "/foreign/alerts" in contract
+    assert "/foreign/alerts/evaluate" in contract

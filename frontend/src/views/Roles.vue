@@ -25,6 +25,7 @@
             </td>
             <td class="ops">
               <button class="btn btn-mini" @click="openEditor(r)">权限</button>
+              <button v-if="canWrite" class="btn btn-mini" :class="{ 'is-disabled-action': r.is_system }" :disabled="r.is_system || roleToggleId === r.id" :title="r.is_system ? '系统角色不可停用' : undefined" @click="toggleRole(r)">{{ roleToggleId === r.id ? '处理中…' : (r.is_enabled ? '停用' : '启用') }}</button>
               <button v-if="canDelete && !r.is_system" class="btn btn-mini btn-danger" @click="handleDelete(r)">删除</button>
               <span v-else-if="r.is_system" class="muted">—</span>
             </td>
@@ -41,9 +42,21 @@
         <p v-if="isAdminRole" class="banner">
           该角色为<strong>超管角色</strong>，拥有全部权限（后端按 <code>role='admin'</code> 或 <code>is_superuser</code> 放行），无需单独勾选。
         </p>
+        <div class="permission-mode-bar">
+          <div>
+            <strong>权限配置</strong>
+            <span>默认展示四类外网组合权限；外网旧细粒度权限保留在兼容区，其他权限保持原样。</span>
+          </div>
+          <button type="button" class="compatibility-toggle" :aria-expanded="showLegacyPermissions" @click="showLegacyPermissions = !showLegacyPermissions">
+            {{ showLegacyPermissions ? '收起兼容权限' : `展开兼容权限（${legacyPermissionCount}项）` }}
+          </button>
+        </div>
         <div class="perm-groups">
-          <div v-for="g in groupedPermissions" :key="g.group" class="perm-group">
+          <div v-for="g in visiblePermissionGroups" :key="g.group" class="perm-group" :class="{ 'foreign-combined-group': g.group === 'Foreign combined', 'legacy-permission-group': isForeignLegacyGroup(g.group) }">
             <div class="perm-group-title">{{ g.label }}</div>
+            <div v-if="g.group === 'Foreign combined'" class="perm-group-note">
+              四类组合权限按业务场景归类；保存后由后端自动展开为兼容的细粒度权限。
+            </div>
             <div class="perm-grid">
               <label v-for="p in g.perms" :key="p.code" class="perm-item" :class="{ disabled: isAdminRole }">
                 <input
@@ -52,9 +65,13 @@
                   :disabled="isAdminRole"
                   @change="toggle(p.code, ($event.target as HTMLInputElement).checked)"
                 />
-                <span class="perm-code">{{ p.code }}</span>
-                <span class="perm-name">{{ permNameLabel(p) }}</span>
-                <span class="perm-desc" :title="p.description">{{ p.description }}</span>
+                <span class="perm-copy">
+                  <span class="perm-line"><span class="perm-code">{{ p.code }}</span><span class="perm-name">{{ permNameLabel(p) }}</span></span>
+                  <span v-if="g.group !== 'Foreign combined'" class="perm-desc">{{ p.description }}</span>
+                </span>
+                <el-tooltip v-if="g.group === 'Foreign combined' || (p.description && p.description.length > 42)" :content="p.description || permNameLabel(p)" placement="top" :show-after="200">
+                  <button type="button" class="perm-help" :aria-label="`${permNameLabel(p)}说明`" @click.prevent.stop>?</button>
+                </el-tooltip>
               </label>
             </div>
           </div>
@@ -90,14 +107,21 @@
         </div>
         <div class="form-group">
           <label>初始权限</label>
+          <div class="permission-mode-bar compact-mode-bar">
+            <span>默认显示四类外网组合权限；外网旧细粒度权限保留在兼容区。</span>
+            <button type="button" class="compatibility-toggle" :aria-expanded="showLegacyCreate" @click="showLegacyCreate = !showLegacyCreate">
+              {{ showLegacyCreate ? '收起兼容权限' : `展开兼容权限（${legacyPermissionCount}项）` }}
+            </button>
+          </div>
           <div class="perm-groups compact">
-            <div v-for="g in groupedPermissions" :key="g.group" class="perm-group">
+            <div v-for="g in visibleCreatePermissionGroups" :key="g.group" class="perm-group" :class="{ 'foreign-combined-group': g.group === 'Foreign combined', 'legacy-permission-group': isForeignLegacyGroup(g.group) }">
               <div class="perm-group-title">{{ g.label }}</div>
+              <div v-if="g.group === 'Foreign combined'" class="perm-group-note">四类组合权限保存后由后端自动展开为兼容的细粒度权限。</div>
               <div class="perm-grid">
                 <label v-for="p in g.perms" :key="p.code" class="perm-item">
                   <input type="checkbox" :checked="createSelected.has(p.code)" @change="toggleCreate(p.code, ($event.target as HTMLInputElement).checked)" />
-                  <span class="perm-code">{{ p.code }}</span>
-                  <span class="perm-name">{{ permNameLabel(p) }}</span>
+                  <span class="perm-copy"><span class="perm-line"><span class="perm-code">{{ p.code }}</span><span class="perm-name">{{ permNameLabel(p) }}</span></span><span v-if="g.group !== 'Foreign combined'" class="perm-desc">{{ p.description }}</span></span>
+                  <el-tooltip v-if="g.group === 'Foreign combined' || (p.description && p.description.length > 42)" :content="p.description || permNameLabel(p)" placement="top" :show-after="200"><button type="button" class="perm-help" :aria-label="`${permNameLabel(p)}说明`" @click.prevent.stop>?</button></el-tooltip>
                 </label>
               </div>
             </div>
@@ -125,6 +149,7 @@ const canDelete = hasPermission('roles:delete')
 
 const loading = ref(false)
 const saving = ref(false)
+const roleToggleId = ref<number | null>(null)
 const roles = ref<RoleOut[]>([])
 const catalog = ref<PermissionCatalogItem[]>([])
 
@@ -149,15 +174,20 @@ const GROUP_LABEL: Record<string, string> = {
   'Foreign alerts': '外网告警',
   'Foreign events': '外网事件',
   'Foreign sources': '外网数据源',
+  'Foreign combined': '外网组合权限',
 }
 const GROUP_ORDER: Record<string, number> = {
   舆情管理: 1, 事件管理: 2, 关键词管理: 3, 用户管理: 4, 角色管理: 5, 权限管理: 6,
   预警管理: 7, 报告: 8, AI能力: 9, 数据源: 10,   采集管理: 11, 传播溯源: 12, 驾驶舱: 13, 审计: 14,
-  外网风险: 15, 'Foreign sources': 16, 'Foreign alerts': 17, 'Foreign events': 18,
+  'Foreign combined': 0, 外网风险: 15, 'Foreign sources': 16, 'Foreign alerts': 17, 'Foreign events': 18,
 }
 
 // 外网权限项中文名（后端 permission.name 为英文描述，弹窗内需中文化展示）
 const PERM_NAME_LABEL: Record<string, string> = {
+  'foreign:read': '外网查看（组合）',
+  'foreign:data:manage': '外网数据管理（组合）',
+  'foreign:analysis': '外网分析（组合）',
+  'foreign:alerts:manage': '外网预警管理（组合）',
   'foreign:alerts:acknowledge': '确认外网告警',
   'foreign:alerts:enable': '启用外网告警规则',
   'foreign:alerts:evaluate': '评估外网告警',
@@ -196,7 +226,7 @@ const groupedPermissions = computed(() => {
   }
   return [...map.entries()]
     .sort((a, b) => (GROUP_ORDER[a[0]] ?? 99) - (GROUP_ORDER[b[0]] ?? 99))
-    .map(([group, perms]) => ({ group, label: GROUP_LABEL[group] || group, perms }))
+    .map(([group, perms]) => ({ group, label: GROUP_LABEL[group] || group, perms: perms.sort((a, b) => a.code.localeCompare(b.code)) }))
 })
 
 // —— 权限编辑 ——
@@ -204,6 +234,14 @@ const editorOpen = ref(false)
 const editingRole = ref<RoleOut | null>(null)
 const selected = ref<Set<string>>(new Set())
 const isAdminRole = computed(() => editingRole.value?.code === 'admin')
+const showLegacyPermissions = ref(false)
+const showLegacyCreate = ref(false)
+const FOREIGN_LEGACY_GROUPS = new Set(['外网风险', 'Foreign sources', 'Foreign alerts', 'Foreign events'])
+function isForeignLegacyGroup(group: string) { return FOREIGN_LEGACY_GROUPS.has(group) }
+const legacyPermissionGroups = computed(() => groupedPermissions.value.filter((group) => isForeignLegacyGroup(group.group)))
+const visiblePermissionGroups = computed(() => groupedPermissions.value.filter((group) => !isForeignLegacyGroup(group.group) || showLegacyPermissions.value))
+const visibleCreatePermissionGroups = computed(() => groupedPermissions.value.filter((group) => !isForeignLegacyGroup(group.group) || showLegacyCreate.value))
+const legacyPermissionCount = computed(() => legacyPermissionGroups.value.reduce((total, group) => total + group.perms.length, 0))
 
 function toggle(code: string, checked: boolean) {
   const s = new Set(selected.value)
@@ -213,6 +251,7 @@ function toggle(code: string, checked: boolean) {
 
 async function openEditor(r: RoleOut) {
   editingRole.value = r
+  showLegacyPermissions.value = false
   // admin 角色：权限列表为空但后端按超管放行，UI 全选展示（只读）
   selected.value = isAdminRole.value ? new Set(catalog.value.map((p) => p.code)) : new Set(r.permissions)
   editorOpen.value = true
@@ -247,6 +286,7 @@ function toggleCreate(code: string, checked: boolean) {
 function openCreate() {
   createForm.value = { code: '', name: '', display_name: '', description: '' }
   createSelected.value = new Set()
+  showLegacyCreate.value = false
   createOpen.value = true
 }
 async function createRole() {
@@ -268,6 +308,20 @@ async function createRole() {
     ElMessage.error(e?.response?.data?.detail || '创建失败')
   } finally {
     saving.value = false
+  }
+}
+
+async function toggleRole(role: RoleOut) {
+  if (role.is_system) return ElMessage.warning('系统角色不可停用')
+  roleToggleId.value = role.id
+  try {
+    await api.put('/roles/' + role.id, { is_enabled: !role.is_enabled })
+    ElMessage.success(role.is_enabled ? '角色已停用' : '角色已启用')
+    await loadRoles()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '角色状态更新失败')
+  } finally {
+    roleToggleId.value = null
   }
 }
 
@@ -321,6 +375,7 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .btn-primary { background: #0071e3; color: #fff; }
 .btn-primary:hover { background: #0077ed; }
 .btn-primary:disabled { opacity: 0.55; cursor: default; }
+.btn:disabled, .is-disabled-action { color: #a1a1a6 !important; background: #f1f1f3 !important; opacity: 1; cursor: not-allowed; pointer-events: none; }
 .btn-mini { background: transparent; color: #0071e3; padding: 4px 12px; font-size: 13px; }
 .btn-mini:hover { background: #e8f1fd; }
 .btn-danger { color: #ff3b30; }
@@ -340,16 +395,33 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .banner { background: rgba(120,80,220,0.08); color: #5a32c0; border-radius: 12px; padding: 10px 14px; font-size: 13px; margin: 0 0 16px; }
 .banner code { background: rgba(120,80,220,0.12); padding: 1px 6px; border-radius: 6px; }
 
+.permission-mode-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 14px; padding: 11px 14px; border: 1px solid #e8e8ed; border-radius: 12px; background: #fafafc; color: #6e6e73; font-size: 12px; line-height: 1.5; }
+.permission-mode-bar strong { display: block; color: #1d1d1f; font-size: 13px; margin-bottom: 2px; }
+.compact-mode-bar { margin: 8px 0 10px; }
+.compact-mode-bar > span { flex: 1; }
+.compatibility-toggle { flex: 0 0 auto; border: 1px solid #d2d2d7; border-radius: 980px; padding: 7px 12px; background: #fff; color: #0071e3; font-size: 12px; cursor: pointer; }
+.compatibility-toggle:hover, .compatibility-toggle:focus-visible { border-color: #0071e3; background: #f5f9ff; outline: none; }
 .perm-groups { display: flex; flex-direction: column; gap: 14px; margin: 8px 0 4px; }
 .perm-groups.compact { max-height: 46vh; overflow-y: auto; }
 .perm-group-title { font-size: 13px; font-weight: 600; color: #1d1d1f; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #e8e8ed; }
 .perm-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 18px; }
-.perm-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #1d1d1f; cursor: pointer; }
+.perm-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; font-size: 13px; color: #1d1d1f; cursor: pointer; }
 .perm-item.disabled { opacity: 0.7; cursor: default; }
 .perm-item input { margin: 0; }
+.perm-copy { display: grid; gap: 4px; min-width: 0; }
+.perm-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; min-width: 0; }
 .perm-code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; color: #0071e3; }
 .perm-name { font-weight: 500; }
-.perm-desc { color: #86868b; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+.perm-desc { color: #86868b; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.perm-help { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1px solid #c7c7cc; border-radius: 50%; background: #fff; color: #6e6e73; font-size: 12px; font-weight: 600; cursor: help; }
+.perm-help:hover, .perm-help:focus-visible { border-color: #0071e3; color: #0071e3; outline: none; }
+.foreign-combined-group { padding: 14px 16px 16px; border: 1px solid #d9e8f8; border-radius: 14px; background: #f8fbff; }
+.foreign-combined-group .perm-group-title { color: #006dcc; border-bottom-color: #cfe2f5; }
+.perm-group-note { margin: -2px 0 10px; color: #6e88a5; font-size: 12px; line-height: 1.5; }
+.foreign-combined-group .perm-grid { grid-template-columns: 1fr; gap: 10px; }
+.foreign-combined-group .perm-item { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 12px; padding: 12px 14px; border: 1px solid #e7eef7; border-radius: 10px; background: #fff; }
+.foreign-combined-group .perm-line { align-items: center; }
+.legacy-permission-group { padding: 10px 12px; border: 1px solid #f0f0f3; border-radius: 12px; background: #fff; }
 
 .form-group { margin-bottom: 14px; }
 .form-group label { display: block; font-size: 13px; color: #6e6e73; margin-bottom: 4px; }

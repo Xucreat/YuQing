@@ -48,17 +48,20 @@ def test_nyt_chinese_example_html_is_sanitized_at_the_backend_boundary():
     assert "class=" not in cleaned and "id=" not in cleaned and "style=" not in cleaned
 
 
-def test_foreign_workspace_separates_alert_rules_and_opens_foreign_details():
+def test_foreign_workspace_redirects_alerts_to_unified_center():
     source = WORKSPACE.read_text(encoding="utf-8")
-    assert "value: 'alertRules'" in source
-    assert "activeTab === 'alertRules'" in source
-    assert "@click.stop=\"openAlertDetail(row)\"" in source
-    assert "historyAlert" in source
-    assert "api.get(`/foreign/alerts/${row.id}`)" in source
-    assert "api.patch(`/foreign/alert-rules/${alertRuleEditingId.value}`" in source
-    assert ':disabled="!alertRuleEditingId || !canEnableAlertRules"' in source
-    assert "alertRuleDraft.is_enabled = rule.is_enabled" in source
-    assert "v-html=\"selectedForeignAlert.opinion?.content || ''\"" in source
+    alerts = (ROOT / "frontend" / "src" / "views" / "Alerts.vue").read_text(encoding="utf-8")
+    assert "item.value !== 'alerts'" in source
+    assert "item.value !== 'alertRules'" in source
+    assert "if (tab === 'alerts' || tab === 'alertRules')" in source
+    assert "path: '/alerts'" in source
+    assert "scope: 'foreign'" in source
+    assert "api.get(`/foreign/alerts/${row.id}`)" in alerts
+    assert "api.get(`/foreign/alerts/${row.id}/actions`)" in alerts
+    assert "api.patch(`/foreign/alert-rules/${foreignRuleId.value}`" in alerts
+    assert "foreign:alerts:acknowledge" in alerts
+    assert "foreign:alerts:resolve" in alerts
+    assert "foreign:alerts:suppress" in alerts
 
 
 def test_foreign_probe_reports_article_fields_and_duplicate_urls(monkeypatch):

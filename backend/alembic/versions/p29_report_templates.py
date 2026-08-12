@@ -38,11 +38,11 @@ def upgrade() -> None:
             "config_json",
             sa.dialects.postgresql.JSONB(),
             nullable=False,
-            server_now=sa.text("'{}'::jsonb"),
+            server_default=sa.text("'{}'::jsonb"),
         ),
-        sa.Column("is_public", sa.Boolean(), nullable=False, server_now=sa.text("'f'::boolean")),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_now=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_now=sa.text("now()")),
+        sa.Column("is_public", sa.Boolean(), nullable=False, server_default=sa.text("'f'::boolean")),
+        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
+        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_report_templates_owner_id", "report_templates", ["owner_id"])

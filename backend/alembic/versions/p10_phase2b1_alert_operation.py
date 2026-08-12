@@ -29,6 +29,56 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Older production installs created the alert tables outside Alembic.  A
+    # clean migration must be self-contained, while an existing install must
+    # keep its rows untouched.  Create only the missing base tables, then
+    # apply this revision's additive disposition columns below.
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if not inspector.has_table("alert_rules"):
+        op.create_table(
+            "alert_rules",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("name", sa.String(length=256), nullable=False),
+            sa.Column("description", sa.Text(), nullable=False),
+            sa.Column("risk_threshold", sa.Integer(), nullable=False),
+            sa.Column("keywords", sa.Text(), nullable=False),
+            sa.Column("sources", sa.Text(), nullable=False),
+            sa.Column("risk_level", sa.String(length=32), nullable=False),
+            sa.Column("enabled", sa.Boolean(), nullable=False),
+            sa.Column("created_at", sa.DateTime(), nullable=False),
+            sa.Column("updated_at", sa.DateTime(), nullable=False),
+            sa.CheckConstraint(
+                "risk_level IN ('low','medium','high','critical')",
+                name="ck_alert_rules_risk_level",
+            ),
+        )
+    if not inspector.has_table("alert_records"):
+        op.create_table(
+            "alert_records",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("rule_id", sa.Integer(), nullable=False),
+            sa.Column("rule_name", sa.String(length=256), nullable=False),
+            sa.Column("risk_level", sa.String(length=32), nullable=False),
+            sa.Column("opinion_id", sa.Integer(), nullable=True),
+            sa.Column("opinion_title", sa.String(length=512), nullable=False),
+            sa.Column("event_id", sa.Integer(), nullable=True),
+            sa.Column("event_title", sa.String(length=512), nullable=False),
+            sa.Column("trigger_reason", sa.Text(), nullable=False),
+            sa.Column("handled", sa.Boolean(), nullable=False),
+            sa.Column("created_at", sa.DateTime(), nullable=False),
+            sa.ForeignKeyConstraint(["rule_id"], ["alert_rules.id"]),
+            sa.ForeignKeyConstraint(["opinion_id"], ["opinions.id"]),
+            sa.ForeignKeyConstraint(["event_id"], ["events.id"]),
+            sa.CheckConstraint(
+                "risk_level IN ('low','medium','high','critical')",
+                name="ck_alert_records_risk_level",
+            ),
+        )
+        op.create_index("ix_alert_records_rule_id", "alert_records", ["rule_id"])
+        op.create_index("ix_alert_records_opinion_id", "alert_records", ["opinion_id"])
+        op.create_index("ix_alert_records_event_id", "alert_records", ["event_id"])
+
     # 1) status：处置状态流（NOT NULL + server_default，存量行自动获得 'pending'）
     op.add_column(
         "alert_records",

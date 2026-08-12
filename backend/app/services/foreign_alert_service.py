@@ -11,21 +11,22 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import desc, inspect, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.foreign_alert import ForeignAlert
 from app.models.foreign_alert_action import ForeignAlertAction
-from app.models.foreign_alert_admission import ForeignAlertAdmission
 from app.models.foreign_alert_rule import ForeignAlertRule
 from app.models.foreign_alert_run import ForeignAlertRun
-from app.models.foreign_ai_result import ForeignAIResult
 from app.models.foreign_event import ForeignEvent
 from app.models.foreign_event_opinion import ForeignEventOpinion
 from app.models.foreign_opinion import ForeignOpinion
 from app.models.foreign_risk_result import ForeignRiskResult
+from app.services.foreign_effective_risk import (
+    alert_is_active,
+)
 
 
 MAX_EVALUATION_ITEMS = 200
@@ -94,29 +95,6 @@ def _current_risk_rows(db: Session) -> list[tuple[ForeignRiskResult, ForeignOpin
     )
 
 
-def _current_admitted_ai_rows(
-    db: Session,
-) -> list[tuple[ForeignAIResult, ForeignAlertAdmission, ForeignOpinion]]:
-    if not inspect(db.get_bind()).has_table("foreign_alert_admissions"):
-        return []
-    return list(
-        db.execute(
-            select(ForeignAIResult, ForeignAlertAdmission, ForeignOpinion)
-            .join(
-                ForeignAlertAdmission,
-                ForeignAlertAdmission.foreign_ai_result_id == ForeignAIResult.id,
-            )
-            .join(ForeignOpinion, ForeignOpinion.id == ForeignAIResult.foreign_opinion_id)
-            .where(
-                ForeignAIResult.is_current.is_(True),
-                ForeignAIResult.status == "completed",
-                ForeignAlertAdmission.status == "included",
-            )
-        .order_by(ForeignAIResult.id.asc())
-        ).all()
-    )
-
-
 def _event_representative(db: Session, event_id: int) -> ForeignOpinion | None:
     return db.scalar(
         select(ForeignOpinion)
@@ -156,16 +134,6 @@ def _risk_matches(rule: ForeignAlertRule, result: ForeignRiskResult) -> bool:
             raise ValueError("risk_category rule requires conditions.categories")
         return str(result.risk_category or "unknown").casefold() in categories
     return False
-
-
-def _ai_score_matches(rule: ForeignAlertRule, ai_result: ForeignAIResult) -> bool:
-    """AI admission is a score fallback, never a second rule language."""
-    if rule.rule_type != "risk_score" or ai_result.risk_score is None:
-        return False
-    threshold = (rule.conditions or {}).get("threshold", (rule.conditions or {}).get("min_score"))
-    if threshold is None:
-        raise ValueError("risk_score rule requires conditions.threshold")
-    return float(ai_result.risk_score) >= float(threshold)
 
 
 def _keyword_combo_matches(rule: ForeignAlertRule, opinion: ForeignOpinion, result: ForeignRiskResult) -> bool:
@@ -217,8 +185,8 @@ def _render_dedup_key(rule: ForeignAlertRule, *, opinion_id: int | None, event_i
     for name, value in values.items():
         key = key.replace("{" + name + "}", str(value))
     # Legacy templates did not include a time bucket. Append one so a new
-    # alert can be emitted after cooldown without violating the unique index,
-    # while rule and AI paths still share the same key within one bucket.
+    # rule alert can be emitted after cooldown without violating the unique
+    # index.
     if "{time_bucket}" not in (rule.deduplication_key_template or ""):
         key = f"{key}:bucket:{values['time_bucket']}"
     return key[:512]
@@ -240,11 +208,8 @@ def _target_alert_data(
     *,
     opinion: ForeignOpinion | None,
     result: ForeignRiskResult | None,
-    ai_result: ForeignAIResult | None,
-    admission: ForeignAlertAdmission | None,
     event: ForeignEvent | None,
     matched: dict[str, Any],
-    evaluation_source: str,
     now: datetime,
 ) -> dict[str, Any]:
     source = opinion.source_name_snapshot if opinion else ""
@@ -255,16 +220,18 @@ def _target_alert_data(
         message = f"已确认外网事件满足规则“{rule.name}”，文章数={event.opinion_count}，热度={event.heat_score}。"
     else:
         title = f"外网风险告警：{opinion_title or '无标题舆情'}"
-        score = result.risk_score if result else (ai_result.risk_score if ai_result else None)
+        score = result.risk_score if result else None
         message = f"外网文章满足规则“{rule.name}”，风险分={score if score is not None else '-'}。"
+    ttl_hours = max(int(settings.foreign_alert_active_ttl_hours or 0), 0)
+    expires_at = now + timedelta(hours=ttl_hours) if ttl_hours else None
     return {
         "rule_id": rule.id,
         "foreign_opinion_id": opinion.id if opinion else None,
         "foreign_risk_result_id": result.id if result else None,
-        "foreign_ai_result_id": ai_result.id if ai_result else None,
-        "foreign_alert_admission_id": admission.id if admission else None,
+        "foreign_ai_result_id": None,
+        "foreign_alert_admission_id": None,
         "foreign_event_id": event.id if event else None,
-        "evaluation_source": evaluation_source,
+        "evaluation_source": "rule",
         "severity": rule.severity,
         "status": "triggered",
         "title": title[:512],
@@ -274,8 +241,17 @@ def _target_alert_data(
         "source_name_snapshot": source[:128],
         "opinion_title_snapshot": opinion_title[:512],
         "event_title_snapshot": event_title[:512],
-        "risk_score": result.risk_score if result else (ai_result.risk_score if ai_result else None),
-        "risk_level": result.risk_level if result else (event.risk_level if event else "unknown"),
+        "risk_score": result.risk_score if result else None,
+        "risk_level": (
+            result.risk_level
+            if result
+            else (
+                event.risk_level
+                if event
+                else "unknown"
+            )
+        ),
+        "expires_at": expires_at,
         "deduplication_key": _render_dedup_key(
             rule,
             opinion_id=opinion.id if opinion else None,
@@ -322,41 +298,38 @@ class ForeignAlertService:
         for rule in rules:
             try:
                 with db.begin_nested():
-                    targets: list[tuple[ForeignOpinion | None, ForeignRiskResult | None, ForeignAIResult | None, ForeignAlertAdmission | None, ForeignEvent | None, dict[str, Any], str]] = []
+                    # Serialize evaluations for the same rule.  The target
+                    # query and the unique insert must observe one another;
+                    # otherwise concurrent workers can both pass the
+                    # cooldown check before either transaction commits.
+                    db.execute(select(func.pg_advisory_xact_lock(int(rule.id))))
+                    # Formal alerts are driven by current rule evaluations only.
+                    # AI reviews remain available as history and are deliberately
+                    # excluded from this target set.
+                    targets: list[tuple[ForeignOpinion | None, ForeignRiskResult | None, ForeignEvent | None, dict[str, Any]]] = []
                     if rule.rule_type in {"risk_score", "risk_level", "risk_category"}:
-                        admitted_ai = {
-                            opinion.id: (ai_result, admission)
-                            for ai_result, admission, opinion in _current_admitted_ai_rows(db)
-                        }
                         for result, opinion in _current_risk_rows(db):
                             if _risk_matches(rule, result):
-                                targets.append((opinion, result, None, None, None, {"risk_score": result.risk_score, "risk_level": result.risk_level, "risk_category": result.risk_category, "evaluation_source": "rule"}, "rule"))
-                            elif opinion.id in admitted_ai:
-                                ai_result, admission = admitted_ai[opinion.id]
-                                if _ai_score_matches(rule, ai_result):
-                                    targets.append((opinion, None, ai_result, admission, None, {"risk_score": ai_result.risk_score, "evaluation_source": "ai", "foreign_ai_result_id": ai_result.id}, "ai"))
+                                targets.append((opinion, result, None, {"risk_score": result.risk_score, "risk_level": result.risk_level, "risk_category": result.risk_category, "evaluation_source": "rule"}))
                     elif rule.rule_type == "keyword_combo":
                         for result, opinion in _current_risk_rows(db):
                             if _keyword_combo_matches(rule, opinion, result):
-                                targets.append((opinion, result, None, None, None, {"monitoring_keywords": opinion.matched_keywords or [], "risk_terms": result.matched_terms or [], "evaluation_source": "rule"}, "rule"))
+                                targets.append((opinion, result, None, {"monitoring_keywords": opinion.matched_keywords or [], "risk_terms": result.matched_terms or [], "evaluation_source": "rule"}))
                     elif rule.rule_type == "confirmed_event":
                         for event in db.scalars(select(ForeignEvent).where(ForeignEvent.event_status == "confirmed").order_by(ForeignEvent.id.asc())).all():
                             if _event_matches(rule, event):
-                                targets.append((None, None, None, None, event, {"event_status": event.event_status, "heat_score": event.heat_score, "opinion_count": event.opinion_count, "evaluation_source": "rule"}, "rule"))
+                                targets.append((None, None, event, {"event_status": event.event_status, "heat_score": event.heat_score, "opinion_count": event.opinion_count, "evaluation_source": "rule"}))
                     else:
                         raise ValueError(f"unsupported foreign alert rule type: {rule.rule_type}")
 
-                    for opinion, result, ai_result, admission, event, matched, evaluation_source in targets[:max_items]:
+                    for opinion, result, event, matched in targets[:max_items]:
                         run.processed_count += 1
                         payload = _target_alert_data(
                             rule,
                             opinion=opinion,
                             result=result,
-                            ai_result=ai_result,
-                            admission=admission,
                             event=event,
                             matched=matched,
-                            evaluation_source=evaluation_source,
                             now=now,
                         )
                         existing = db.scalar(
@@ -462,6 +435,8 @@ class ForeignAlertService:
                 .with_for_update()
             )
             if alert is None:
+                raise LookupError("Foreign alert not found")
+            if alert.evaluation_source != "rule" or alert.foreign_ai_result_id is not None:
                 raise LookupError("Foreign alert not found")
             previous_status = alert.status
             expected_previous, new_status = transitions[action_type]
@@ -573,6 +548,13 @@ class ForeignAlertService:
 
     @staticmethod
     def list_actions(db: Session, alert_id: int) -> list[ForeignAlertAction]:
+        alert = db.get(ForeignAlert, alert_id)
+        if (
+            alert is None
+            or alert.evaluation_source != "rule"
+            or alert.foreign_ai_result_id is not None
+        ):
+            return []
         return list(
             db.scalars(
                 select(ForeignAlertAction)
@@ -623,6 +605,8 @@ def serialize_alert(alert: ForeignAlert) -> dict[str, Any]:
         "risk_score": alert.risk_score,
         "risk_level": alert.risk_level,
         "deduplication_key": alert.deduplication_key,
+        "expires_at": alert.expires_at.isoformat() if alert.expires_at else None,
+        "is_active": alert_is_active(alert),
         "triggered_at": alert.triggered_at.isoformat() if alert.triggered_at else None,
         "acknowledged_at": alert.acknowledged_at.isoformat() if alert.acknowledged_at else None,
         "resolved_at": alert.resolved_at.isoformat() if alert.resolved_at else None,

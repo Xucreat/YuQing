@@ -17,13 +17,36 @@ from sqlalchemy.orm import Session
 from app.collectors.base import BaseCollector
 from app.collectors.service import CollectorService
 from app.db.session import SessionLocal
+from app.models.alert import AlertRecord
+from app.models.bocha_lead import BochaLead
+from app.models.event_opinion import EventOpinion
 from app.models.opinion import Opinion
+from app.models.propagation import PropagationNode
 from app.services.ai import AIService
 from app.services.ai.fallback import RuleFallbackProvider
 
 
 def _clean_source(db: Session, source: str) -> None:
-    db.query(Opinion).filter(Opinion.source == source).delete()
+    opinion_ids = [
+        row[0] for row in db.query(Opinion.id).filter(Opinion.source == source).all()
+    ]
+    if opinion_ids:
+        db.query(AlertRecord).filter(AlertRecord.opinion_id.in_(opinion_ids)).update(
+            {AlertRecord.opinion_id: None, AlertRecord.event_id: None},
+            synchronize_session=False,
+        )
+        db.query(EventOpinion).filter(EventOpinion.opinion_id.in_(opinion_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(PropagationNode).filter(
+            PropagationNode.opinion_id.in_(opinion_ids)
+        ).delete(synchronize_session=False)
+        db.query(BochaLead).filter(BochaLead.opinion_id.in_(opinion_ids)).update(
+            {BochaLead.opinion_id: None}, synchronize_session=False
+        )
+        db.query(Opinion).filter(Opinion.id.in_(opinion_ids)).delete(
+            synchronize_session=False
+        )
     db.commit()
 
 
@@ -37,9 +60,29 @@ MOCK_URL_PREFIX = "https://mock.dachang.gov/opinion/"
 
 
 def _clean_mock(db: Session) -> None:
-    db.query(Opinion).filter(Opinion.url.like(MOCK_URL_PREFIX + "%")).delete(
-        synchronize_session=False
-    )
+    opinion_ids = [
+        row[0]
+        for row in db.query(Opinion.id)
+        .filter(Opinion.url.like(MOCK_URL_PREFIX + "%"))
+        .all()
+    ]
+    if opinion_ids:
+        db.query(AlertRecord).filter(AlertRecord.opinion_id.in_(opinion_ids)).update(
+            {AlertRecord.opinion_id: None, AlertRecord.event_id: None},
+            synchronize_session=False,
+        )
+        db.query(EventOpinion).filter(EventOpinion.opinion_id.in_(opinion_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(PropagationNode).filter(
+            PropagationNode.opinion_id.in_(opinion_ids)
+        ).delete(synchronize_session=False)
+        db.query(BochaLead).filter(BochaLead.opinion_id.in_(opinion_ids)).update(
+            {BochaLead.opinion_id: None}, synchronize_session=False
+        )
+        db.query(Opinion).filter(Opinion.id.in_(opinion_ids)).delete(
+            synchronize_session=False
+        )
     db.commit()
 
 

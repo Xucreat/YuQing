@@ -238,9 +238,9 @@ def test_confirmed_foreign_event_can_be_closed_and_frontend_uses_probe_contract(
             request_id=f"close-{suffix}",
         )
         assert closed.event_status == "resolved"
-        workspace = (Path(__file__).resolve().parents[2] / "frontend/src/views/ForeignWorkspace.vue").read_text(encoding="utf-8")
-        assert "sourceTestResult.success" in workspace
-        assert "sourceTestResult.ok" not in workspace
+        sources_view = (Path(__file__).resolve().parents[2] / "frontend/src/views/foreign/ForeignSourcesView.vue").read_text(encoding="utf-8")
+        assert "sourceTestResult.success" in sources_view
+        assert "sourceTestResult.ok" not in sources_view
     finally:
         db.query(ForeignEvent).filter(ForeignEvent.id == event.id).delete(synchronize_session=False)
         db.commit()

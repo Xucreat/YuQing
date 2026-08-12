@@ -21,6 +21,11 @@
 
         <div class="modal-body" v-loading="detailLoading">
           <template v-if="detail">
+            <div class="risk-view-switch" role="group" aria-label="risk view source">
+              <span class="muted">当前查看口径</span>
+              <button type="button" class="btn btn-secondary btn-sm" :class="{ active: viewSource === 'rule' }" @click="setViewSource('rule')">系统规则</button>
+              <button type="button" class="btn btn-secondary btn-sm" :class="{ active: viewSource === 'ai' }" @click="setViewSource('ai')">AI 研判</button>
+            </div>
             <div class="detail-grid">
               <!-- 左栏：原文/摘要 -->
               <div class="card card-pad">
@@ -41,8 +46,55 @@
                 </div>
               </div>
 
-              <!-- 右栏：系统研判报告 + AI 研判报告 + 运行历史 叠放 -->
+              <!-- 右栏：当前有效风险 + 系统研判报告 + AI 研判报告 + 运行历史 叠放 -->
               <div class="detail-right">
+                <!-- 当前有效风险（统一 resolver 结果） -->
+                <div class="card card-pad eff-card">
+                  <div class="ai-header">
+                    <span class="section-title">当前查看风险</span>
+                    <span class="src-tag" :class="displayRiskSource === 'ai' ? 'src-tag-ai' : 'src-tag-rule'">{{ displayRiskSourceLabel }}</span>
+                  </div>
+                  <div class="detail-divider"></div>
+                  <div class="report-meta">
+                    <span class="meta-item">风险评分 <b :style="{ color: riskColor(displayRiskScore ?? 0) }">{{ displayRiskScore ?? '-' }}</b></span>
+                    <span class="meta-sep">·</span>
+                    <span class="meta-item">等级 <b>{{ riskLevelZh(displayRiskLevel) }}</b></span>
+                    <span class="meta-sep" v-if="effectiveRiskReason">·</span>
+                    <span class="meta-item" v-if="effectiveRiskReason">依据 <b>{{ effectiveRiskReasonText }}</b></span>
+                  </div>
+                  <div class="report-body">
+                    <p class="report-p report-muted">{{ displayRiskDesc }}</p>
+                  </div>
+                  <!-- 规则基线 -->
+                  <div class="dual-row" v-if="detail.rule_risk">
+                    <span class="dual-label">规则基线</span>
+                    <span class="dual-val">
+                      {{ detail.rule_risk.risk_score ?? '-' }} /
+                      {{ riskLevelZh(detail.rule_risk.risk_level) }}
+                      <span class="dual-sub" v-if="detail.rule_risk.risk_category">· {{ detail.rule_risk.risk_category }}</span>
+                    </span>
+                  </div>
+                  <!-- AI 历史 -->
+                  <div class="dual-row" v-if="detail.latest_ai_risk">
+                    <span class="dual-label">AI 研判</span>
+                    <span class="dual-val">
+                      {{ detail.latest_ai_risk.risk_score ?? '-' }} /
+                      {{ riskLevelZh(detail.latest_ai_risk.risk_level) }}
+                      <span class="dual-flag flag-off">仅历史</span>
+                    </span>
+                  </div>
+                  <!-- 关联告警 -->
+                  <div class="dual-row" v-if="detail.alert">
+                    <span class="dual-label">关联告警</span>
+                    <span class="dual-val">
+                      #{{ detail.alert.id }} ·
+                      {{ alertStatusText(detail.alert.status) }}
+                      <span class="dual-flag" :class="detail.alert.is_active ? 'flag-on' : 'flag-off'">{{ detail.alert.is_active ? '生效中' : '已结束' }}</span>
+                      <span class="dual-sub" v-if="detail.alert.expires_at"> · 有效期至 {{ formatTime(detail.alert.expires_at) }}</span>
+                    </span>
+                  </div>
+                </div>
+
                 <!-- 系统规则研判 -->
                 <div class="card card-pad sys-card">
                   <div class="ai-header">
@@ -53,7 +105,7 @@
                   <div class="report-meta">
                     <span class="meta-item">风险评分 <b :style="{ color: riskColor(detail.rule_result?.risk_score ?? 0) }">{{ detail.rule_result?.risk_score ?? '-' }}</b></span>
                     <span class="meta-sep">·</span>
-                    <span class="meta-item">等级 <b>{{ levelText(detail.rule_result?.risk_level || 'unknown') }}</b></span>
+                    <span class="meta-item">等级 <b>{{ riskLevelZh(detail.rule_result?.risk_level) }}</b></span>
                     <span class="meta-sep">·</span>
                     <span class="meta-item">风险类别 <b>{{ detail.rule_result?.risk_category || '-' }}</b></span>
                   </div>
@@ -70,8 +122,11 @@
                 <!-- AI 研判报告 -->
                 <div class="card card-pad ai-card">
                   <div class="ai-header">
-                    <span class="section-title">AI 研判报告</span>
-                    <span class="pill" :class="statusPill(detail.ai_result?.status || 'pending')">{{ statusText(detail.ai_result?.status || 'pending') }}</span>
+                    <span class="section-title">AI 研判记录（历史）</span>
+                    <div class="ai-header-tools">
+                      <span class="pill" :class="statusPill(detail.ai_result?.status || 'pending')">{{ statusText(detail.ai_result?.status || 'pending') }}</span>
+                      <button v-if="detail.analysis_runs && detail.analysis_runs.length" class="btn btn-secondary btn-sm" @click="showHistoryModal = true">查看分析历史</button>
+                    </div>
                   </div>
                   <div class="detail-divider"></div>
                   <div class="report-meta">
@@ -103,41 +158,6 @@
                   </div>
                 </div>
 
-                <!-- AI 告警准入 -->
-                <div class="card card-pad admission-card" v-if="detail.ai_result?.status === 'completed'">
-                  <div class="ai-header">
-                    <span class="section-title">AI 告警准入</span>
-                    <span class="pill" :class="admissionIncluded ? 'pill-green' : 'pill-gray'">{{ admissionIncluded ? '已纳入' : '未纳入' }}</span>
-                  </div>
-                  <div class="detail-divider"></div>
-                  <p class="report-p report-muted">决定该外网舆情是否参与 AI 告警评估。</p>
-                  <p v-if="detail.ai_alert_admission?.note" class="report-p">备注：{{ detail.ai_alert_admission.note }}</p>
-                  <div class="admission-actions" v-if="canAdmitAI">
-                    <button class="btn btn-secondary" :disabled="admissionSaving" @click="setAdmission(true)">纳入评估</button>
-                    <button class="btn btn-secondary" :disabled="admissionSaving" @click="setAdmission(false)">取消纳入</button>
-                  </div>
-                  <div class="history-list" v-if="detail.ai_alert_admission_actions && detail.ai_alert_admission_actions.length">
-                    <div v-for="act in detail.ai_alert_admission_actions" :key="'adm-' + act.id" class="history-row">
-                      <span>{{ act.previous_status || '-' }} → {{ act.new_status }}</span>
-                      <span>{{ act.note || '' }}</span>
-                      <span>{{ formatTime(act.created_at) }}</span>
-                    </div>
-                  </div>
-                </div>
-                <!-- 分析运行历史 -->
-                <div class="card card-pad" v-if="detail.analysis_runs && detail.analysis_runs.length">
-                  <div class="ai-header"><span class="section-title">分析运行历史</span></div>
-                  <div class="detail-divider"></div>
-                  <div class="history-list">
-                    <div v-for="run in detail.analysis_runs" :key="run.id" class="history-row">
-                      <span>#{{ run.id }}</span>
-                      <span>{{ run.analyzer_type }}</span>
-                      <span>{{ run.status }}</span>
-                      <span>{{ formatTime(run.finished_at || run.started_at) }}</span>
-                      <span class="error-cell">{{ run.error_message || '' }}</span>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </template>
@@ -145,29 +165,57 @@
         </div>
       </div>
     </div>
+  <!-- 分析运行历史弹窗 -->
+  <div v-if="showHistoryModal" class="modal-mask" @click.self="showHistoryModal = false">
+    <div class="modal-card history-modal">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-kicker">分析运行历史</span>
+          <h3 class="modal-title">AI 研判运行记录</h3>
+        </div>
+        <button class="modal-close" title="关闭" @click="showHistoryModal = false">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="history-list" v-if="detail && detail.analysis_runs && detail.analysis_runs.length">
+          <div v-for="run in detail.analysis_runs" :key="run.id" class="history-row">
+            <span>#{{ run.id }}</span>
+            <span>{{ run.analyzer_type }}</span>
+            <span>{{ run.status }}</span>
+            <span>{{ formatTime(run.finished_at || run.started_at) }}</span>
+            <span class="error-cell">{{ run.error_message || '' }}</span>
+          </div>
+        </div>
+        <el-empty v-else description="暂无分析运行历史" />
+      </div>
+    </div>
+  </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import api from '@/api'
 import { usePermission } from '@/composables/usePermission'
-import { riskColor, levelText, sentimentText, statusPill, statusText, formatTime } from '@/utils/opinion'
+import { riskColor, sentimentText, statusPill, statusText, formatTime } from '@/utils/opinion'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
   opinionId?: number | null
-}>(), { opinionId: null })
+  riskSource?: 'rule' | 'ai'
+}>(), { opinionId: null, riskSource: 'rule' })
 
-const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
+const emit = defineEmits<{
+  'update:modelValue': [value: boolean]
+  'update:riskSource': [value: 'rule' | 'ai']
+}>()
 
 const { hasPermission } = usePermission()
 const canAnalyzeAI = computed(() => hasPermission('foreign:ai:analyze'))
-const canAdmitAI = computed(() => hasPermission('foreign:alerts:ai-admit'))
 
 const detailLoading = ref(false)
 const analyzing = ref(false)
+const showHistoryModal = ref(false)
 // 外网舆情详情结构（与 openOpinion /foreign/opinions/:id/detail 对齐）
 type ForeignOpinionDetail = {
   id: number
@@ -196,18 +244,136 @@ type ForeignOpinionDetail = {
     suggestion?: string | null
     error_message?: string | null
   } | null
-  ai_alert_admission?: { id: number; status: string; note?: string | null; changed_at?: string | null } | null
-  ai_alert_admission_actions?: Array<{ id: number; previous_status?: string | null; new_status: string; note?: string | null; created_at?: string | null }>
   analysis_runs?: Array<{ id: number; analyzer_type: string; status: string; started_at?: string | null; finished_at?: string | null; error_message?: string | null }>
+  // 统一「当前有效风险」视图（由后端 foreign_effective_risk.resolve_one 注入）
+  effective_risk?: {
+    source: 'ai' | 'rule'
+    risk_score: number | null
+    risk_level: string
+    sentiment?: string
+    model_name?: string | null
+    model_version?: string | null
+    evaluated_at?: string | null
+    alert_id?: number | null
+    alert_status?: string | null
+    reason: 'rule_baseline' | 'not_analyzed'
+  } | null
+  display_risk?: {
+    source: 'ai' | 'rule'
+    risk_score: number | null
+    risk_level: string
+    sentiment?: string
+    model_name?: string | null
+    model_version?: string | null
+    evaluated_at?: string | null
+    fallback?: boolean
+    fallback_reason?: string
+  } | null
+  rule_risk?: {
+    source: 'rule'
+    risk_result_id: number
+    risk_score: number | null
+    risk_level: string
+    sentiment?: string | null
+    risk_category?: string
+    analysis_status?: string
+    model_name?: string | null
+    model_version?: string | null
+    evaluated_at?: string | null
+  } | null
+  latest_ai_risk?: {
+    source: 'ai'
+    ai_result_id: number
+    risk_score: number | null
+    risk_level: string
+    sentiment?: string
+    status?: string
+    model_name?: string | null
+    model_version?: string | null
+    evaluated_at?: string | null
+    is_current_evaluation?: boolean
+    alert_id?: number | null
+    alert_status?: string | null
+    alert_active?: boolean
+    in_effect?: boolean
+  } | null
+  alert?: {
+    id: number
+    status: string
+    severity?: string
+    evaluation_source?: string
+    risk_score?: number | null
+    risk_level?: string
+    triggered_at?: string | null
+    resolved_at?: string | null
+    suppressed_at?: string | null
+    expires_at?: string | null
+    is_active?: boolean
+  } | null
 }
 const detail = ref<ForeignOpinionDetail | null>(null)
+const viewSource = ref<'rule' | 'ai'>(props.riskSource)
+function setViewSource(value: 'rule' | 'ai') {
+  viewSource.value = value
+  window.localStorage.setItem('foreign-risk-source', value)
+  emit('update:riskSource', value)
+  if (detail.value?.id != null) openDetail(detail.value.id)
+}
 
 const ruleTermHits = computed(() =>
   (detail.value?.rule_result?.matched_terms || []).map(t => t.word)
 )
 
-const admissionSaving = ref(false)
-const admissionIncluded = computed(() => detail.value?.ai_alert_admission?.status === 'included')
+// ── 当前有效风险视图（来自后端 foreign_effective_risk.resolve_one 注入的字段）──
+const effectiveRisk = computed(() => detail.value?.effective_risk || null)
+const effectiveRiskScore = computed(() => effectiveRisk.value?.risk_score ?? null)
+const effectiveRiskLevel = computed(() => effectiveRisk.value?.risk_level || 'unknown')
+const effectiveRiskSource = computed<'ai' | 'rule'>(() => 'rule')
+const effectiveRiskSourceLabel = computed(() => '系统规则')
+const effectiveRiskReason = computed(() => effectiveRisk.value?.reason || 'rule_baseline')
+const effectiveRiskReasonText = computed(() => {
+  switch (effectiveRiskReason.value) {
+    case 'not_analyzed': return '未评估'
+    default: return '规则基线'
+  }
+})
+const effectiveRiskDesc = computed(() => {
+  if (effectiveRiskReason.value === 'not_analyzed') {
+    return '该外网舆情尚未完成任何风险评估。'
+  }
+  return '当前有效风险始终取系统规则研判结果，AI 研判结果仅作为历史记录保留。'
+})
+const displayRisk = computed(() => detail.value?.display_risk || effectiveRisk.value || null)
+const displayRiskScore = computed(() => displayRisk.value?.risk_score ?? null)
+const displayRiskLevel = computed(() => displayRisk.value?.risk_level || 'unknown')
+const displayRiskSource = computed(() => displayRisk.value?.source || 'rule')
+const displayRiskSourceLabel = computed(() => displayRiskSource.value === 'ai' ? 'AI 研判' : '系统规则')
+const displayRiskDesc = computed(() => {
+  if (displayRisk.value?.fallback) return '暂无已完成的 AI 研判，当前回退显示系统规则风险。'
+  return displayRiskSource.value === 'ai'
+    ? 'AI 研判结果仅用于辅助分析，不改变系统正式风险和告警。'
+    : '系统规则研判是正式风险和告警的依据。'
+})
+function alertStatusText(status?: string | null): string {
+  switch (status) {
+    case 'triggered': return '已触发'
+    case 'acknowledged': return '已确认'
+    case 'resolved': return '已解除'
+    case 'suppressed': return '已抑制'
+    case 'failed': return '已失败'
+    default: return status || '未知'
+  }
+}
+// risk_level 为字符串枚举（high/medium/low/unknown），需单独映射为中文
+function riskLevelZh(level?: string | null): string {
+  switch (level) {
+    case 'high': return '高危'
+    case 'medium': return '中危'
+    case 'low': return '低危'
+    case 'unknown': return '未知'
+    default: return level || '未知'
+  }
+}
 
 function decodeHtml(input?: string | null): string | null | undefined {
   if (!input) return input
@@ -224,34 +390,14 @@ function sanitizeDetail(d: ForeignOpinionDetail): ForeignOpinionDetail {
   if (d.ai_result?.summary) d.ai_result.summary = decodeHtml(d.ai_result.summary)
   if (d.ai_result?.suggestion) d.ai_result.suggestion = decodeHtml(d.ai_result.suggestion)
   if (d.ai_result?.error_message) d.ai_result.error_message = decodeHtml(d.ai_result.error_message)
-  if (d.ai_alert_admission?.note) d.ai_alert_admission.note = decodeHtml(d.ai_alert_admission.note)
   return d
 }
 
-async function setAdmission(included: boolean) {
-  if (!canAdmitAI.value || admissionSaving.value || !detail.value) return
-  const id = detail.value.id
-  try {
-    const prompt = await ElMessageBox.prompt(
-      included ? '请填写纳入 AI 告警评估的备注' : '请填写取消纳入的备注',
-      'AI 告警准入',
-      { inputType: 'textarea', inputValidator: (value: string) => (value && value.trim() ? true : '备注不能为空') },
-    )
-    admissionSaving.value = true
-    await api.post('/foreign/opinions/' + id + '/ai-alert-admission', { included, note: prompt.value.trim() })
-    const { data } = await api.get<ForeignOpinionDetail>('/foreign/opinions/' + id + '/detail')
-    detail.value = sanitizeDetail(data)
-    ElMessage.success(included ? '已纳入 AI 告警评估' : '已取消 AI 告警评估')
-  } catch (err: any) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(err?.response?.data?.detail || 'AI 告警准入更新失败')
-  } finally { admissionSaving.value = false }
-}
 async function openDetail(id: number) {
   detailLoading.value = true
   detail.value = null
   try {
-    const { data } = await api.get<ForeignOpinionDetail>('/foreign/opinions/' + id + '/detail')
+    const { data } = await api.get<ForeignOpinionDetail>('/foreign/opinions/' + id + '/detail', { params: { risk_source: viewSource.value } })
     detail.value = sanitizeDetail(data)
   } catch (err: any) {
     if (err?.response?.status !== 404) ElMessage.error(err?.response?.data?.detail || '外网舆情详情加载失败')
@@ -267,7 +413,7 @@ async function triggerAnalyze() {
   try {
     await api.post('/foreign/opinions/' + id + '/ai-analyze', {})
     // 轮询/回填：直接重新拉取详情
-    const { data } = await api.get<ForeignOpinionDetail>('/foreign/opinions/' + id + '/detail')
+    const { data } = await api.get<ForeignOpinionDetail>('/foreign/opinions/' + id + '/detail', { params: { risk_source: viewSource.value } })
     detail.value = sanitizeDetail(data)
     ElMessage.success('AI 分析完成')
   } catch (err: any) {
@@ -278,6 +424,7 @@ async function triggerAnalyze() {
 watch(
   () => [props.modelValue, props.opinionId],
   ([visible, id]) => {
+    viewSource.value = props.riskSource
     if (visible && id != null) openDetail(id as number)
   },
 )
@@ -325,6 +472,11 @@ watch(
 }
 .modal-close:hover { background: #dededf; }
 .modal-body { padding: 18px 22px 22px; overflow-y: auto; }
+.risk-view-switch {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #e8e8ed;
+}
+.risk-view-switch .active { background: #0071e3; border-color: #0071e3; color: #fff; }
 
 .card {
   background: #ffffff;
@@ -333,6 +485,10 @@ watch(
   box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05);
 }
 .card-pad { padding: 22px 24px; }
+.eff-card {
+  background: linear-gradient(180deg, #fff8f3 0%, #ffffff 70%);
+  border-color: #ffe0cc;
+}
 .sys-card { background: #ffffff; border-color: #e8e8ed; }
 .ai-card {
   background: linear-gradient(180deg, #f7faff 0%, #ffffff 72%);
@@ -379,6 +535,27 @@ watch(
 }
 .report-p:last-child { margin-bottom: 0; }
 .report-muted { color: #86868b; }
+.src-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 11px; border-radius: 980px;
+  font-size: 12.5px; font-weight: 600; line-height: 1.4;
+}
+.src-tag-rule { background: rgba(110,110,115,0.12); color: #6e6e73; }
+.src-tag-ai { background: rgba(255,59,48,0.10); color: #ff3b30; }
+.dual-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; margin: 8px 0; border-radius: 12px;
+  background: #f7f7f9; font-size: 13.5px; color: #424245;
+}
+.dual-label { font-weight: 600; color: #6e6e73; min-width: 64px; }
+.dual-val { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dual-sub { color: #86868b; font-size: 12.5px; }
+.dual-flag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 9px; border-radius: 980px; font-size: 12px; font-weight: 600;
+}
+.flag-on { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.flag-off { background: rgba(110,110,115,0.12); color: #6e6e73; }
 .report-keywords { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
 .re-hit-tag { background: #fff3e0; color: #c77700; padding: 3px 9px; border-radius: 980px; font-size: 12px; font-weight: 500; }
 
@@ -402,8 +579,10 @@ watch(
 .btn-secondary { background: #f5f5f7; color: #1d1d1f; border: 1px solid #d2d2d7; padding: 8px 16px; font-size: 13px; }
 .btn-secondary:hover { background: #ebebf0; }
 .btn-secondary:disabled { opacity: 0.55; cursor: default; }
-.admission-card { background: #ffffff; border-color: #e8e8ed; }
 .admission-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
+.ai-header-tools { display: inline-flex; align-items: center; gap: 8px; }
+.btn-sm { padding: 6px 13px; font-size: 12.5px; }
+.history-modal { width: min(620px, 100%); }
 
 @media (max-width: 1100px) { .detail-grid { grid-template-columns: 1fr; } }
 </style>

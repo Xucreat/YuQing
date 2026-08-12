@@ -48,8 +48,8 @@
             <td>
               <div class="ds-name">
                 {{ s.name }}
-                <span class="ck" :class="s.collector_kind === 'dedicated' ? 'ck-ded' : 'ck-gen'">
-                  {{ s.collector_kind === 'dedicated' ? '专用型' : '通用型' }}
+                <span class="ck" :class="s.type === 'rss' ? 'ck-rss' : (s.collector_kind === 'dedicated' ? 'ck-ded' : 'ck-gen')">
+                  {{ s.type === 'rss' ? 'RSS' : (s.collector_kind === 'dedicated' ? '专用型' : '通用型') }}
                 </span>
               </div>
               <div class="ds-key">{{ s.key }} · {{ s.type }}</div>
@@ -313,6 +313,17 @@
 
       <div class="cf-divider"></div>
 
+      <template v-if="currentSource && currentSource.type === 'rss'">
+        <p class="dlg-sub">RSS 地址</p>
+        <div class="feed-list">
+          <div class="feed-item" v-for="(u, i) in feedListEdit" :key="i">
+            <el-input v-model="feedListEdit[i]" placeholder="https://example.com/feed.xml" />
+            <button class="btn btn-ghost btn-mini" type="button" :disabled="feedListEdit.length <= 1" @click="removeFeedEdit(i)">删除</button>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-mini" type="button" @click="addFeedEdit">+ 添加地址</button>
+      </template>
+
       <template v-if="!(currentSource && currentSource.collector_kind === 'dedicated')">
         <p class="dlg-sub">高级配置（config_json）</p>
         <el-input
@@ -322,7 +333,7 @@
           placeholder='如 {"keywords":"河北,石家庄"}'
         />
       </template>
-      <div v-else class="cfg-note">
+      <div v-else-if="!(currentSource && currentSource.type === 'rss')" class="cfg-note">
         当前采集器为<strong>专用型</strong>，使用系统内置采集逻辑。除上方「过滤策略」外无需填写其他自定义配置；其余配置保持为空（<code>{}</code>）即可。
       </div>
       <template #footer>
@@ -391,7 +402,19 @@
             <el-switch v-model="form.enabled" />
           </div>
         </div>
-        <div class="cf-row">
+        <div class="cf-row" v-if="form.type === 'rss'">
+          <label class="cf-label">RSS 地址 <span class="req">*</span></label>
+          <div class="feed-list">
+            <div class="feed-item" v-for="(u, i) in feedList" :key="i">
+              <el-input v-model="feedList[i]" placeholder="https://example.com/feed.xml" />
+              <button class="btn btn-ghost btn-mini" type="button" :disabled="feedList.length <= 1" @click="removeFeed(i)">删除</button>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-mini" type="button" @click="addFeed">+ 添加地址</button>
+          <div v-if="rssFeedError" class="cfg-err">{{ rssFeedError }}</div>
+          <div class="cf-hint">填写一个或多个 RSS/Atom 地址（仅支持 http/https）。保存时会用真实抓取校验。</div>
+        </div>
+        <div class="cf-row" v-if="form.type !== 'rss'">
           <label class="cf-label">配置 config_json <span class="req">*</span></label>
           <el-input v-model="form.config_json" type="textarea" :rows="13" placeholder="JSON 配置" />
           <div v-if="createConfigError" class="cfg-err">{{ createConfigError }}</div>
@@ -708,6 +731,10 @@ const testing = ref(false)
 const testMsg = ref('')
 const testOk = ref(false)
 const createConfigError = ref('')
+// 通用 RSS 数据源：feeds 地址列表（创建 / 编辑共用结构）
+const feedList = ref<string[]>([''])
+const feedListEdit = ref<string[]>([''])
+const rssFeedError = ref('')
 const form = reactive({
   name: '',
   key: '',
@@ -932,6 +959,13 @@ function openConfig(row: Row) {
   filterModeDraft.value = typeof cfg.filter_mode === 'string' ? cfg.filter_mode : ''
   keywordScopeDraft.value = typeof cfg.keyword_scope === 'string' ? cfg.keyword_scope : ''
   maxItemsDraft.value = typeof cfg.max_items === 'number' ? cfg.max_items : null
+  // RSS 源：回显 feeds 地址列表（编辑共用 feedListEdit）
+  if (row.type === 'rss') {
+    const feeds = Array.isArray(cfg.feeds)
+      ? cfg.feeds.map((f: any) => (typeof f === 'string' ? f : (f && f.url ? f.url : ''))).filter(Boolean)
+      : []
+    feedListEdit.value = feeds.length ? feeds : ['']
+  }
   // 通用型保留原始 config_json 供高级编辑；专用型仅由下拉驱动策略
   configDraft.value = row.config_json || '{}'
   configVisible.value = true
@@ -958,6 +992,30 @@ async function saveConfig() {
   const comboErr = illegalComboError(mode, scope)
   if (comboErr) {
     configError.value = comboErr
+    return
+  }
+  // RSS 源：由 feedListEdit 构建 config_json（filters + max_items），不改变源类型
+  if (currentSource.value.type === 'rss') {
+    const e = validateRssFeedsEdit()
+    if (e) {
+      configError.value = e
+      return
+    }
+    const payload = rssConfigFromFeeds(feedListEdit.value, mode, scope, maxItemsDraft.value, currentSource.value.name)
+    savingConfig.value = true
+    try {
+      const { data } = await api.patch<DataSourceItem>('/admin/data-sources/' + currentSource.value.id, {
+        config_json: payload,
+        scope_region_codes: scopeRegionDraft.value.join(','),
+      })
+      Object.assign(currentSource.value, data)
+      ElMessage.success('配置已保存')
+      configVisible.value = false
+    } catch (err: any) {
+      ElMessage.error(err?.response?.data?.detail || '保存失败')
+    } finally {
+      savingConfig.value = false
+    }
     return
   }
   const isDedicated = currentSource.value.collector_kind === 'dedicated'
@@ -1078,12 +1136,93 @@ function openCreate() {
   createConfigError.value = ''
   testMsg.value = ''
   testOk.value = false
+  rssFeedError.value = ''
+  feedList.value = ['']
   if (form) form.max_items = null
   createVisible.value = true
   loadRegionCatalog()
 }
 
+// —— 通用 RSS feeds 辅助（创建 / 编辑共用）——
+function addFeed() {
+  feedList.value.push('')
+}
+function removeFeed(i: number) {
+  if (feedList.value.length > 1) feedList.value.splice(i, 1)
+}
+function addFeedEdit() {
+  feedListEdit.value.push('')
+}
+function removeFeedEdit(i: number) {
+  if (feedListEdit.value.length > 1) feedListEdit.value.splice(i, 1)
+}
+function _collectRssUrls(list: string[]): string[] {
+  return (list || []).map(u => (u || '').trim()).filter(Boolean)
+}
+function validateRssFeeds(): string | null {
+  const urls = _collectRssUrls(feedList.value)
+  if (!urls.length) return '请至少填写一个 RSS 地址'
+  for (const u of urls) {
+    const lower = u.toLowerCase()
+    if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
+      return 'RSS 地址仅支持 http/https：' + u
+    }
+    try {
+      const host = new URL(u).hostname.toLowerCase()
+      if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1') {
+        return 'RSS 地址不能是本地地址：' + u
+      }
+    } catch {
+      return 'RSS 地址格式不合法：' + u
+    }
+  }
+  return null
+}
+function validateRssFeedsEdit(): string | null {
+  const urls = _collectRssUrls(feedListEdit.value)
+  if (!urls.length) return '请至少填写一个 RSS 地址'
+  for (const u of urls) {
+    const lower = u.toLowerCase()
+    if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
+      return 'RSS 地址仅支持 http/https：' + u
+    }
+    try {
+      const host = new URL(u).hostname.toLowerCase()
+      if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1') {
+        return 'RSS 地址不能是本地地址：' + u
+      }
+    } catch {
+      return 'RSS 地址格式不合法：' + u
+    }
+  }
+  return null
+}
+function rssConfigFromFeeds(list: string[], mode: string, scope: string, maxItems: number | null, name?: string): string {
+  const feeds = _collectRssUrls(list).map(u => ({ url: u }))
+  const cfg: any = { feeds }
+  // source_name 与数据源显示名一致，使 collector_runs.collector_name 与
+  // opinions.source 使用正确的来源名（缺失会导致所有 RSS 源共用 "rss" 一个名字）。
+  if (name && name.trim()) cfg.source_name = name.trim()
+  if (mode) cfg.filter_mode = mode
+  if (scope) cfg.keyword_scope = scope
+  if (maxItems != null && maxItems >= 1) cfg.max_items = maxItems
+  return JSON.stringify(cfg)
+}
+
+
 function buildPayload(): DataSourceCreateRequest {
+  // RSS 类型：由 feeds 列表构建 config_json，不依赖通用型文本域
+  if (form.type === 'rss') {
+    return {
+      name: form.name.trim(),
+      key: form.key.trim(),
+      type: form.type,
+      scope_region_codes: (form.scope_region_codes || []).join(','),
+      priority: form.priority,
+      enabled: form.enabled,
+      config_json: rssConfigFromFeeds(feedList.value, form.filter_mode, form.keyword_scope, form.max_items, form.name.trim()),
+    }
+  }
   // source_name 缺失时回退为名称，保证「查看历史」按 name 关联能命中
   const cfgObj = JSON.parse(form.config_json || '{}')
   if (!cfgObj.source_name) cfgObj.source_name = form.name.trim()
@@ -1112,13 +1251,22 @@ async function testCreate() {
     createConfigError.value = comboErr
     return
   }
-  try {
-    JSON.parse(form.config_json || '{}')
-  } catch {
-    createConfigError.value = 'config_json 不是合法 JSON'
-    return
+  if (form.type === 'rss') {
+    const e = validateRssFeeds()
+    if (e) {
+      rssFeedError.value = e
+      return
+    }
+    rssFeedError.value = ''
+  } else {
+    try {
+      JSON.parse(form.config_json || '{}')
+    } catch {
+      createConfigError.value = 'config_json 不是合法 JSON'
+      return
+    }
+    createConfigError.value = ''
   }
-  createConfigError.value = ''
   testing.value = true
   testMsg.value = ''
   try {
@@ -1155,24 +1303,38 @@ async function submitCreate() {
     createConfigError.value = comboErr
     return
   }
-  try {
-    JSON.parse(form.config_json || '{}')
-  } catch {
-    createConfigError.value = 'config_json 不是合法 JSON'
-    return
+  if (form.type === 'rss') {
+    const e = validateRssFeeds()
+    if (e) {
+      rssFeedError.value = e
+      return
+    }
+    rssFeedError.value = ''
+  } else {
+    try {
+      JSON.parse(form.config_json || '{}')
+    } catch {
+      createConfigError.value = 'config_json 不是合法 JSON'
+      return
+    }
+    createConfigError.value = ''
   }
-  createConfigError.value = ''
   creating.value = true
   try {
     const { data } = await api.post<DataSourceItem & { test?: any }>('/admin/data-sources', buildPayload())
     const t = data.test || {}
-    ElMessage.success(`添加成功，测试抓取通过（列表页获取到 ${t.fetched_links ?? 0} 个链接）`)
+    if (form.type === 'rss') {
+      ElMessage.success(`添加成功，RSS 实时抓取通过（命中 ${t.count ?? 0} 条）`)
+    } else {
+      ElMessage.success(`添加成功，测试抓取通过（列表页获取到 ${t.fetched_links ?? 0} 个链接）`)
+    }
     createVisible.value = false
     Object.assign(form, {
       name: '', key: '', type: 'generic_site',
       scope_region_codes: [], priority: 50, enabled: true, config_json: DEFAULT_CONFIG,
       filter_mode: '', keyword_scope: '',
     })
+    feedList.value = ['']
     reload()
   } catch (e: any) {
     // 后端真实抓取校验失败 / 参数错误 / key 重复：返回失败提示，不关闭弹窗
@@ -1321,6 +1483,12 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 }
 .ck-gen { background: rgba(0,122,255,0.1); color: #007aff; }
 .ck-ded { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.ck-rss { background: rgba(175,82,222,0.12); color: #af52de; }
+
+/* RSS feeds 编辑列表 */
+.feed-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.feed-item { display: flex; align-items: center; gap: 8px; }
+.feed-item .el-input { flex: 1; }
 
 /* 专用型配置弹窗：只读提示 */
 .cfg-note {

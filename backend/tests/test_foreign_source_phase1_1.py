@@ -444,23 +444,20 @@ def test_foreign_source_snapshot_survives_source_delete():
 
 def test_frontend_scope_navigation_contract():
     root = Path(__file__).resolve().parents[2]
-    opinions = (root / "frontend/src/views/Opinions.vue").read_text(encoding="utf-8-sig")
-    keywords = (root / "frontend/src/views/Keywords.vue").read_text(encoding="utf-8")
-    sources = (root / "frontend/src/views/Sources.vue").read_text(encoding="utf-8")
+    alerts = (root / "frontend/src/views/Alerts.vue").read_text(encoding="utf-8")
     foreign = (root / "frontend/src/views/ForeignWorkspace.vue").read_text(encoding="utf-8")
     layout = (root / "frontend/src/components/AppLayout.vue").read_text(
         encoding="utf-8-sig"
     )
 
-    assert "国内舆情" in opinions and "国外舆情" in opinions
-    assert "tab: 'opinions'" in opinions
-    assert "国内关键词" in keywords and "外网关键词" in keywords
-    assert "tab: 'keywords'" in keywords
-    assert "国内数据源" in sources and "外网数据源" in sources
-    assert "tab: 'sources'" in sources
-    assert "route.query.tab" in foreign
-    assert "/foreign/opinions" in foreign
-    assert "/foreign/keywords" in foreign
-    assert "/foreign/sources" in foreign
-    assert "/foreign/collection-runs" in foreign
-    assert "/foreign?tab=runs" in layout
+    assert "activeTab" in alerts and "scope" in alerts
+    assert 'label="foreign"' in alerts
+    assert "/foreign/alert-rules" in alerts and "/foreign/alerts" in alerts
+    assert "visibleTabs" in foreign
+    assert "tab === 'alerts' || tab === 'alertRules'" in foreign
+    assert "path: '/alerts'" in foreign
+    assert "/foreign/sources/approved" in foreign
+    assert "selectedSourceIds" in foreign
+    assert "{ all_sources: true }" in foreign
+    assert "to: '/alerts'" in layout
+    assert "to: '/foreign?tab=alerts'" not in layout

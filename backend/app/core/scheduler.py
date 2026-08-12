@@ -1,8 +1,11 @@
 ﻿from __future__ import annotations
 import logging
 import hashlib
+import json
 import os
+from copy import deepcopy
 from collections.abc import Collection
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import bindparam, text
 
@@ -20,6 +23,11 @@ from app.core.runtime_fingerprint import (
     format_scheduler_owner_fingerprint,
 )
 from app.db.session import SessionLocal, engine
+from app.models.data_source import DataSource
+from app.services.audit_service import log_operation
+from app.services.foreign_collection_service import collect_foreign
+from app.services.foreign_risk_service import ForeignRiskService
+from app.services.foreign_alert_service import ForeignAlertService
 from app.services.event.aggregator import auto_aggregate_after_collect
 from app.services.alert_service import AlertService
 
@@ -38,6 +46,156 @@ SCHEDULER_ADVISORY_LOCK_KEY = (
 )
 _scheduler_lock_conn = None
 _scheduler_source_allowlist: frozenset[str] | None = None
+_foreign_schedule_state = {
+    "enabled": False,
+    "registered": False,
+    "running": False,
+    "last_run": None,
+}
+
+
+def foreign_scheduler_status() -> dict:
+    """Return an observable snapshot without exposing credentials or config values."""
+    snapshot = deepcopy(_foreign_schedule_state)
+    snapshot["enabled"] = bool(settings.foreign_collection_schedule_enabled)
+    snapshot["registered"] = bool(
+        scheduler is not None and scheduler.get_job("foreign_collector") is not None
+    )
+    return snapshot
+
+
+def _foreign_config(source: DataSource) -> dict:
+    try:
+        value = json.loads(source.config_json or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _run_foreign_collector_job() -> None:
+    """Run the opt-in foreign-only pipeline; domestic sources never enter it."""
+    if not settings.foreign_collection_schedule_enabled:
+        _foreign_schedule_state["enabled"] = False
+        return
+    if _foreign_schedule_state["running"]:
+        logger.info("Foreign scheduled collect skipped: previous run is still active")
+        return
+    _foreign_schedule_state["running"] = True
+    started = datetime.now(timezone.utc)
+    db = SessionLocal()
+    try:
+        rows = db.query(DataSource).filter(
+            DataSource.enabled.is_(True), DataSource.schedule_enabled.is_(True)
+        ).all()
+        now = datetime.now(timezone.utc)
+        due = [
+            row for row in rows
+            if _foreign_config(row).get("is_foreign") is True
+            and (row.next_collect_time is None or row.next_collect_time <= now)
+        ]
+        if not due:
+            return
+        source_ids = [row.id for row in due]
+        result = collect_foreign(
+            db,
+            source_ids=source_ids,
+            all_sources=False,
+            trigger_type="scheduled",
+        )
+        # Advance each source only after the collection pipeline has returned.
+        # A failed fetch therefore remains due and can be retried on the next tick.
+        finished_at = datetime.now(timezone.utc)
+        source_results = {
+            int(item.get("source_id")): item
+            for item in (result.get("source_results") or [])
+        }
+        for row in due:
+            source_result = source_results.get(row.id) or {}
+            if source_result.get("status") != "success":
+                # Do not move a failed/partial source into the future.  Other
+                # sources in the same scheduled batch may still advance.
+                continue
+            row.last_collect_time = finished_at
+            row.next_collect_time = finished_at + timedelta(
+                minutes=max(int(row.schedule_interval_minutes or 60), 5)
+            )
+        db.commit()
+        created_ids = result.get("created_ids") or []
+        analyzed = 0
+        risk_errors = 0
+        for offset in range(0, len(created_ids), 50):
+            try:
+                ForeignRiskService().analyze_many(db, created_ids[offset : offset + 50])
+                analyzed += len(created_ids[offset : offset + 50])
+            except Exception:
+                risk_errors += len(created_ids[offset : offset + 50])
+                logger.exception("Foreign scheduled risk analysis failed for a chunk")
+        event_result = None
+        if settings.foreign_event_auto_aggregation_enabled:
+            try:
+                from app.services.foreign_event_auto_aggregation_service import ForeignEventAutoAggregationService
+
+                event_result = ForeignEventAutoAggregationService().aggregate(
+                    db, user_id=None, dry_run=False, opinion_ids=created_ids or None
+                )
+            except Exception:
+                logger.exception("Foreign scheduled event aggregation failed")
+        alert_result = None
+        if settings.foreign_alert_auto_evaluation_enabled:
+            try:
+                alert_result = ForeignAlertService.evaluate(
+                    db, user_id=None, dry_run=False, _run_type="auto"
+                )
+                db.commit()
+            except Exception:
+                logger.exception("Foreign scheduled alert evaluation failed")
+        log_operation(
+            db,
+            action="FOREIGN_COLLECTION_SCHEDULED",
+            resource_type="foreign_collection",
+            resource_id=result.get("batch_id"),
+            details={
+                "source_ids": source_ids,
+                "trigger_type": "scheduled",
+                "fetched_raw": result.get("fetched_raw", 0),
+                "created": result.get("created", 0),
+                "duplicate": result.get("duplicate", 0),
+                "failed": result.get("failed", 0) + risk_errors,
+                "analyzed": analyzed,
+                "event_status": getattr(getattr(event_result, "run", None), "status", None),
+                "alert_status": getattr(alert_result, "status", None),
+            },
+        )
+        db.commit()
+        _foreign_schedule_state["last_run"] = {
+            "batch_id": result.get("batch_id"),
+            "source_ids": source_ids,
+            "trigger_type": "scheduled",
+            "started_at": started.isoformat(),
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+            "status": "success" if not result.get("failed") and not risk_errors else "partial",
+            "fetched_raw": result.get("fetched_raw", 0),
+            "created": result.get("created", 0),
+            "duplicate": result.get("duplicate", 0),
+            "failed": result.get("failed", 0) + risk_errors,
+            "error_summary": None,
+        }
+    except Exception as exc:
+        db.rollback()
+        # Keep the original due state explicitly documented for callers that
+        # use a session-level claim in a future scheduler implementation.
+        _foreign_schedule_state["retryable"] = True
+        _foreign_schedule_state["last_run"] = {
+            "trigger_type": "scheduled",
+            "started_at": started.isoformat(),
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+            "status": "failed",
+            "error_summary": "Foreign scheduled collection failed; source schedule remains retryable",
+        }
+        logger.exception("Foreign scheduled collection failed")
+    finally:
+        _foreign_schedule_state["running"] = False
+        db.close()
 
 
 def _normalize_source_allowlist(
@@ -306,7 +464,11 @@ def start_scheduler(
     )
     if scheduler is not None:
         return
-    if not (settings.collector_schedule_enabled or settings.alert_eval_enabled):
+    if not (
+        settings.collector_schedule_enabled
+        or settings.alert_eval_enabled
+        or settings.foreign_collection_schedule_enabled
+    ):
         logger.info("All scheduled jobs disabled")
         return
     # 跨进程单例：仅抢到 PG 咨询锁的进程启动调度器；未抢到则跳过但正常启动。
@@ -340,6 +502,18 @@ def start_scheduler(
         scheduler.add_job(_run_weibo_consumer_job, trigger=CronTrigger.from_crontab(settings.weibo_consumer_schedule_cron), id="weibo_consumer", name="Weibo hourly consumer", replace_existing=True)
     if settings.alert_eval_enabled:
         scheduler.add_job(_run_alert_eval_job, trigger=IntervalTrigger(minutes=settings.alert_eval_interval_minutes), id="alert_eval", name="Alert auto-evaluation", replace_existing=True)
+    if settings.foreign_collection_schedule_enabled:
+        scheduler.add_job(
+            _run_foreign_collector_job,
+            trigger=IntervalTrigger(seconds=max(30, settings.foreign_collection_schedule_interval_seconds)),
+            id="foreign_collector",
+            name="Foreign RSS collection",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=30,
+            replace_existing=True,
+        )
+        _foreign_schedule_state["registered"] = True
     scheduler.start()
     logger.info(
         "Scheduler started (acquired advisory lock): mode=%s alert_eval_minutes=%d",
@@ -352,4 +526,6 @@ def stop_scheduler():
     if scheduler is not None:
         scheduler.shutdown(wait=False)
         scheduler = None
-        logger.info("Scheduler stopped")
+    _foreign_schedule_state["registered"] = False
+    _foreign_schedule_state["running"] = False
+    logger.info("Scheduler stopped")

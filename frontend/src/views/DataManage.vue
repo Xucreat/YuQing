@@ -128,7 +128,7 @@ function resolveInitialTab(): TabKey {
 }
 const tab = ref<TabKey>(resolveInitialTab())
 // 国内/外网二级切换，跨关键词/数据源/采集日志三个子页共享
-const scope = ref<ScopeKey>('domestic')
+const scope = ref<ScopeKey>(route.query.scope === 'foreign' ? 'foreign' : 'domestic')
 // 当前子页是否具备外网版本且用户有权访问
 const canUseForeign = computed(() => {
   if (tab.value === 'keywords') return canReadForeignKeyword.value
@@ -139,6 +139,17 @@ const canUseForeign = computed(() => {
 const showScopeSwitch = computed(() => canUseForeign.value)
 // 切换到无外网权限的子页时回落到国内，避免出现空白
 watch(canUseForeign, (ok) => { if (!ok) scope.value = 'domestic' })
+watch(
+  () => route.query.scope,
+  (value) => {
+    const requested = value === 'foreign' ? 'foreign' : 'domestic'
+    if (requested !== scope.value) scope.value = requested
+  },
+)
+watch(scope, (value) => {
+  if (route.query.scope === value) return
+  router.replace({ query: { ...route.query, scope: value } })
+})
 
 function switchTab(t: TabKey) {
   if (t === tab.value) return

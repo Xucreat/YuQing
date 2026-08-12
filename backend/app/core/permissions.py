@@ -24,6 +24,76 @@ def is_superuser_user(user: User) -> bool:
     return bool(user.is_superuser) or user.role == "admin"
 
 
+# ================= 外网「四类组合权限」-> 旧细粒度权限 展开表 =================
+# 设计目标（见需求「六、外网权限简化」）：
+#   - 角色配置组合权限（如 foreign:read）后，后端 require_permission(旧细粒度) 仍判定通过；
+#   - 超管 * 行为不变；现有细粒度权限码继续有效，互不冲突；
+#   - 解析层在 get_user_permissions 中一次性展开，单一事实来源，前端 /me 复用同一结果。
+# 注意：每个组合只展开到「当前后端实际 require_permission 检查且属于该业务范围的
+#      foreign:* 细粒度码」，避免把事件写入等不相关能力授予数据管理角色。
+COMPOSITE_PERMISSIONS: dict[str, list[str]] = {
+    "foreign:read": [
+        "foreign:opinions:read",
+        "foreign:risk:read",
+        "foreign:risk:terms:read",
+        "foreign:events:read",
+        "foreign:events:candidates:read",
+        "foreign:alerts:read",
+        "foreign:alerts:rules:read",
+        "foreign:keywords:read",
+        "foreign:sources:read",
+    ],
+    "foreign:data:manage": [
+        "foreign:keywords:read",
+        "foreign:keywords:write",
+        "foreign:sources:read",
+        "foreign:sources:write",
+        "foreign:sources:test",
+        "foreign:sources:collect",
+        "foreign:sources:collect_all",
+    ],
+    "foreign:analysis": [
+        "foreign:risk:read",
+        "foreign:events:read",
+        "foreign:events:candidates:read",
+        "foreign:risk:analyze",
+        "foreign:risk:batch",
+        "foreign:risk:ai",
+        "foreign:ai:analyze",
+        "foreign:events:confirm",
+        "foreign:events:merge",
+        "foreign:events:split",
+        "foreign:events:status",
+        "foreign:events:rebuild",
+        "foreign:events:auto-aggregate",
+        "foreign:alerts:evaluate",
+        "foreign:alerts:ai-admit",
+    ],
+    "foreign:alerts:manage": [
+        "foreign:alerts:read",
+        "foreign:alerts:rules:read",
+        "foreign:alerts:rules:write",
+        "foreign:alerts:acknowledge",
+        "foreign:alerts:resolve",
+        "foreign:alerts:suppress",
+        "foreign:alerts:enable",
+    ],
+}
+
+
+def expand_permissions(codes: list[str]) -> list[str]:
+    """将组合权限展开为等价的细粒度权限集合（幂等、可重复调用）。
+
+    仅做集合展开并去重；不依赖数据库，便于单元测试与权限解析层复用。
+    """
+    expanded: set[str] = set(codes)
+    for code in list(expanded):
+        subs = COMPOSITE_PERMISSIONS.get(code)
+        if subs:
+            expanded.update(subs)
+    return sorted(expanded)
+
+
 def get_user_permissions(user: User, db: Session) -> list[str]:
     """返回用户拥有的最终权限码列表。
 
@@ -41,7 +111,9 @@ def get_user_permissions(user: User, db: Session) -> list[str]:
             continue
         for perm in role.permissions:
             codes.add(perm.code)
-    return sorted(codes)
+    # 组合权限 -> 旧细粒度权限展开（四类组合权限方案）。
+    # 展开后 require_permission(细粒度) 与前端 /me 缓存均一致通过。
+    return expand_permissions(sorted(codes))
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
