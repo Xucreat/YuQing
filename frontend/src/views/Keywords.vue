@@ -31,10 +31,18 @@
       <span class="legend-item"><i class="dot dot-sys"></i>系统内置敏感词：可查看 / 筛选 / 启停，不可删除或篡改内容</span>
     </div>
 
+    <div class="batch-bar" v-if="canWriteKeyword">
+      <span class="batch-info">已选 {{ selectedIds.length }} 项</span>
+      <button class="btn btn-primary btn-sm" :disabled="selectedIds.length === 0" @click="batchToggle(true)">批量启用</button>
+      <button class="btn btn-ghost btn-sm" :disabled="selectedIds.length === 0" @click="batchToggle(false)">批量停用</button>
+      <button class="btn btn-ghost btn-sm" v-if="selectedIds.length" @click="selectedIds = []">取消选择</button>
+    </div>
+
     <div class="card table-card">
       <table class="tbl">
         <thead>
           <tr>
+            <th style="width:44px"><input type="checkbox" class="row-check" :checked="pageAllSelected" @change="togglePageAll" /></th>
             <th style="width:60px">#</th>
             <th>关键词</th>
             <th style="width:90px">类型</th>
@@ -47,6 +55,7 @@
         </thead>
         <tbody>
           <tr v-for="(row, idx) in rows" :key="row.id">
+            <td><input type="checkbox" class="row-check" :checked="selectedIds.includes(row.id)" @change="toggleRow(row)" /></td>
             <td>{{ (page - 1) * size + idx + 1 }}</td>
             <td><strong>{{ row.word }}</strong></td>
             <td>
@@ -83,7 +92,7 @@
             </td>
           </tr>
           <tr v-if="!rows.length && !loading">
-            <td colspan="8" class="empty-row">暂无关键词</td>
+            <td colspan="9" class="empty-row">暂无关键词</td>
           </tr>
         </tbody>
       </table>
@@ -161,6 +170,38 @@ const total = ref(0)
 const page = ref(1)
 const size = ref(50)
 const categories = ref<string[]>([])
+
+// 批量启停：行选择
+const selectedIds = ref<number[]>([])
+const pageAllSelected = computed(
+  () => rows.value.length > 0 && rows.value.every((r) => selectedIds.value.includes(r.id)),
+)
+function toggleRow(row: Keyword) {
+  const i = selectedIds.value.indexOf(row.id)
+  if (i >= 0) selectedIds.value.splice(i, 1)
+  else selectedIds.value.push(row.id)
+}
+function togglePageAll(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  if (checked) {
+    for (const r of rows.value) if (!selectedIds.value.includes(r.id)) selectedIds.value.push(r.id)
+  } else {
+    const pageIds = new Set(rows.value.map((r) => r.id))
+    selectedIds.value = selectedIds.value.filter((id) => !pageIds.has(id))
+  }
+}
+async function batchToggle(enabled: boolean) {
+  if (selectedIds.value.length === 0) return
+  try {
+    await api.put("/keywords/batch-toggle", { ids: selectedIds.value, is_enabled: enabled })
+    ElMessage.success(enabled ? "已批量启用" : "已批量停用")
+    selectedIds.value = []
+    loadData()
+  } catch (err: any) {
+    if (isPermissionDenied(err)) return
+    ElMessage.error(err?.response?.data?.detail || "批量操作失败")
+  }
+}
 
 const dialogVisible = ref(false)
 const isEdit = ref(false)
@@ -315,6 +356,9 @@ onMounted(() => {
 .btn-sm { padding: 6px 14px; font-size: 13px }
 .btn-danger { color: #ff3b30 }
 .legend { margin-bottom: 12px; font-size: 12.5px; color: #86868b }
+.batch-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px }
+.batch-info { font-size: 13px; color: #86868b }
+.row-check { width: 16px; height: 16px; cursor: pointer; accent-color: #0071e3 }
 .legend-item { display: inline-flex; align-items: center; gap: 6px }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block }
 .dot-sys { background: #ff9500 }

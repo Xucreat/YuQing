@@ -5,7 +5,7 @@
         <div class="modal-header">
           <div class="modal-title-wrap">
             <span class="modal-kicker">舆情详情与 AI 分析</span>
-            <h3 class="modal-title">{{ detail?.title || '加载中…' }}</h3>
+            <h3 class="modal-title">{{ (showTranslation && translatedTitle) ? translatedTitle : (detail?.title || '加载中…') }}</h3>
           </div>
           <div class="modal-header-right">
             <a
@@ -24,17 +24,26 @@
             <div class="detail-grid">
               <!-- Left: original text (live-fetched, longer than title) -->
               <div class="card card-pad">
+                <div class="detail-card-top" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                  <span class="section-title">原文内容</span>
+                  <button class="btn btn-ghost btn-sm" :disabled="translating" @click="translateContent">
+                    {{ translating ? '翻译中…' : (showTranslation ? '显示原文' : '翻译') }}
+                  </button>
+                </div>
                 <div class="detail-meta">
                   <span>来源：{{ detail.source }}</span>
                   <span>发布时间：{{ formatTime(detail.publish_time) }}</span>
                 </div>
                 <div class="detail-divider"></div>
-                <div class="detail-content" v-loading="originalLoading" element-loading-text="正在抓取来源页原文…">
+                <div class="detail-content" v-show="!showTranslation" v-loading="originalLoading" element-loading-text="正在抓取来源页原文…">
                   <template v-if="originalParas.length">
                     <p v-for="(p, i) in originalParas" :key="i" class="orig-p">{{ p }}</p>
                   </template>
                   <p v-else-if="detail.content && !originalLoading">{{ detail.content }}</p>
                   <p v-else-if="!originalLoading" class="orig-empty">暂无原文内容。</p>
+                </div>
+                <div v-if="showTranslation" class="detail-content">
+                  <p>{{ translatedText || translatedTitle }}</p>
                 </div>
                 <div class="detail-foot-note" v-if="originalFetched && !originalParas.length && detail.content">
                   来源页暂无可抓取正文，已显示摘要。
@@ -213,6 +222,10 @@ const analyzing = ref(false)
 const detail = ref<Opinion | null>(null)
 const originalParas = ref<string[]>([])
 const originalFetched = ref(false)
+const translating = ref(false)
+const translatedText = ref('')
+const translatedTitle = ref('')
+const showTranslation = ref(false)
 
 const keywordList = computed(() =>
   (detail.value?.keywords || '').split(',').map(k => k.trim()).filter(Boolean)
@@ -315,6 +328,9 @@ async function openDetail(id: number) {
   detail.value = null
   originalParas.value = []
   originalFetched.value = false
+  showTranslation.value = false
+  translatedText.value = ''
+  translatedTitle.value = ''
   try {
     const { data } = await api.get<Opinion>('/opinions/' + id)
     detail.value = data
@@ -333,6 +349,32 @@ async function openDetail(id: number) {
 }
 
 function close() { emit('update:modelValue', false) }
+
+async function translateContent() {
+  if (!detail.value) return
+  if (showTranslation.value) { showTranslation.value = false; return }
+  const title = (detail.value.title || '').trim()
+  const content = (detail.value.content || '').trim()
+  if (!title && !content) { ElMessage.info('暂无可翻译内容'); return }
+  translating.value = true
+  try {
+    const tasks: Promise<string>[] = []
+    tasks.push(title
+      ? api.post<{ translated_text: string }>('/translate', { text: title }).then(r => r.data.translated_text)
+      : Promise.resolve(''))
+    tasks.push(content
+      ? api.post<{ translated_text: string }>('/translate', { text: content }).then(r => r.data.translated_text)
+      : Promise.resolve(''))
+    const [tTitle, tContent] = await Promise.all(tasks)
+    translatedTitle.value = tTitle
+    translatedText.value = tContent
+    showTranslation.value = true
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || err?.response?.data?.message || '翻译失败，请稍后重试')
+  } finally {
+    translating.value = false
+  }
+}
 
 async function triggerAnalyze() {
   if (analyzing.value || !detail.value) return

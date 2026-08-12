@@ -680,6 +680,9 @@ class ForeignEventService:
         request_id: str | None = None,
         confirmation_source: str = "manual",
         commit: bool = True,
+        rule_risk_snapshot: dict | None = None,
+        ai_risk_snapshot: dict | None = None,
+        confirmation_version: str | None = None,
     ) -> ForeignEvent:
         request_id = _normalized_request_id(request_id)
         previous_action = self._existing_action(db, request_id)
@@ -731,6 +734,10 @@ class ForeignEventService:
             origin_candidate_id=candidate.id,
             confirmed_by=user_id,
             confirmed_at=now,
+            rule_risk_snapshot=rule_risk_snapshot or {},
+            ai_risk_snapshot=ai_risk_snapshot or {},
+            review_reason=reason or None,
+            confirmation_version=confirmation_version,
         )
         db.add(event)
         db.flush()

@@ -69,9 +69,10 @@ def foreign_ai_is_enabled() -> bool:
 class ForeignAIService:
     """Run one explicit foreign AI analysis and persist an isolated result."""
 
-    def _new_run(self, db: Session, opinion_id: int) -> ForeignAnalysisRun:
+    def _new_run(self, db: Session, opinion_id: int, batch_run_id: str | None = None) -> ForeignAnalysisRun:
         run = ForeignAnalysisRun(
             foreign_opinion_id=opinion_id,
+            batch_run_id=batch_run_id,
             analyzer_type=AI_ANALYZER_TYPE,
             model_name=AI_MODEL_NAME,
             model_version=AI_MODEL_VERSION,
@@ -99,7 +100,7 @@ class ForeignAIService:
         run.error_message = error_message
 
     def analyze_opinion_manual(
-        self, db: Session, opinion_id: int, *, force: bool = False
+        self, db: Session, opinion_id: int, *, force: bool = False, batch_run_id: str | None = None
     ) -> tuple[ForeignAIResult, bool]:
         """Manual entry point with click-level idempotency.
 
@@ -124,17 +125,23 @@ class ForeignAIService:
                 )
             )
             if existing is not None:
+                if batch_run_id:
+                    run = self._new_run(db, opinion.id, batch_run_id=batch_run_id)
+                    self._finish_run(run, status="success", success=1, failed=0)
+                    existing.analysis_run_id = run.id
+                    existing.batch_run_id = batch_run_id
+                    db.flush()
                 return existing, True
-        return self.analyze_opinion(db, opinion_id), False
+        return self.analyze_opinion(db, opinion_id, batch_run_id=batch_run_id), False
 
-    def analyze_opinion(self, db: Session, opinion_id: int) -> ForeignAIResult:
+    def analyze_opinion(self, db: Session, opinion_id: int, *, batch_run_id: str | None = None) -> ForeignAIResult:
         opinion = db.get(ForeignOpinion, opinion_id)
         if opinion is None:
             raise LookupError("Foreign opinion not found")
 
         text = _analysis_text(opinion)
         digest = _content_hash(text, opinion.content_hash or "")
-        run = self._new_run(db, opinion.id)
+        run = self._new_run(db, opinion.id, batch_run_id=batch_run_id)
         result = db.scalar(
             select(ForeignAIResult).where(
                 ForeignAIResult.foreign_opinion_id == opinion.id,
@@ -147,6 +154,7 @@ class ForeignAIService:
             result = ForeignAIResult(
                 foreign_opinion_id=opinion.id,
                 analysis_run_id=run.id,
+                batch_run_id=batch_run_id,
                 content_hash=digest,
                 model_name=AI_MODEL_NAME,
                 model_version=AI_MODEL_VERSION,
@@ -155,6 +163,7 @@ class ForeignAIService:
             db.add(result)
         else:
             result.analysis_run_id = run.id
+            result.batch_run_id = batch_run_id
             result.status = "processing"
             result.error_message = None
         db.flush()
@@ -220,6 +229,7 @@ def serialize_ai_result(result: ForeignAIResult | None) -> dict | None:
         "id": result.id,
         "foreign_opinion_id": result.foreign_opinion_id,
         "analysis_run_id": result.analysis_run_id,
+        "batch_run_id": result.batch_run_id,
         "content_hash": result.content_hash,
         "model_name": result.model_name,
         "model_version": result.model_version,

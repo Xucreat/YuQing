@@ -37,6 +37,7 @@ class ForeignAIResult(Base):
     analysis_run_id: Mapped[int | None] = mapped_column(
         ForeignKey("foreign_analysis_runs.id", ondelete="SET NULL"), nullable=True
     )
+    batch_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     model_name: Mapped[str] = mapped_column(String(128), nullable=False, default="deepseek")
     model_version: Mapped[str] = mapped_column(String(64), nullable=False, default="foreign-ai-v1")

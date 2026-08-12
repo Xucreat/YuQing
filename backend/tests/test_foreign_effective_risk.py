@@ -86,10 +86,12 @@ def _rule_result(db, opinion: ForeignOpinion, score: int, *, level: str | None =
     return row
 
 
-def _ai_result(db, opinion: ForeignOpinion, score: int) -> ForeignAIResult:
+def _ai_result(
+    db, opinion: ForeignOpinion, score: int, *, content_hash: str | None = None
+) -> ForeignAIResult:
     row = ForeignAIResult(
         foreign_opinion_id=opinion.id,
-        content_hash=opinion.content_hash,
+        content_hash=content_hash or opinion.content_hash,
         model_name="deepseek",
         model_version="foreign-ai-v1",
         status="completed",
@@ -519,6 +521,31 @@ def test_incomplete_ai_result_falls_back_for_display_and_list_filter(client, aut
         row = next(item for item in items if item["id"] == opinion.id)
         assert row["display_risk"]["source"] == "rule"
         assert row["display_risk"]["fallback"] is True
+    finally:
+        _cleanup(db, suffix)
+        db.close()
+
+
+def test_detail_returns_latest_completed_ai_result_even_when_not_current(client, auth_headers):
+    db = SessionLocal()
+    suffix = _suffix()
+    try:
+        opinion = _opinion(db, suffix)
+        _rule_result(db, opinion, 20)
+        first = _ai_result(db, opinion, 45)
+        second = _ai_result(db, opinion, 85, content_hash=(suffix + "retry")[:64])
+        first.is_current = True
+        second.is_current = False
+        db.commit()
+
+        response = client.get(
+            f"/api/foreign/opinions/{opinion.id}/detail",
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["latest_ai_risk"]["ai_result_id"] == second.id
+        assert payload["ai_result"]["id"] == second.id
     finally:
         _cleanup(db, suffix)
         db.close()

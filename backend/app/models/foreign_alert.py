@@ -96,5 +96,16 @@ class ForeignAlert(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Manual-review provenance. Populated only when a human confirms an
+    # AI-driven alert change via the foreign manual-review gate; the formal
+    # alert remains a rule-sourced record with human confirmation metadata.
+    rule_risk_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    ai_risk_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confirmation_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    confirmed_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)

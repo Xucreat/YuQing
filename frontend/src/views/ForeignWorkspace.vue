@@ -5,12 +5,7 @@
         {{ tab.label }}
       </button>
       <div class="tab-actions">
-        <details class="source-picker"><summary>选择来源</summary><div class="source-picker-menu"><label v-for="source in approvedSources" :key="source.id"><input v-model="selectedSourceIds" type="checkbox" :value="source.id" /> {{ source.name }}</label><span v-if="!approvedSources.length" class="muted">暂无已批准外网来源</span></div></details>
         <span class="source-scope-label">已批准数据源：{{ approvedSourceLabel }}</span>
-        <button v-if="canCollectSelected" class="btn btn-primary btn-sm" :disabled="collecting || !selectedSourceIds.length" @click="collectNow">
-        {{ collecting ? '采集中...' : '采集外网 RSS' }}
-        </button>
-        <button v-if="canCollectAll" class="btn btn-secondary btn-sm" :disabled="collecting" @click="collectAll">采集全部已启用外网数据源</button>
       </div>
     </div>
 
@@ -144,7 +139,28 @@
         <input v-model="opinionFilters.date_from" class="input date-input" type="date" title="发布时间起始" @change="loadOpinions" />
         <input v-model="opinionFilters.date_to" class="input date-input" type="date" title="发布时间截止" @change="loadOpinions" />
         <button class="btn btn-secondary" @click="loadOpinions">搜索</button>
+        <button v-if="canAnalyzeAI" class="btn btn-primary" :disabled="aiBatchLoading" @click="openAIBatch">批量 AI 研判</button>
+        <button v-if="canReadAIBatches" class="btn btn-secondary" :disabled="aiBatchLoading" @click="openAIBatchHistory">AI 研判运行记录</button>
         <span class="muted">AI 研判结果仅用于辅助分析，不改变系统正式风险和告警</span>
+      </div>
+      <div v-if="aiBatchRun && !isAIBatchFinished" class="ai-batch-status">
+        <div class="ai-batch-status-head">
+          <strong>AI 批量研判 {{ zh(aiBatchRun.status) }}</strong>
+          <span class="ai-batch-count">{{ aiBatchRun.processed_count || 0 }} / {{ aiBatchRun.total_count || 0 }}</span>
+        <span class="ai-batch-step">{{ aiBatchStepText(aiBatchRun.step) }}</span>
+          <button class="link-btn danger" v-if="canCancelAIBatch && (aiBatchRun.status === 'running' || aiBatchRun.status === 'pending')" @click="cancelAIBatch">取消</button>
+        </div>
+        <div class="ai-batch-progress-track" role="progressbar" :aria-valuenow="batchProgress" aria-valuemin="0" aria-valuemax="100">
+          <span class="ai-batch-progress-bar" :style="{ width: `${batchProgress}%` }"></span>
+        </div>
+        <div class="ai-batch-status-meta">
+          <span>{{ batchProgress }}%</span>
+          <span>成功 {{ aiBatchRun.success_count || 0 }}</span>
+          <span>失败 {{ aiBatchRun.failed_count || 0 }}</span>
+          <span>跳过 {{ aiBatchRun.skipped_count || 0 }}</span>
+          <span v-if="aiBatchRun.started_at" class="muted">开始：{{ formatTime(aiBatchRun.started_at) }}</span>
+        </div>
+        <p v-if="(aiBatchRun.failures || []).length" class="ai-batch-inline-error">失败 {{ aiBatchRun.failures.length }} 条：{{ (aiBatchRun.failures || []).map((item: any) => item.error || item.message || item.code || '未知错误').slice(0, 2).join('；') }}</p>
       </div>
       <div class="table-wrap tbl-scroll">
         <table>
@@ -210,6 +226,7 @@
       <div class="subtabs">
         <button class="tab" :class="{ active: eventSection === 'candidates' }" @click="eventSection = 'candidates'">事件候选</button>
         <button class="tab" :class="{ active: eventSection === 'confirmed' }" @click="eventSection = 'confirmed'">外网事件</button>
+        <button class="tab" :class="{ active: eventSection === 'ai-review' }" @click="eventSection = 'ai-review'; loadManualReviews()">AI 人工复核</button>
       </div>
       <div v-if="eventSection === 'candidates'" class="table-wrap">
         <table>
@@ -232,7 +249,7 @@
           </tbody>
         </table>
       </div>
-      <div v-else class="table-wrap">
+      <div v-else-if="eventSection === 'confirmed'" class="table-wrap">
         <table>
           <thead><tr><th>标题</th><th>语言</th><th>确认来源</th><th>状态</th><th>风险快照</th><th>热度</th><th>文章数</th><th>来源数</th><th>置信度</th><th>首次出现</th><th>最近出现</th><th>操作</th></tr></thead>
           <tbody>
@@ -283,7 +300,98 @@
     </section>
 
     <ForeignOpinionDetailModal v-model="detailVisible" :opinion-id="detailId" :risk-source="riskSource" @update:risk-source="setRiskSource" />
+    <el-dialog v-model="aiBatchDialog" title="批量 AI 研判" width="min(640px, calc(100vw - 24px))">
+      <div class="ai-batch-options">
+        <label>研判范围
+          <select v-model="aiBatchConfig.scope" class="input" @change="refreshAIBatchPreview">
+            <option value="count">按数量（最近 N 条）</option>
+            <option value="time">按时间范围</option>
+            <option value="full">全量 AI 研判</option>
+          </select>
+        </label>
+        <label v-if="aiBatchConfig.scope === 'count'">最近 N 条
+          <input v-model.number="aiBatchConfig.recent_n" class="input" type="number" min="1" max="100000" @change="refreshAIBatchPreview" />
+        </label>
+        <template v-if="aiBatchConfig.scope === 'time'">
+          <label>发布时间起始日期<input v-model="aiBatchConfig.date_from" class="input" type="date" @change="refreshAIBatchPreview" /></label>
+          <label>发布时间结束日期<input v-model="aiBatchConfig.date_to" class="input" type="date" @change="refreshAIBatchPreview" /></label>
+        </template>
+        <label class="check-row"><input v-model="aiBatchConfig.use_current_filters" type="checkbox" @change="refreshAIBatchPreview" /> 仅选择当前筛选结果</label>
+        <label class="check-row"><input v-model="aiBatchConfig.only_unanalyzed" type="checkbox" @change="refreshAIBatchPreview" /> 仅处理未完成 AI 研判的记录</label>
+        <label class="check-row"><input v-model="aiBatchConfig.force" type="checkbox" @change="refreshAIBatchPreview" /> 强制重新研判已有 AI 结果</label>
+        <p v-if="aiBatchConfig.scope === 'full'" class="warning-text">全量任务可能消耗大量 Token 并运行较长时间。AI 结果仍须人工复核后才会进入正式事件或预警。</p>
+      </div>
+      <div v-if="aiBatchPreview" class="ai-batch-preview">
+        <p>符合条件舆情：<strong>{{ aiBatchPreview.matched_count }}</strong> 条</p>
+        <p>已有 AI 结果：<strong>{{ aiBatchPreview.existing_ai_result_count }}</strong> 条 · 待分析：<strong>{{ aiBatchPreview.pending_analysis_count }}</strong> 条</p>
+        <p>待分析：<strong>{{ aiBatchPreview.pending_analysis_count }}</strong> 条 · 预计 Token：<strong>{{ aiBatchPreview.estimated_token_usage }}</strong></p>
+        <p>预计耗时：{{ aiBatchPreview.estimated_duration_seconds }} 秒</p>
+        <p>风险分布：高 {{ aiBatchPreview.risk_level_counts?.high || 0 }} · 中 {{ aiBatchPreview.risk_level_counts?.medium || 0 }} · 低 {{ aiBatchPreview.risk_level_counts?.low || 0 }}</p>
+        <p>可能影响：事件候选 {{ aiBatchPreview.possible_event_count || 0 }} 个 · 预警 {{ aiBatchPreview.possible_alert_count || 0 }} 个</p>
+        <p class="muted">AI 结果必须经过人工复核后，才可用于正式事件或预警变更。</p>
+        <p v-if="aiBatchPreview.preview_warning" class="warning-text">⚠ {{ aiBatchPreview.preview_warning }}</p>
+        <p v-if="aiBatchPreview.token_budget_exceeded" class="warning-text">⚠ 预计 Token 超出预算，提交将被拦截，请缩小范围或调高预算。</p>
+      </div>
+      <div v-if="eventSection === 'ai-review' && canReadReviewSection" class="table-wrap">
+        <div class="review-toolbar">
+          <button v-if="canReviewAI" class="btn btn-secondary" :disabled="!selectedReviewIds.length || reviewActionId" @click="batchDecideReviews('use_ai_display')">确认选中采用 AI 展示</button>
+          <button v-if="canConfirmEventReview" class="btn btn-primary" :disabled="!selectedReviewIds.length || reviewActionId" @click="batchDecideReviews('confirm_event_change')">确认选中事件影响</button>
+          <button v-if="canConfirmAlertReview" class="btn btn-primary" :disabled="!selectedReviewIds.length || reviewActionId" @click="batchDecideReviews('confirm_alert_change')">确认选中预警影响</button>
+          <button v-if="canRejectAIReview" class="btn btn-danger" :disabled="!selectedReviewIds.length || reviewActionId" @click="batchDecideReviews('reject_change')">驳回选中</button>
+          <button v-if="canFullConfirmAI && canConfirmEventReview" class="btn btn-secondary" :disabled="!manualReviews.length || reviewActionId" @click="batchDecideReviews('confirm_event_change', true)">全量确认事件</button>
+          <button v-if="canFullConfirmAI && canRejectAIReview" class="btn btn-danger" :disabled="!manualReviews.length || reviewActionId" @click="batchDecideReviews('reject_change', true)">全量驳回</button>
+        </div>
+        <table>
+          <thead><tr><th><input type="checkbox" :checked="selectedReviewIds.length === manualReviews.length && manualReviews.length > 0" @change="toggleAllReviews" /></th><th>舆情标题</th><th>舆情 ID</th><th>规则风险</th><th>AI 风险</th><th>事件影响</th><th>预警影响</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="review in manualReviews" :key="review.id">
+              <td><input v-model="selectedReviewIds" type="checkbox" :value="review.id" /></td><td class="review-title-cell"><button class="title-link" type="button" :title="review.opinion_title || '打开舆情详情'" @click="openOpinion(review.foreign_opinion_id)">{{ review.opinion_title || `舆情 #${review.foreign_opinion_id}` }}</button><span class="muted">{{ review.opinion_source || '-' }}</span></td><td>{{ review.foreign_opinion_id }}</td><td>{{ review.rule_risk_snapshot?.risk_score ?? '-' }} / {{ zh(review.rule_risk_snapshot?.risk_level) }}</td><td>{{ review.ai_risk_snapshot?.risk_score ?? '-' }} / {{ zh(review.ai_risk_snapshot?.risk_level) }}</td><td>{{ review.event_preview?.candidate_count || 0 }} 个候选</td><td>{{ review.alert_preview?.triggered_count || 0 }} 个预警</td><td>{{ zh(review.review_status) }}</td>
+              <td v-if="review.review_status === 'pending_review'" class="actions"><button v-if="canReviewAI" class="link-btn" :disabled="reviewActionId === review.id" @click="decideReview(review, 'use_ai_display')">采用 AI 展示</button><button v-if="canReviewAI" class="link-btn" :disabled="reviewActionId === review.id" @click="decideReview(review, 'keep_rule')">保留规则</button><button v-if="canConfirmEventReview" class="link-btn" :disabled="reviewActionId === review.id" @click="decideReview(review, 'confirm_event_change')">确认事件</button><button v-if="canConfirmAlertReview" class="link-btn" :disabled="reviewActionId === review.id" @click="decideReview(review, 'confirm_alert_change')">确认预警</button><button v-if="canRejectAIReview" class="link-btn danger" :disabled="reviewActionId === review.id" @click="decideReview(review, 'reject_change')">驳回</button></td>
+              <td v-else class="muted">{{ review.review_reason || '-' }}</td>
+            </tr>
+            <tr v-if="!manualReviews.length"><td colspan="9" class="empty">暂无待复核结果</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <template #footer><button class="btn btn-secondary" @click="aiBatchDialog = false">取消</button><button class="btn btn-primary" :disabled="aiBatchLoading || !aiBatchPreview?.opinion_ids?.length" @click="startAIBatch">确认提交</button></template>
+    </el-dialog>
   </div>
+  <!-- AI 研判运行记录（批量任务历史） -->
+  <el-dialog v-model="aiBatchHistoryDialog" title="AI 研判运行记录" width="min(880px, calc(100vw - 24px))">
+    <div v-if="aiBatchHistoryLoading" class="muted">加载中...</div>
+    <div v-else-if="!aiBatchHistory.length" class="muted">暂无批量 AI 研判运行记录</div>
+    <div v-else class="table-wrap">
+      <table>
+        <thead><tr><th>运行号</th><th>范围</th><th>状态</th><th>进度</th><th>成功/失败/跳过</th><th>开始</th><th>结束</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr v-for="r in aiBatchHistory" :key="r.run_id" :class="{ active: aiBatchHistorySel && aiBatchHistorySel.run_id === r.run_id }" @click="openAIBatchHistoryDetail(r.run_id)">
+            <td>{{ r.run_id.slice(0, 8) }}</td>
+            <td>{{ zh(r.scope) }}</td>
+            <td><span class="status" :class="{ on: r.status === 'success' || r.status === 'partial' }">{{ zh(r.status) }}</span></td>
+            <td>{{ r.processed_count || 0 }}/{{ r.total_count || 0 }}</td>
+            <td>{{ r.success_count || 0 }} / {{ r.failed_count || 0 }} / {{ r.skipped_count || 0 }}</td>
+            <td>{{ formatTime(r.started_at) }}</td>
+            <td>{{ formatTime(r.finished_at) }}</td>
+            <td><button class="link-btn" @click.stop="openAIBatchHistoryDetail(r.run_id)">查看</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div v-if="aiBatchHistorySel" class="ai-batch-details ai-batch-history-detail">
+      <h4>运行详情 {{ aiBatchHistorySel.run_id }}</h4>
+      <span>状态：{{ zh(aiBatchHistorySel.status) }}</span>
+      <span>进度：{{ aiBatchHistorySel.processed_count || 0 }}/{{ aiBatchHistorySel.total_count || 0 }}（{{ batchProgressOf(aiBatchHistorySel) }}%）</span>
+      <span>当前步骤：{{ aiBatchHistorySel.step || '-' }}</span>
+      <span>成功 {{ aiBatchHistorySel.success_count || 0 }} · 失败 {{ aiBatchHistorySel.failed_count || 0 }} · 跳过 {{ aiBatchHistorySel.skipped_count || 0 }}</span>
+      <span>开始：{{ aiBatchHistorySel.started_at || '-' }}</span>
+      <span>结束：{{ aiBatchHistorySel.finished_at || '-' }}</span>
+      <span>预估 Token：{{ aiBatchHistorySel.estimated_token_usage ?? '-' }}</span>
+      <span>实际 Token：{{ aiBatchHistorySel.actual_token_usage ?? '-' }}</span>
+      <p v-if="(aiBatchHistorySel.failures || []).length" class="failures">失败明细：{{ (aiBatchHistorySel.failures || []).map((item: any) => `#${item.opinion_id}: ${item.error}`).join('；') }}</p>
+      <p v-if="aiBatchHistorySel.event_preview" class="muted">可能影响事件候选：{{ aiBatchHistorySel.event_preview?.candidate_count ?? 0 }}</p>
+      <p v-if="aiBatchHistorySel.alert_preview" class="muted">可能影响预警：{{ aiBatchHistorySel.alert_preview?.triggered_count ?? 0 }}</p>
+    </div>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -458,13 +566,8 @@ function normalizeTab(value: unknown): Tab {
 
 const activeTab = ref<Tab>(normalizeTab(route.query.tab))
 const loading = ref(false)
-const collecting = ref(false)
 const approvedSources = ref<Array<{ id: number; name: string }>>([])
-const approvedSourceIds = computed(() => approvedSources.value.map((source) => source.id))
 const selectedSourceIds = ref<number[]>([])
-const selectedSourceLabel = computed(() => selectedSourceIds.value.length
-  ? approvedSources.value.filter((source) => selectedSourceIds.value.includes(source.id)).map((source) => source.name || String(source.id)).join('、')
-  : '未选择')
 const approvedSourceLabel = computed(() => approvedSources.value.length
   ? approvedSources.value.map((source) => source.name || String(source.id)).join('、')
   : '暂无')
@@ -479,7 +582,9 @@ const eventRunFailures = ref<ForeignEventRun[]>([])
 const eventAutoStatus = ref<{ enabled: boolean; confidence_threshold: number; time_window_hours: number; scheduler_registered: boolean } | null>(null)
 const eventLoadError = ref<string | null>(null)
 const selectedForeignEvent = ref<ForeignEvent | null>(null)
-const eventSection = ref<'candidates' | 'confirmed'>('candidates')
+const eventSection = ref<'candidates' | 'confirmed' | 'ai-review'>('candidates')
+const manualReviews = ref<any[]>([])
+const reviewActionId = ref<number | null>(null)
 const rebuildingEvents = ref(false)
 const eventActionKey = ref<string | null>(null)
 const eventDetailLoadingId = ref<number | null>(null)
@@ -561,6 +666,8 @@ const ZH_DICT: Record<string, string> = {
   completed: '已完成', pending: '待处理', processing: '进行中', running: '运行中', queued: '排队中',
   failed: '失败', success: '成功', partial: '部分成功', skipped: '已跳过', error: '异常',
   candidate: '候选', converted: '已转正', confirmed: '已确认', rejected: '已拒绝', merged: '已合并',
+  pending_review: '待人工复核', use_ai_display: '采用 AI 展示', keep_rule: '保留规则',
+  confirm_event_change: '确认事件影响', confirm_alert_change: '确认预警影响', reject_change: '驳回',
   monitoring: '监测中', closed: '已关闭', archived: '已归档', split: '已拆分', dismissed: '已忽略',
   triggered: '待处理', acknowledged: '已确认', resolved: '已解决', suppressed: '已抑制',
   manual: '人工', auto: '自动', automatic: '自动', rule: '规则', system: '系统',
@@ -575,6 +682,32 @@ function zh(value: unknown): string {
   return ZH_DICT[key] || key
 }
 const aiAnalyzing = ref(false)
+const aiBatchDialog = ref(false)
+const aiBatchHistoryDialog = ref(false)
+const aiBatchHistory = ref<any[]>([])
+const aiBatchHistorySel = ref<any>(null)
+const aiBatchHistoryLoading = ref(false)
+const aiBatchLoading = ref(false)
+const aiBatchPreview = ref<any>(null)
+const aiBatchConfig = reactive({
+  scope: 'count' as 'count' | 'time' | 'full', recent_n: 100,
+  date_from: '', date_to: '', use_current_filters: true,
+  only_unanalyzed: true, force: false,
+})
+const aiBatchRun = ref<any>(null)
+const showAIBatchDetails = ref(false)
+const selectedReviewIds = ref<number[]>([])
+const isAIBatchFinished = computed(() => ['success', 'partial', 'failed', 'cancelled', 'completed'].includes(String(aiBatchRun.value?.status || '')))
+function aiBatchStepText(step?: string | null) {
+  if (!step) return '正在准备任务'
+  const matched = String(step).match(/Foreign AI review\s+(\d+)\/(\d+)/i)
+  return matched ? `正在研判第 ${matched[1]} / ${matched[2]} 条` : step
+}
+const batchProgress = computed(() => {
+  const total = Number(aiBatchRun.value?.total_count || 0)
+  return total ? Math.round((Number(aiBatchRun.value?.processed_count || 0) / total) * 100) : 0
+})
+let aiBatchTimer: ReturnType<typeof setTimeout> | null = null
 const keywordSaving = ref(false)
 const keywordCategories = ref<string[]>([])
 const keywordPage = ref(1)
@@ -587,6 +720,16 @@ const opinionFilters = reactive({ q: '', source: '', keyword: '', date_from: '',
 const riskFilters = reactive({ q: '', source: '', language: '', sentiment: '', risk_level: '', analysis_status: '', date_from: '', date_to: '' })
 const canAnalyzeRisk = hasPermission('foreign:risk:analyze')
 const canAnalyzeAI = hasPermission('foreign:ai:analyze')
+const canReadAIBatches = hasPermission('foreign:ai:batch:read')
+const canCancelAIBatch = hasPermission('foreign:ai:batch:cancel')
+const canReviewAI = hasPermission('foreign:ai:review:read')
+const canReadEventReview = hasPermission('foreign:events:review:read')
+const canReadAlertReview = hasPermission('foreign:alerts:review:read')
+const canReadReviewSection = computed(() => canReviewAI || canReadEventReview || canReadAlertReview)
+const canConfirmEventReview = hasPermission('foreign:events:review:confirm')
+const canConfirmAlertReview = hasPermission('foreign:alerts:review:confirm')
+const canRejectAIReview = hasPermission('foreign:ai:review:reject')
+const canFullConfirmAI = hasPermission('foreign:ai:full-confirm')
 const canConfirmEvents = hasPermission('foreign:events:confirm')
 const canChangeEventStatus = hasPermission('foreign:events:status')
 const canMergeEvents = hasPermission('foreign:events:merge')
@@ -824,8 +967,14 @@ function handleDashboardResize() {
   sourceChart?.resize()
   riskChart?.resize()
 }
-onMounted(() => window.addEventListener('resize', handleDashboardResize))
+onMounted(() => {
+  window.addEventListener('resize', handleDashboardResize)
+  const runId = localStorage.getItem('foreign-ai-batch-run-id')
+  if (runId) resumeAIBatchIfRunning(runId)
+})
 onBeforeUnmount(() => {
+  if (aiBatchTimer) clearTimeout(aiBatchTimer)
+  window.removeEventListener('foreign-data-refresh', onForeignRefresh)
   window.removeEventListener('resize', handleDashboardResize)
   trendChart?.dispose(); trendChart = null
   hotwordChart?.dispose(); hotwordChart = null
@@ -941,7 +1090,198 @@ async function loadOpinions() {
     opinions.value = list.data.items
     opinionTotal.value = list.data.total
     opinionSources.value = sourceList.data
+  } catch (err: any) {
+    opinions.value = []
+    opinionTotal.value = 0
+    if (err?.response?.status !== 401 && err?.response?.status !== 403) ElMessage.error(err?.response?.data?.detail || '外网舆情加载失败，请稍后重试')
   } finally { loading.value = false }
+}
+
+async function openAIBatch() {
+  if (!canAnalyzeAI || aiBatchLoading.value) return
+  try {
+    await refreshAIBatchPreview()
+    aiBatchDialog.value = true
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '批量 AI 预览失败')
+  }
+}
+
+function batchPayload(fullConfirmation = false) {
+  const payload: Record<string, any> = {
+    scope: aiBatchConfig.scope,
+    recent_n: aiBatchConfig.recent_n,
+    date_from: aiBatchConfig.date_from || undefined,
+    date_to: aiBatchConfig.date_to || undefined,
+    use_current_filters: aiBatchConfig.use_current_filters,
+    current_filters: {
+      q: opinionFilters.q,
+      source: opinionFilters.source,
+      keyword: opinionFilters.keyword,
+      language: riskFilters.language,
+      risk_level: riskFilters.risk_level,
+      analysis_status: riskFilters.analysis_status,
+      date_from: opinionFilters.date_from,
+      date_to: opinionFilters.date_to,
+      risk_source: riskSource.value,
+    },
+    only_unanalyzed: aiBatchConfig.only_unanalyzed,
+    force: aiBatchConfig.force,
+    full_confirmation: fullConfirmation,
+  }
+  if (!aiBatchConfig.use_current_filters) payload.opinion_ids = undefined
+  return payload
+}
+
+async function refreshAIBatchPreview() {
+  if (aiBatchLoading.value) return
+  aiBatchLoading.value = true
+  try {
+    aiBatchPreview.value = (await api.post('/foreign/ai-analysis/batch/preview', batchPayload())).data
+  } catch (err: any) {
+    aiBatchPreview.value = null
+    ElMessage.error(err?.response?.data?.detail || '批量 AI 预览失败')
+  } finally { aiBatchLoading.value = false }
+}
+
+async function startAIBatch() {
+  if (!aiBatchPreview.value?.opinion_ids?.length || aiBatchLoading.value) return
+  if (aiBatchConfig.scope === 'full') {
+    try {
+      await ElMessageBox.confirm(
+        `确认提交全量 AI 研判？当前匹配 ${aiBatchPreview.value.matched_count} 条，预计消耗 ${aiBatchPreview.value.estimated_token_usage} Token，可能运行较长时间。`,
+        '全量 AI 研判二次确认', { type: 'warning', confirmButtonText: '确认提交', cancelButtonText: '取消' },
+      )
+    } catch { return }
+  }
+  aiBatchLoading.value = true
+  try {
+    const { data } = await api.post('/foreign/ai-analysis/batch', batchPayload(aiBatchConfig.scope === 'full'))
+    aiBatchRun.value = { ...data, task_id: data.task_id, status: data.status, run_id: data.run_id }
+    localStorage.setItem('foreign-ai-batch-run-id', data.run_id)
+    aiBatchDialog.value = false
+    showAIBatchDetails.value = true
+    pollAIBatch(data.run_id)
+    ElMessage.success(`任务已提交，匹配 ${data.matched_count ?? data.total_count} 条，待研判 ${data.pending_analysis_count ?? data.total_count} 条`)
+  } catch (err: any) {
+    const status = err?.response?.status
+    const detail = err?.response?.data?.detail || '批量 AI 研判提交失败'
+    if (status === 403) {
+      ElMessage.error(`权限不足，无法提交批量 AI 研判：${detail}`)
+    } else if (status === 422 && /[Tt]oken/.test(detail)) {
+      ElMessage.error(`Token 超出预算，已拦截提交：${detail}`)
+    } else if (status === 422) {
+      ElMessage.error(`提交被拒绝：${detail}`)
+    } else if (status === 409) {
+      ElMessage.warning(`已有等价批量任务在运行：${detail}`)
+    } else {
+      ElMessage.error(detail)
+    }
+  } finally { aiBatchLoading.value = false }
+}
+
+function batchProgressOf(run: any): number {
+  const total = run?.total_count || 0
+  const processed = run?.processed_count || 0
+  if (!total) return 0
+  return Math.min(100, Math.round((processed / total) * 100))
+}
+
+async function openAIBatchHistory() {
+  if (!aiBatchHistoryDialog.value) aiBatchHistorySel.value = null
+  aiBatchHistoryDialog.value = true
+  aiBatchHistoryLoading.value = true
+  try {
+    const { data } = await api.get('/foreign/ai-analysis/batches', { params: { size: 50 } })
+    aiBatchHistory.value = data.items || []
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '运行记录加载失败')
+    aiBatchHistory.value = []
+  } finally { aiBatchHistoryLoading.value = false }
+}
+
+async function openAIBatchHistoryDetail(runId: string) {
+  try {
+    const { data } = await api.get(`/foreign/ai-analysis/batch/${runId}`)
+    aiBatchHistorySel.value = data
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '运行详情加载失败')
+  }
+}
+
+async function rerunFailures() {
+  const run = aiBatchRun.value
+  if (!run) return
+  const failedIds: number[] = (run.failures || []).map((f: any) => f.opinion_id).filter((x: any) => typeof x === 'number')
+  if (!failedIds.length) { ElMessage.info('没有可重试的失败记录'); return }
+  if (!canAnalyzeAI) return
+  try {
+    await ElMessageBox.confirm(`确认对 ${failedIds.length} 条失败记录重新执行 AI 研判？`, '重新执行失败记录', { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' })
+  } catch { return }
+  aiBatchLoading.value = true
+  try {
+    const { data } = await api.post('/foreign/ai-analysis/batch', {
+      scope: 'count', opinion_ids: failedIds, recent_n: failedIds.length,
+      use_current_filters: false, only_unanalyzed: false, force: true, full_confirmation: false,
+    })
+    aiBatchRun.value = { ...data, run_id: data.run_id, status: data.status }
+    localStorage.setItem('foreign-ai-batch-run-id', data.run_id)
+    showAIBatchDetails.value = true
+    pollAIBatch(data.run_id)
+    ElMessage.success(`重试任务已提交（run_id：${data.run_id}），共 ${data.total_count} 条`)
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '重新执行失败记录失败')
+  } finally { aiBatchLoading.value = false }
+}
+
+// 进入页面时恢复对“仍在进行中”的批量 AI 研判的进度轮询；
+// 已结束的历史批次不再重复弹出完成提示，并清理本地残留的 run_id。
+async function resumeAIBatchIfRunning(runId: string) {
+  try {
+    const { data } = await api.get(`/foreign/ai-analysis/batch/${runId}`)
+    const terminal = ['success', 'partial', 'failed', 'cancelled'].includes(data.status)
+    if (terminal) {
+      localStorage.removeItem('foreign-ai-batch-run-id')
+      return
+    }
+    aiBatchRun.value = { ...(aiBatchRun.value || {}), ...data, run_id: runId }
+    pollAIBatch(runId, true)
+  } catch {
+    localStorage.removeItem('foreign-ai-batch-run-id')
+  }
+}
+
+function pollAIBatch(runId: string, immediate = false) {
+  if (aiBatchTimer) clearTimeout(aiBatchTimer)
+  aiBatchTimer = setTimeout(async () => {
+    try {
+      const { data } = await api.get(`/foreign/ai-analysis/batch/${runId}`)
+      aiBatchRun.value = { ...(aiBatchRun.value || {}), ...data, run_id: runId }
+      if (['success', 'partial', 'failed', 'cancelled'].includes(data.status)) {
+        localStorage.setItem('foreign-ai-batch-run-id', runId)
+        ElMessage({ type: data.status === 'success' ? 'success' : data.status === 'partial' ? 'warning' : 'error', message: `批量 AI 研判${zh(data.status)}：成功 ${data.success_count || 0}，失败 ${data.failed_count || 0}，跳过 ${data.skipped_count || 0}` })
+        await loadOpinions()
+        await loadRisk()
+        return
+      }
+      pollAIBatch(runId)
+    } catch (err: any) {
+      ElMessage.error(err?.response?.data?.detail || '批量 AI 进度查询失败')
+    }
+  }, immediate ? 0 : 1200)
+}
+
+async function cancelAIBatch() {
+  const runId = aiBatchRun.value?.run_id
+  if (!runId) return
+  try {
+    await ElMessageBox.confirm('确认取消此批量 AI 研判任务？已完成的记录会保留。', '取消任务确认', { type: 'warning' })
+    const { data } = await api.post(`/foreign/ai-analysis/batch/${runId}/cancel`)
+    aiBatchRun.value = { ...(aiBatchRun.value || {}), ...data, run_id: runId }
+  } catch (err: any) {
+    if (err === 'cancel' || err?.toString?.().includes('cancel')) return
+    ElMessage.error(err?.response?.data?.detail || '取消批量 AI 任务失败')
+  }
 }
 async function loadRisk() {
   loading.value = true
@@ -978,8 +1318,7 @@ async function loadRisk() {
     }
   } catch (err: any) {
     risks.value = []
-    riskTotal.value = 0
-    ElMessage.error(err?.response?.data?.detail || '外网风险研判数据加载失败')
+    if (err?.response?.status !== 401 && err?.response?.status !== 403) ElMessage.error(err?.response?.data?.detail || '外网风险加载失败，请稍后重试')
   } finally { loading.value = false }
 }
 async function loadRuns() {
@@ -1006,6 +1345,32 @@ async function loadEvents() {
     foreignEvents.value = []
     eventRunFailures.value = []
   } finally { loading.value = false }
+}
+
+async function loadManualReviews() {
+  try { manualReviews.value = (await api.get('/foreign/ai-analysis/reviews', { params: { size: 100, status: 'pending_review' } })).data.items || []; selectedReviewIds.value = selectedReviewIds.value.filter(id => manualReviews.value.some((row: any) => row.id === id)) } catch { manualReviews.value = [] }
+}
+function toggleAllReviews(event: Event) { selectedReviewIds.value = (event.target as HTMLInputElement).checked ? manualReviews.value.map((row: any) => row.id) : [] }
+
+async function decideReview(review: any, decision: string) {
+  reviewActionId.value = review.id
+  try {
+    await api.post(`/foreign/ai-analysis/reviews/${review.id}/decision`, { decision, reason: 'Foreign workspace manual review' })
+    await loadManualReviews()
+  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '人工复核失败') } finally { reviewActionId.value = null }
+}
+async function batchDecideReviews(decision: string, confirmAll = false) {
+  if ((!confirmAll && !selectedReviewIds.value.length) || !manualReviews.value.length || reviewActionId.value) return
+  if (decision === 'reject_change') {
+    try { await ElMessageBox.confirm('确认批量驳回当前待复核结果？', '批量驳回确认', { type: 'warning' }) } catch { return }
+  }
+  reviewActionId.value = -1
+  try {
+    await api.post('/foreign/ai-analysis/reviews/batch', { decision, confirm_all: confirmAll, review_ids: confirmAll ? undefined : selectedReviewIds.value, reason: 'Foreign workspace batch review' })
+    await loadManualReviews()
+    selectedReviewIds.value = []
+    ElMessage.success('批量复核已完成')
+  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '批量复核失败') } finally { reviewActionId.value = null }
 }
 async function rebuildEvents() {
   if (rebuildingEvents.value) return
@@ -1172,36 +1537,6 @@ async function analyzeRisk(id: number) {
     ElMessage.error(err?.response?.data?.detail || '外网规则分析失败')
   }
 }
-async function collectNow() {
-  if (collecting.value) return
-  collecting.value = true
-  try {
-    const { data } = await api.post('/foreign/collect', { source_ids: selectedSourceIds.value })
-    const result = await pollTask(data.task_id)
-    if (result.status === 'success') { ElMessage.success(`外网采集完成：新增 ${result.result?.created || 0} 条，已自动规则研判 ${result.result?.analyzed || 0} 条`); await loadOpinions(); await loadRuns(); await loadRisk() }
-    else ElMessage.error(result.error || '外网采集失败')
-  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || err?.message || '外网采集失败') } finally { collecting.value = false }
-}
-async function collectAll() {
-  try {
-    await ElMessageBox.confirm(
-      'This runs every enabled foreign source. Continue?',
-      'Confirm full foreign collection',
-      { type: 'warning', confirmButtonText: 'Collect all', cancelButtonText: 'Cancel' },
-    )
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    throw err
-  }
-  if (collecting.value) return
-  collecting.value = true
-  try {
-    const { data } = await api.post('/foreign/collect', { all_sources: true })
-    const result = await pollTask(data.task_id)
-    if (result.status === 'success') { ElMessage.success(`Full collection complete: ${result.result?.created || 0} new articles, ${result.result?.analyzed || 0} auto-analyzed`); await loadOpinions(); await loadRuns(); await loadRisk() }
-    else ElMessage.error(result.error || 'Foreign collection failed')
-  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || err?.message || 'Foreign collection failed') } finally { collecting.value = false }
-}
 watch(
   () => route.query.tab,
   (value) => {
@@ -1218,7 +1553,15 @@ watch(
   },
   { immediate: true },
 )
-onMounted(loadApprovedSources)
+function onForeignRefresh() {
+  loadOpinions()
+  loadRuns()
+  loadRisk()
+}
+onMounted(() => {
+  loadApprovedSources()
+  window.addEventListener('foreign-data-refresh', onForeignRefresh)
+})
 </script>
 
 <style scoped>
@@ -1260,6 +1603,11 @@ onMounted(loadApprovedSources)
 .source-management-note { border-top: 1px solid #e8e8ed; margin-top: 18px; padding-top: 14px; }
 @media (max-width: 900px) { .metric-grid { grid-template-columns: repeat(2, minmax(130px, 1fr)); } .visualization-columns { grid-template-columns: 1fr; } }
 .input { height: 38px; border: 1px solid #d2d2d7; border-radius: 8px; padding: 0 11px; min-width: 190px; color: #1d1d1f; background: #fff; }
+.ai-batch-options { display: grid; gap: 10px; margin-bottom: 16px; }
+.ai-batch-options label { display: grid; gap: 5px; color: #424245; font-size: 13px; }
+.ai-batch-options .check-row { display: flex; align-items: center; gap: 8px; }
+.ai-batch-options .check-row input { width: 16px; height: 16px; }
+.warning-text { margin: 0; padding: 10px 12px; color: #8a5a00; background: #fff8e6; border: 1px solid #f0c36d; border-radius: 8px; font-size: 13px; }
 .btn { border: 0; border-radius: 8px; padding: 9px 15px; cursor: pointer; font-size: 13px; }
 .btn-primary { color: #fff; background: #0071e3; }.btn-secondary { color: #1d1d1f; background: #f0f0f3; }
 .btn:disabled { opacity: .5; cursor: default; }
@@ -1276,6 +1624,18 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .alert-dialog, .history-dialog, .rule-dialog { width: min(820px, 100%); max-height: 86vh; }
 .rule-dialog label { display: grid; gap: 6px; margin: 12px 0; color: #424245; font-size: 13px; }
 .rule-preview { margin-top: 14px; padding: 12px; background: #f5f5f7; border-radius: 8px; }
+.ai-batch-status { display: grid; gap: 8px; padding: 10px 12px; margin: 10px 0 14px; background: #f5f5f7; border-left: 3px solid #0071e3; }
+.ai-batch-status-head, .ai-batch-status-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ai-batch-status-head strong { color: #1d1d1f; }
+.ai-batch-count { margin-left: auto; color: #1d1d1f; font-variant-numeric: tabular-nums; }
+.ai-batch-step { color: #6e6e73; font-size: 12px; }
+.ai-batch-progress-track { height: 7px; overflow: hidden; border-radius: 999px; background: #e5e7eb; }
+.ai-batch-progress-bar { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #0071e3, #34c759); transition: width .35s ease; }
+.ai-batch-status-meta { color: #515154; font-size: 12px; }
+.ai-batch-inline-error { margin: 0; color: #b42318; font-size: 12px; }
+.review-title-cell { min-width: 260px; }
+.review-title-cell .title-link { display: block; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-batch-preview p { margin: 10px 0; }
 .rule-preview pre { margin: 8px 0 0; white-space: pre-wrap; font-size: 12px; }
 .event-detail { margin-top: 18px; border-top: 1px solid #e8e8ed; padding-top: 16px; }
 .event-detail-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }

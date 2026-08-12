@@ -17,6 +17,7 @@ class ForeignAnalysisRun(Base):
         nullable=True,
         index=True,
     )
+    batch_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     analyzer_type: Mapped[str] = mapped_column(String(32), nullable=False, default="rule")
     model_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     model_version: Mapped[str] = mapped_column(String(64), nullable=False, default="")

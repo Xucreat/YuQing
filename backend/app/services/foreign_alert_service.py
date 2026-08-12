@@ -275,6 +275,8 @@ class ForeignAlertService:
         max_items: int = MAX_EVALUATION_ITEMS,
         dry_run: bool = True,
         _run_type: str = "manual",
+        opinion_ids: list[int] | None = None,
+        commit: bool = True,
     ) -> ForeignAlertRun:
         if max_items < 1 or max_items > MAX_EVALUATION_ITEMS:
             raise ValueError(f"max_items must be between 1 and {MAX_EVALUATION_ITEMS}")
@@ -309,10 +311,14 @@ class ForeignAlertService:
                     targets: list[tuple[ForeignOpinion | None, ForeignRiskResult | None, ForeignEvent | None, dict[str, Any]]] = []
                     if rule.rule_type in {"risk_score", "risk_level", "risk_category"}:
                         for result, opinion in _current_risk_rows(db):
+                            if opinion_ids is not None and opinion.id not in set(opinion_ids):
+                                continue
                             if _risk_matches(rule, result):
                                 targets.append((opinion, result, None, {"risk_score": result.risk_score, "risk_level": result.risk_level, "risk_category": result.risk_category, "evaluation_source": "rule"}))
                     elif rule.rule_type == "keyword_combo":
                         for result, opinion in _current_risk_rows(db):
+                            if opinion_ids is not None and opinion.id not in set(opinion_ids):
+                                continue
                             if _keyword_combo_matches(rule, opinion, result):
                                 targets.append((opinion, result, None, {"monitoring_keywords": opinion.matched_keywords or [], "risk_terms": result.matched_terms or [], "evaluation_source": "rule"}))
                     elif rule.rule_type == "confirmed_event":
@@ -373,7 +379,8 @@ class ForeignAlertService:
         run.status = "dry_run" if dry_run and not errors else ("failed" if errors else "success")
         run.finished_at = _utcnow()
         run.error_message = "; ".join(errors)[:1000] if errors else None
-        db.commit()
+        if commit:
+            db.commit()
         db.refresh(run)
         return run
 

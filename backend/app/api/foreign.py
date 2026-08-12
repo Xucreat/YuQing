@@ -33,6 +33,8 @@ from app.models.foreign_opinion import ForeignOpinion
 from app.models.foreign_analysis_run import ForeignAnalysisRun
 from app.models.foreign_ai_result import ForeignAIResult
 from app.models.foreign_manual_review import ForeignManualReview
+from app.models.foreign_ai_batch_run import ForeignAIBatchRun
+from app.models.foreign_alert import ForeignAlert
 from app.models.foreign_risk_result import ForeignRiskResult
 from app.models.foreign_risk_term import ForeignRiskTerm
 from app.models.user import User
@@ -81,6 +83,20 @@ foreign_router = APIRouter(
 
 _FOREIGN_AI_BATCH_TASKS: dict[str, str] = {}
 _FOREIGN_AI_BATCH_META: dict[str, dict[str, Any]] = {}
+
+
+def require_foreign_review_read(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
+    """Allow reviewers to read the shared queue through any review domain permission."""
+    if is_superuser_user(current_user):
+        return current_user
+    perms = set(get_user_permissions(current_user, db))
+    if perms.intersection({
+        "foreign:ai:review:read",
+        "foreign:events:review:read",
+        "foreign:alerts:review:read",
+    }):
+        return current_user
+    raise HTTPException(status_code=403, detail="Foreign review read permission required")
 
 
 class ForeignKeywordPayload(BaseModel):
@@ -948,6 +964,29 @@ def _foreign_opinion_detail(
         .limit(50)
     ).all()
     payload["analysis_runs"] = [_foreign_analysis_run_item(run) for run in runs]
+    # Link the most recent batch run that produced / updated this opinion's AI
+    # result so the "AI 研判运行记录" dialog can surface the batch record and
+    # so a single AI result is correctly associated with its batch_run_id.
+    latest_batch = db.scalar(
+        select(ForeignAnalysisRun.batch_run_id)
+        .where(
+            ForeignAnalysisRun.foreign_opinion_id == row.id,
+            ForeignAnalysisRun.batch_run_id.is_not(None),
+        )
+        .order_by(ForeignAnalysisRun.id.desc())
+        .limit(1)
+    )
+    if latest_batch is None:
+        latest_batch = db.scalar(
+            select(ForeignManualReview.batch_run_id)
+            .where(
+                ForeignManualReview.foreign_opinion_id == row.id,
+                ForeignManualReview.batch_run_id.is_not(None),
+            )
+            .order_by(ForeignManualReview.id.desc())
+            .limit(1)
+        )
+    payload["current_batch_run_id"] = latest_batch
     return payload
 
 
@@ -1226,6 +1265,9 @@ def _foreign_ai_batch_preview(db: Session, payload: ForeignAIBatchPayload) -> di
             )
             possible_event_count = len(event_items)
         except Exception:
+            # Preview is advisory; recover the session so a subsequent batch
+            # submission can still use the same request-scoped connection.
+            db.rollback()
             pass
         try:
             alert_run = ForeignAlertService.evaluate(
@@ -1233,6 +1275,7 @@ def _foreign_ai_batch_preview(db: Session, payload: ForeignAIBatchPayload) -> di
             )
             possible_alert_count = int(alert_run.triggered_count or 0)
         except Exception:
+            db.rollback()
             pass
     return {
         "matched_count": len(all_rows),
@@ -1257,6 +1300,11 @@ def _run_foreign_ai_batch(task: Task, opinion_ids: list[int], force: bool, batch
     failures: list[dict[str, Any]] = []
     try:
         total = len(opinion_ids)
+        run = db.scalar(select(ForeignAIBatchRun).where(ForeignAIBatchRun.run_id == batch_run_id))
+        if run:
+            run.status = "running"
+            run.started_at = datetime.now(timezone.utc)
+            db.commit()
         for opinion_id in opinion_ids:
             if task.cancel_requested:
                 skipped += total - processed
@@ -1264,8 +1312,16 @@ def _run_foreign_ai_batch(task: Task, opinion_ids: list[int], force: bool, batch
             processed += 1
             task.progress = int((processed - 1) / total * 100) if total else 100
             task.step = f"Foreign AI review {processed}/{total}"
+            if run:
+                run.processed_count = processed
+                run.success_count = success
+                run.failed_count = failed
+                run.skipped_count = skipped
+                db.commit()
             try:
-                result, reused = ForeignAIService().analyze_opinion_manual(db, opinion_id, force=force)
+                result, reused = ForeignAIService().analyze_opinion_manual(
+                    db, opinion_id, force=force, batch_run_id=batch_run_id
+                )
                 if result.status == "completed":
                     success += 1
                     existing = db.scalar(select(ForeignManualReview).where(
@@ -1303,13 +1359,22 @@ def _run_foreign_ai_batch(task: Task, opinion_ids: list[int], force: bool, batch
         except Exception as exc:  # noqa: BLE001
             alert_preview["error"] = _safe_foreign_error(exc)
         for review in db.scalars(select(ForeignManualReview).where(ForeignManualReview.batch_run_id == batch_run_id)).all():
-            review.event_preview = event_preview
+            scoped_event = dict(event_preview)
+            scoped_event["items"] = [item for item in (event_preview.get("items") or []) if review.foreign_opinion_id in (item.get("opinion_ids") or [])]
+            review.event_preview = scoped_event
             review.alert_preview = alert_preview
         db.commit()
-        return {"run_id": batch_run_id, "processed_count": processed, "success_count": success,
+        result = {"run_id": batch_run_id, "processed_count": processed, "success_count": success,
                 "failed_count": failed, "skipped_count": skipped, "failures": failures,
                 "status": "cancelled" if task.cancel_requested else ("partial" if failed else "success"),
                 "event_preview": event_preview, "alert_preview": alert_preview}
+        if run:
+            run.processed_count = processed; run.success_count = success; run.failed_count = failed
+            run.skipped_count = skipped; run.failures = failures; run.event_preview = event_preview
+            run.alert_preview = alert_preview; run.status = result["status"]
+            run.finished_at = datetime.now(timezone.utc)
+            db.commit()
+        return result
     finally:
         db.close()
 
@@ -1340,7 +1405,7 @@ def preview_foreign_ai_batch(payload: ForeignAIBatchPayload, db: Session = Depen
             "opinion_ids": [],
             "token_budget": payload.token_budget,
             "token_budget_exceeded": False,
-            "preview_warning": "Foreign AI preview temporarily unavailable; retry shortly",
+            "preview_warning": f"Foreign AI preview temporarily unavailable: {_safe_foreign_error(exc)}",
         }
 
 
@@ -1354,6 +1419,18 @@ def start_foreign_ai_batch(payload: ForeignAIBatchPayload, request: Request, cur
     if preview["token_budget_exceeded"]:
         raise HTTPException(status_code=422, detail="Estimated token usage exceeds the configured batch budget")
     batch_run_id = uuid.uuid4().hex
+    run = ForeignAIBatchRun(
+        run_id=batch_run_id, scope=payload.scope,
+        filters_snapshot=preview.get("filters") or {}, opinion_ids=preview["opinion_ids"],
+        total_count=len(preview["opinion_ids"]), estimated_token_usage=preview["estimated_token_usage"],
+        created_by=current_user.id, status="pending",
+    )
+    db.add(run)
+    db.flush()
+    # Commit the durable run before starting the worker. The task manager can
+    # execute immediately on another thread; without this commit the worker's
+    # independent SessionLocal transaction cannot see the run row.
+    db.commit()
     dedupe_key = hashlib.sha256(json.dumps({"ids": preview["opinion_ids"], "force": payload.force}, sort_keys=True).encode()).hexdigest()
     try:
         task_id = start_task("foreign-ai-analysis", _run_foreign_ai_batch, preview["opinion_ids"], payload.force, batch_run_id, dedupe_key=dedupe_key)
@@ -1361,46 +1438,107 @@ def start_foreign_ai_batch(payload: ForeignAIBatchPayload, request: Request, cur
         raise HTTPException(status_code=409, detail="Equivalent foreign AI batch is already running") from exc
     _FOREIGN_AI_BATCH_TASKS[batch_run_id] = task_id
     _FOREIGN_AI_BATCH_META[batch_run_id] = {"run_id": batch_run_id, "task_id": task_id, "total_count": len(preview["opinion_ids"]), "estimated_token_usage": preview["estimated_token_usage"], "started_at": datetime.now(timezone.utc).isoformat()}
+    run.task_id = task_id
     log_operation(db, action="FOREIGN_AI_BATCH_START", operator=current_user, request=request, resource_type="foreign_ai_batch", resource_id=batch_run_id, details={"task_id": task_id, **preview})
     db.commit()
-    return {**_FOREIGN_AI_BATCH_META[batch_run_id], "status": "pending", "processed_count": 0, "success_count": 0, "failed_count": 0, "skipped_count": 0}
+    return {
+        **_FOREIGN_AI_BATCH_META[batch_run_id],
+        "status": "pending",
+        "matched_count": preview["matched_count"],
+        "pending_analysis_count": preview["pending_analysis_count"],
+        "processed_count": 0,
+        "success_count": 0,
+        "failed_count": 0,
+        "skipped_count": 0,
+    }
 
+
+def _batch_item(row: ForeignAIBatchRun) -> dict[str, Any]:
+    return {"run_id": row.run_id, "task_id": row.task_id, "scope": row.scope,
+            "filters": row.filters_snapshot or {}, "opinion_ids": row.opinion_ids or [],
+            "total_count": row.total_count, "processed_count": row.processed_count,
+            "success_count": row.success_count, "failed_count": row.failed_count,
+            "skipped_count": row.skipped_count, "status": row.status,
+            "started_at": row.started_at.isoformat() if row.started_at else None,
+            "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+            "estimated_token_usage": row.estimated_token_usage, "actual_token_usage": row.actual_token_usage,
+            "failures": row.failures or [], "event_preview": row.event_preview or {},
+            "alert_preview": row.alert_preview or {}, "created_by": row.created_by}
+
+@foreign_router.get("/ai-analysis/batches")
+def list_foreign_ai_batches(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), db: Session = Depends(get_db), _: User = Depends(require_permission("foreign:ai:batch:read"))):
+    stmt = select(ForeignAIBatchRun).order_by(ForeignAIBatchRun.created_at.desc()).offset((page - 1) * size).limit(size)
+    rows = list(db.scalars(stmt).all())
+    total = db.scalar(select(func.count()).select_from(ForeignAIBatchRun)) or 0
+    return {"items": [_batch_item(row) for row in rows], "total": total, "page": page, "size": size}
 
 @foreign_router.get("/ai-analysis/batch/{run_id}")
-def get_foreign_ai_batch(run_id: str, _: User = Depends(require_permission("foreign:ai:batch:read"))):
-    task = get_task(_FOREIGN_AI_BATCH_TASKS.get(run_id, run_id))
-    if task is None:
-        # run_id is intentionally opaque; callers may use task_id for polling.
+def get_foreign_ai_batch(run_id: str, db: Session = Depends(get_db), _: User = Depends(require_permission("foreign:ai:batch:read"))):
+    row = db.scalar(select(ForeignAIBatchRun).where(ForeignAIBatchRun.run_id == run_id))
+    if row is None:
         raise HTTPException(status_code=404, detail="Foreign AI batch not found")
-    payload = {**_FOREIGN_AI_BATCH_META.get(run_id, {}), **task.to_dict()}
-    result = task.result or {}
-    payload.update({key: result[key] for key in ("processed_count", "success_count", "failed_count", "skipped_count", "failures") if key in result})
-    payload["run_id"] = run_id
-    return payload
+    task = get_task(row.task_id) if row.task_id else None
+    if task is not None and task.result:
+        result = task.result
+        row.processed_count = result.get("processed_count", row.processed_count)
+        row.success_count = result.get("success_count", row.success_count)
+        row.failed_count = result.get("failed_count", row.failed_count)
+        row.skipped_count = result.get("skipped_count", row.skipped_count)
+        row.failures = result.get("failures", row.failures)
+        row.event_preview = result.get("event_preview", row.event_preview)
+        row.alert_preview = result.get("alert_preview", row.alert_preview)
+        if task.status in ("success", "failed", "cancelled") and row.status not in ("success", "partial", "failed", "cancelled"):
+            row.status = result.get("status", task.status); row.finished_at = task.finished_at
+        db.commit()
+    if task is None and row.status in ("pending", "running"):
+        # The in-process task manager is intentionally lightweight. After a
+        # process restart its task object is gone; persist an explicit terminal
+        # state so the UI does not report an infinite running task.
+        row.status = "failed"
+        row.finished_at = datetime.now(timezone.utc)
+        failures = list(row.failures or [])
+        if not any(item.get("code") == "worker_restarted" for item in failures if isinstance(item, dict)):
+            failures.append({"code": "worker_restarted", "error": "批量任务所在服务已重启，原内存任务不可恢复"})
+        row.failures = failures
+        db.commit()
+    return _batch_item(row) | ({"progress": task.progress, "step": task.step, "message": task.message} if task else {})
 
 
 @foreign_router.post("/ai-analysis/batch/{run_id}/cancel")
-def cancel_foreign_ai_batch(run_id: str, request: Request, current_user: User = Depends(require_permission("foreign:ai:analyze")), db: Session = Depends(get_db)):
-    task = cancel_task(_FOREIGN_AI_BATCH_TASKS.get(run_id, run_id))
-    if task is None:
+def cancel_foreign_ai_batch(run_id: str, request: Request, current_user: User = Depends(require_permission("foreign:ai:batch:cancel")), db: Session = Depends(get_db)):
+    row = db.scalar(select(ForeignAIBatchRun).where(ForeignAIBatchRun.run_id == run_id))
+    task = cancel_task(row.task_id if row else run_id)
+    if row is None or task is None:
         raise HTTPException(status_code=404, detail="Foreign AI batch not found")
     log_operation(db, action="FOREIGN_AI_BATCH_CANCEL", operator=current_user, request=request, resource_type="foreign_ai_batch", resource_id=run_id, details={"status": task.status})
+    if not getattr(request.state, "batch_mode", False):
+        db.commit()
+    row.status = "cancelled" if task.status == "cancelled" else row.status
     db.commit()
-    return {**_FOREIGN_AI_BATCH_META.get(run_id, {}), **task.to_dict(), "run_id": run_id}
+    return _batch_item(row) | {"progress": task.progress, "step": task.step}
 
 
 @foreign_router.get("/ai-analysis/reviews")
-def list_foreign_manual_reviews(page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200), status: str | None = None, db: Session = Depends(get_db), _: User = Depends(require_permission("foreign:ai:review:read"))):
+def list_foreign_manual_reviews(page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200), status: str | None = None, db: Session = Depends(get_db), _: User = Depends(require_foreign_review_read)):
     stmt = select(ForeignManualReview)
     if status:
         stmt = stmt.where(ForeignManualReview.review_status == status)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(stmt.order_by(ForeignManualReview.created_at.desc(), ForeignManualReview.id.desc()).offset((page - 1) * size).limit(size)).all()
-    return {"items": [_foreign_manual_review_item(row) for row in rows], "total": total, "page": page, "size": size}
+    opinion_ids = {row.foreign_opinion_id for row in rows}
+    opinions = {
+        opinion.id: opinion
+        for opinion in db.scalars(select(ForeignOpinion).where(ForeignOpinion.id.in_(opinion_ids))).all()
+    } if opinion_ids else {}
+    return {"items": [_foreign_manual_review_item(row, opinions.get(row.foreign_opinion_id)) for row in rows], "total": total, "page": page, "size": size}
 
 
-def _foreign_manual_review_item(row: ForeignManualReview) -> dict[str, Any]:
-    return {"id": row.id, "foreign_opinion_id": row.foreign_opinion_id, "source_type": row.source_type,
+def _foreign_manual_review_item(row: ForeignManualReview, opinion: ForeignOpinion | None = None) -> dict[str, Any]:
+    return {"id": row.id, "foreign_opinion_id": row.foreign_opinion_id,
+            "opinion_title": opinion.title if opinion else "",
+            "opinion_source": opinion.source_name_snapshot if opinion else "",
+            "opinion_published_at": opinion.published_at.isoformat() if opinion and opinion.published_at else None,
+            "source_type": row.source_type,
             "rule_risk_snapshot": row.rule_risk_snapshot or {}, "ai_risk_snapshot": row.ai_risk_snapshot or {},
             "review_status": row.review_status, "review_decision": row.review_decision, "review_reason": row.review_reason,
             "reviewed_by": row.reviewed_by, "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
@@ -1408,13 +1546,51 @@ def _foreign_manual_review_item(row: ForeignManualReview) -> dict[str, Any]:
             "confirmation_version": row.confirmation_version, "event_preview": row.event_preview or {}, "alert_preview": row.alert_preview or {}, "created_at": row.created_at.isoformat() if row.created_at else None}
 
 
+def _stamp_confirmed_alerts(
+    db: Session,
+    *,
+    opinion_id: int,
+    user_id: int | None,
+    reason: str,
+    confirmation_version: str | None,
+    rule_risk_snapshot: dict | None,
+    ai_risk_snapshot: dict | None,
+) -> None:
+    """Attach human-confirmation provenance to the rule-sourced foreign alerts
+    that belong to the reviewed opinion.
+
+    This is idempotent: alerts that were already confirmed in a prior review are
+    left untouched. The formal alert remains a rule-driven record; only the
+    confirmation metadata is recorded so the human decision is traceable.
+    """
+    from sqlalchemy import update as _update
+
+    db.execute(
+        _update(ForeignAlert)
+        .where(
+            ForeignAlert.foreign_opinion_id == opinion_id,
+            ForeignAlert.evaluation_source == "rule",
+            ForeignAlert.status == "triggered",
+            ForeignAlert.confirmed_at.is_(None),
+        )
+        .values(
+            confirmed_by=user_id,
+            confirmed_at=datetime.now(timezone.utc),
+            review_reason=reason or None,
+            confirmation_version=confirmation_version,
+            rule_risk_snapshot=rule_risk_snapshot or {},
+            ai_risk_snapshot=ai_risk_snapshot or {},
+        )
+    )
+
+
 @foreign_router.post("/ai-analysis/reviews/{review_id}/decision")
-def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisionPayload, request: Request, current_user: User = Depends(require_permission("foreign:ai:review:read")), db: Session = Depends(get_db)):
+def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisionPayload, request: Request, current_user: User = Depends(require_foreign_review_read), db: Session = Depends(get_db)):
     row = db.get(ForeignManualReview, review_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Foreign manual review not found")
     if row.review_status != "pending_review":
-        return _foreign_manual_review_item(row)
+        return _foreign_manual_review_item(row, db.get(ForeignOpinion, row.foreign_opinion_id))
     required = "foreign:ai:review:reject" if payload.decision == "reject_change" else (
         "foreign:events:review:confirm" if payload.decision == "confirm_event_change" else
         "foreign:alerts:review:confirm" if payload.decision == "confirm_alert_change" else
@@ -1446,6 +1622,9 @@ def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisio
                                 reason=payload.reason or "AI manual review confirmed event change",
                                 request_id=payload.request_id,
                                 commit=False,
+                                rule_risk_snapshot=row.rule_risk_snapshot,
+                                ai_risk_snapshot=row.ai_risk_snapshot,
+                                confirmation_version=row.confirmation_version,
                             )
                         except ValueError:
                             continue
@@ -1454,17 +1633,31 @@ def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisio
                 row.event_preview_id = None
     elif payload.decision == "confirm_alert_change":
         # The evaluator remains rule-only; this explicit human action is the
-        # gate that permits the existing formal alert transaction to run.
-        alert_run = ForeignAlertService.evaluate(db, user_id=current_user.id, dry_run=False, max_items=200, opinion_ids=[row.foreign_opinion_id])
+        # gate that permits the existing formal alert transaction to run. We
+        # keep the evaluation inside the surrounding transaction
+        # (commit=False) so the whole batch review is atomic and can be rolled
+        # back as a unit. The formal alert keeps its rule source but records
+        # the human confirmation provenance.
+        alert_run = ForeignAlertService.evaluate(
+            db, user_id=current_user.id, dry_run=False, max_items=200,
+            opinion_ids=[row.foreign_opinion_id], commit=False,
+        )
         row.alert_preview_id = alert_run.id
+        _stamp_confirmed_alerts(
+            db, opinion_id=row.foreign_opinion_id, user_id=current_user.id,
+            reason=payload.reason, confirmation_version=row.confirmation_version,
+            rule_risk_snapshot=row.rule_risk_snapshot,
+            ai_risk_snapshot=row.ai_risk_snapshot,
+        )
     log_operation(db, action="FOREIGN_AI_MANUAL_REVIEW", operator=current_user, request=request, resource_type="foreign_manual_review", resource_id=str(row.id), details={"decision": payload.decision, "reason": payload.reason})
-    db.commit()
+    if not getattr(request.state, "batch_mode", False):
+        db.commit()
     db.refresh(row)
-    return _foreign_manual_review_item(row)
+    return _foreign_manual_review_item(row, db.get(ForeignOpinion, row.foreign_opinion_id))
 
 
 @foreign_router.post("/ai-analysis/reviews/batch")
-def decide_foreign_manual_reviews_batch(payload: ForeignAIReviewBatchPayload, request: Request, current_user: User = Depends(require_permission("foreign:ai:review:read")), db: Session = Depends(get_db)):
+def decide_foreign_manual_reviews_batch(payload: ForeignAIReviewBatchPayload, request: Request, current_user: User = Depends(require_foreign_review_read), db: Session = Depends(get_db)):
     if payload.decision == "reject_change":
         required = "foreign:ai:review:reject"
     elif payload.decision == "confirm_event_change":
@@ -1485,19 +1678,30 @@ def decide_foreign_manual_reviews_batch(payload: ForeignAIReviewBatchPayload, re
     if not review_ids:
         raise HTTPException(status_code=422, detail="No pending reviews selected")
     results = []
-    for index, review_id in enumerate(review_ids):
-        results.append(decide_foreign_manual_review(
-            review_id,
-            ForeignAIReviewDecisionPayload(
-                decision=payload.decision,
-                reason=payload.reason,
-                request_id=f"{payload.request_id or 'batch'}:{review_id}:{index}",
-            ),
-            request,
-            current_user,
-            db,
-        ))
-    return {"items": results, "total": len(results)}
+    request.state.batch_mode = True
+    try:
+        # Single database transaction: every per-review decision (event
+        # confirmation, alert evaluation + provenance stamp, review status,
+        # audit log) runs inside this one session. Nothing inside the loop
+        # commits, so either the whole batch commits together or the whole
+        # batch is rolled back on the first failure — there is never a
+        # half-confirmed state.
+        for index, review_id in enumerate(review_ids):
+            results.append(decide_foreign_manual_review(
+                review_id,
+                ForeignAIReviewDecisionPayload(
+                    decision=payload.decision,
+                    reason=payload.reason,
+                    request_id=f"{payload.request_id or 'batch'}:{review_id}:{index}",
+                ), request, current_user, db,
+            ))
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"批量人工复核已整体回滚：{_safe_foreign_error(exc)}") from exc
+    finally:
+        request.state.batch_mode = False
+    return {"items": results, "total": len(results), "transaction": "committed"}
 
 
 def _foreign_risk_item(result: ForeignRiskResult, opinion: ForeignOpinion) -> dict[str, Any]:
@@ -1742,6 +1946,8 @@ def _foreign_analysis_run_item(row: ForeignAnalysisRun) -> dict[str, Any]:
     return {
         "id": row.id,
         "foreign_opinion_id": row.foreign_opinion_id,
+        "analysis_run_id": row.id,
+        "batch_run_id": row.batch_run_id,
         "analyzer_type": row.analyzer_type,
         "model_name": row.model_name,
         "model_version": row.model_version,

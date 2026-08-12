@@ -31,6 +31,9 @@ pgsql/
 .workbuddy/
 # Decompressed node_modules
 frontend/node_modules_decompressed/
+# node_modules backup / temp build artifacts (non-project, large)
+frontend/node_modules_bak/
+frontend/tmp/
 
 # 临时/诊断/清理目录（非项目代码）
 .build_trash/

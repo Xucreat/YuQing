@@ -260,6 +260,13 @@ class Settings(BaseSettings):
     # 同时供 foreign_risk_service.foreign_ai_is_enabled() 复用，使 .env 配置真正生效。
     foreign_ai_review_enabled: bool = False
 
+    # ===== 翻译服务（百度翻译开放平台）=====
+    # 独立翻译 API，用于舆情详情弹窗「翻译」按钮，与 LLM/搜索服务解耦。
+    # 申请地址：https://fanyi-api.baidu.com/ ；免费额度 200 万字符/月，国内直连。
+    baidu_translate_app_id: str = ""
+    baidu_translate_secret: str = ""
+    baidu_translate_endpoint: str = "https://fanyi-api.baidu.com/api/trans/vip/translate"
+
 
     # ===== Phase 6 可靠性收口配置（集中阈值，禁止散落 magic number）=====
     # P1-1：启动时对账「仍 running 的历史 CollectorRun」的超时阈值（分钟）。

@@ -17,17 +17,26 @@
         <option value="false">停用</option>
       </select>
       <button class="btn btn-primary" @click="openCreate">新增关键词</button>
-      <button class="btn btn-secondary" @click="loadKeywords">刷新</button>
+      <button class="btn btn-ghost" @click="loadKeywords">刷新</button>
+    </div>
+
+    <div class="toolbar">
+      <span class="batch-info">已选 {{ selectedIds.length }} 项</span>
+      <button class="btn btn-primary btn-sm" :disabled="selectedIds.length === 0 || keywordSaving" @click="bulkToggleKeywords(true)">批量启用</button>
+      <button class="btn btn-ghost btn-sm" :disabled="selectedIds.length === 0 || keywordSaving" @click="bulkToggleKeywords(false)">批量停用</button>
+      <button class="btn btn-ghost btn-sm" v-if="selectedIds.length" @click="selectedIds = []">取消选择</button>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
+            <th style="width:44px"><input type="checkbox" class="row-check" :checked="pageAllSelected" @change="togglePageAll" /></th>
             <th>关键词</th><th>主题</th><th>类型</th><th>来源</th><th>权重</th><th>风险权重</th><th>状态</th><th>操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="row in keywords" :key="row.id">
+            <td><input type="checkbox" class="row-check" :checked="selectedIds.includes(row.id)" @change="toggleRow(row)" /></td>
             <td>{{ row.word }}</td>
             <td>{{ categoryLabel(row.category) }}</td>
             <td>{{ typeLabel(row.type) }}</td>
@@ -41,13 +50,9 @@
               <button class="link-btn danger" @click="removeKeyword(row.id)">删除</button>
             </td>
           </tr>
-          <tr v-if="!keywords.length"><td colspan="8" class="empty">暂无外网关键词</td></tr>
+          <tr v-if="!keywords.length"><td colspan="9" class="empty">暂无外网关键词</td></tr>
         </tbody>
       </table>
-    </div>
-    <div class="toolbar">
-      <button class="btn btn-secondary" :disabled="keywordSaving" @click="bulkToggleKeywords(true)">批量启用全部当前结果</button>
-      <button class="btn btn-secondary" :disabled="keywordSaving" @click="bulkToggleKeywords(false)">批量停用全部当前结果</button>
     </div>
     <div class="pager" v-if="keywordTotal > 0">
       <Pager :total="keywordTotal" v-model:current-page="keywordPage" :page-size="keywordSize" @current-change="loadKeywords" />
@@ -86,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import Pager from '@/components/Pager.vue'
 import api from '@/api'
@@ -113,6 +118,26 @@ const keywordFilters = reactive({ q: '', category: '', type: '', enabled: '' })
 const keywordDraft = reactive({ word: '', category: 'general', type: 'monitoring' as 'monitoring' | 'sensitive', weight: 10, severity_weight: 0, is_enabled: true })
 const editingKeywordId = ref<number | null>(null)
 const keywordDialogVisible = ref(false)
+
+// 批量启停：行选择（与国内关键词管理页一致）
+const selectedIds = ref<number[]>([])
+const pageAllSelected = computed(
+  () => keywords.value.length > 0 && keywords.value.every((r) => selectedIds.value.includes(r.id)),
+)
+function toggleRow(row: Keyword) {
+  const i = selectedIds.value.indexOf(row.id)
+  if (i >= 0) selectedIds.value.splice(i, 1)
+  else selectedIds.value.push(row.id)
+}
+function togglePageAll(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  if (checked) {
+    for (const r of keywords.value) if (!selectedIds.value.includes(r.id)) selectedIds.value.push(r.id)
+  } else {
+    const pageIds = new Set(keywords.value.map((r) => r.id))
+    selectedIds.value = selectedIds.value.filter((id) => !pageIds.has(id))
+  }
+}
 
 async function loadKeywords() {
   loading.value = true
@@ -195,9 +220,9 @@ function editKeyword(row: Keyword) {
 }
 
 async function bulkToggleKeywords(isEnabled: boolean) {
-  if (keywordSaving.value || !keywords.value.length) return
+  if (keywordSaving.value || selectedIds.value.length === 0) return
   keywordSaving.value = true
-  try { await api.post('/foreign/keywords/bulk-status', { keyword_ids: keywords.value.map(row => row.id), is_enabled: isEnabled }); await loadKeywords(); ElMessage.success('外网关键词状态已批量更新') } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '批量更新失败') } finally { keywordSaving.value = false }
+  try { await api.post('/foreign/keywords/bulk-status', { keyword_ids: selectedIds.value, is_enabled: isEnabled }); selectedIds.value = []; await loadKeywords(); ElMessage.success('外网关键词状态已批量更新') } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '批量更新失败') } finally { keywordSaving.value = false }
 }
 
 // 本地 loading 状态（供模板与共享样式使用）
@@ -221,3 +246,15 @@ onMounted(loadKeywords)
 </script>
 
 <style scoped src="./foreign-ui.css" />
+<style scoped>
+.row-check { width: 16px; height: 16px; cursor: pointer; accent-color: #0071e3 }
+.batch-info { font-size: 13px; color: #86868b; margin-right: 4px }
+/* 与国内关键词管理页保持一致的按钮样式（苹果风胶囊按钮） */
+.btn { display: inline-flex; align-items: center; gap: 8px; border: none; border-radius: 980px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color .18s, opacity .18s }
+.btn-primary { background: #0071e3; color: #fff }
+.btn-primary:hover { background: #0077ed }
+.btn-primary:disabled { opacity: .55; cursor: default }
+.btn-ghost { background: #e8e8ed; color: #1d1d1f }
+.btn-ghost:hover { background: #dededf }
+.btn-sm { padding: 6px 14px; font-size: 13px }
+</style>

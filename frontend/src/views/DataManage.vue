@@ -146,6 +146,15 @@ watch(
     if (requested !== scope.value) scope.value = requested
   },
 )
+// 修复：从其他子页面（或站外）经 router.push 带 ?tab=... 跳转时，
+// 组件已挂载不会重新初始化 tab，需监听 query.tab 变化以切换子页。
+watch(
+  () => route.query.tab,
+  () => {
+    const t = resolveInitialTab()
+    if (t !== tab.value) tab.value = t
+  },
+)
 watch(scope, (value) => {
   if (route.query.scope === value) return
   router.replace({ query: { ...route.query, scope: value } })

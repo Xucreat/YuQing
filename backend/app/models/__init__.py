@@ -41,6 +41,8 @@ from app.models.foreign_alert_run import ForeignAlertRun
 from app.models.foreign_alert_action import ForeignAlertAction
 from app.models.foreign_alert_admission import ForeignAlertAdmission
 from app.models.foreign_alert_admission_action import ForeignAlertAdmissionAction
+from app.models.foreign_manual_review import ForeignManualReview
+from app.models.foreign_ai_batch_run import ForeignAIBatchRun
 
 __all__ = [
     "Base",
@@ -83,4 +85,6 @@ __all__ = [
     "ForeignAlertAction",
     "ForeignAlertAdmission",
     "ForeignAlertAdmissionAction",
+    "ForeignManualReview",
+    "ForeignAIBatchRun",
 ]

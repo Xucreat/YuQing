@@ -53,6 +53,22 @@ _foreign_schedule_state = {
     "last_run": None,
 }
 
+# next_collect_time / last_collect_time 是无时区(naive)列，逻辑上按 Asia/Shanghai 本地
+# 时刻存储（与 PG 会话时区、foreign.py 中 datetime.now() 的约定一致）。比较与写入必须保持
+# naive 本地时刻，禁止混入 offset-aware 的 UTC 值，否则触发
+# "can't compare offset-naive and offset-aware datetimes"。
+_SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+
+def _shanghai_now_naive() -> datetime:
+    """Return the current Asia/Shanghai wall-clock time as a naive datetime.
+
+    Used for both the due-check comparison and for writing next_collect_time /
+    last_collect_time, so the stored value matches the convention the rest of the
+    codebase (SQL-side ``now()`` and ``foreign.py``) already relies on.
+    """
+    return datetime.now(timezone.utc).astimezone(_SHANGHAI_TZ).replace(tzinfo=None)
+
 
 def foreign_scheduler_status() -> dict:
     """Return an observable snapshot without exposing credentials or config values."""
@@ -87,7 +103,7 @@ def _run_foreign_collector_job() -> None:
         rows = db.query(DataSource).filter(
             DataSource.enabled.is_(True), DataSource.schedule_enabled.is_(True)
         ).all()
-        now = datetime.now(timezone.utc)
+        now = _shanghai_now_naive()
         due = [
             row for row in rows
             if _foreign_config(row).get("is_foreign") is True
@@ -104,7 +120,7 @@ def _run_foreign_collector_job() -> None:
         )
         # Advance each source only after the collection pipeline has returned.
         # A failed fetch therefore remains due and can be retried on the next tick.
-        finished_at = datetime.now(timezone.utc)
+        finished_at = _shanghai_now_naive()
         source_results = {
             int(item.get("source_id")): item
             for item in (result.get("source_results") or [])

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -74,3 +75,9 @@ class ForeignEvent(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Manual-review provenance. Populated only when a human confirms an
+    # AI-driven event change; never overwrites the rule/effective risk.
+    rule_risk_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    ai_risk_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confirmation_version: Mapped[str | None] = mapped_column(String(64), nullable=True)

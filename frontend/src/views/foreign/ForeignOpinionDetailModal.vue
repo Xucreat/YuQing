@@ -5,7 +5,7 @@
         <div class="modal-header">
           <div class="modal-title-wrap">
             <span class="modal-kicker">外网舆情详情与 AI 分析</span>
-            <h3 class="modal-title">{{ detail?.title || '加载中…' }}</h3>
+            <h3 class="modal-title">{{ (showTranslation && translatedTitle) ? translatedTitle : (detail?.title || '加载中…') }}</h3>
           </div>
           <div class="modal-header-right">
             <a
@@ -29,13 +29,18 @@
             <div class="detail-grid">
               <!-- 左栏：原文/摘要 -->
               <div class="card card-pad">
-                <div class="detail-meta">
+                <div class="detail-card-top" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                  <span class="section-title">原文 / 摘要</span>
+                  <button class="btn btn-ghost btn-sm" :disabled="translating" @click="translateContent">
+                    {{ translating ? '翻译中…' : (showTranslation ? '显示原文' : '翻译') }}
+                  </button>
+                </div>                <div class="detail-meta">
                   <span>来源：{{ detail.source_name_snapshot || '-' }}</span>
                   <span>发布时间：{{ formatTime(detail.published_at) }}</span>
                   <span>采集时间：{{ formatTime(detail.collected_at) }}</span>
                 </div>
                 <div class="detail-divider"></div>
-                <div class="detail-content">
+                <div class="detail-content" v-show="!showTranslation">
                   <p v-if="detail.matched_keywords && detail.matched_keywords.length" class="kw-line">
                     <span class="kw-label">命中关键词</span>
                     <span v-for="k in detail.matched_keywords" :key="k" class="kw-tag">{{ k }}</span>
@@ -43,6 +48,9 @@
                   <p v-if="detail.summary && detail.summary !== detail.content" class="orig-p">{{ detail.summary }}</p>
                   <p v-if="detail.content" class="orig-p">{{ detail.content }}</p>
                   <p v-else-if="!detail.content && !detail.summary" class="orig-empty">暂无摘要与正文（正文抓取已关闭）。</p>
+                </div>
+                <div v-if="showTranslation" class="detail-content">
+                  <p>{{ translatedText || translatedTitle }}</p>
                 </div>
               </div>
 
@@ -176,8 +184,17 @@
         <button class="modal-close" title="关闭" @click="showHistoryModal = false">✕</button>
       </div>
       <div class="modal-body">
-        <div class="history-list" v-if="detail && detail.analysis_runs && detail.analysis_runs.length">
-          <div v-for="run in detail.analysis_runs" :key="run.id" class="history-row">
+        <div class="history-list" v-if="(detail && detail.analysis_runs && detail.analysis_runs.length) || batchRun">
+          <div v-if="batchRun" class="history-row history-row--batch">
+            <span>批量 {{ batchRun.run_id.slice(0, 8) }}</span>
+            <span>batch</span>
+            <span>{{ batchStatusZh(batchRun.status) }}</span>
+            <span>{{ batchRun.processed_count || 0 }}/{{ batchRun.total_count || 0 }}</span>
+            <span class="error-cell">
+              成功 {{ batchRun.success_count || 0 }} · 失败 {{ batchRun.failed_count || 0 }} · 跳过 {{ batchRun.skipped_count || 0 }}
+            </span>
+          </div>
+          <div v-for="run in (detail?.analysis_runs || [])" :key="run.id" class="history-row">
             <span>#{{ run.id }}</span>
             <span>{{ run.analyzer_type }}</span>
             <span>{{ run.status }}</span>
@@ -245,6 +262,7 @@ type ForeignOpinionDetail = {
     error_message?: string | null
   } | null
   analysis_runs?: Array<{ id: number; analyzer_type: string; status: string; started_at?: string | null; finished_at?: string | null; error_message?: string | null }>
+  current_batch_run_id?: string | null
   // 统一「当前有效风险」视图（由后端 foreign_effective_risk.resolve_one 注入）
   effective_risk?: {
     source: 'ai' | 'rule'
@@ -312,6 +330,11 @@ type ForeignOpinionDetail = {
   } | null
 }
 const detail = ref<ForeignOpinionDetail | null>(null)
+const batchRun = ref<any>(null)
+const translating = ref(false)
+const translatedText = ref('')
+const translatedTitle = ref('')
+const showTranslation = ref(false)
 const viewSource = ref<'rule' | 'ai'>(props.riskSource)
 function setViewSource(value: 'rule' | 'ai') {
   viewSource.value = value
@@ -396,15 +419,64 @@ function sanitizeDetail(d: ForeignOpinionDetail): ForeignOpinionDetail {
 async function openDetail(id: number) {
   detailLoading.value = true
   detail.value = null
+  batchRun.value = null
+  showTranslation.value = false
+  translatedText.value = ''
+  translatedTitle.value = ''
   try {
     const { data } = await api.get<ForeignOpinionDetail>('/foreign/opinions/' + id + '/detail', { params: { risk_source: viewSource.value } })
     detail.value = sanitizeDetail(data)
+    // 关联该舆情最近一次批量 AI 研判运行记录，使其出现在「AI 研判运行记录」弹窗中。
+    if (data.current_batch_run_id) {
+      try {
+        const { data: br } = await api.get('/foreign/ai-analysis/batch/' + data.current_batch_run_id)
+        batchRun.value = br
+      } catch { batchRun.value = null }
+    }
   } catch (err: any) {
     if (err?.response?.status !== 404) ElMessage.error(err?.response?.data?.detail || '外网舆情详情加载失败')
   } finally { detailLoading.value = false }
 }
 
 function close() { emit('update:modelValue', false) }
+
+function batchStatusZh(status?: string | null): string {
+  switch (status) {
+    case 'pending': return '排队中'
+    case 'running': return '运行中'
+    case 'success': return '成功'
+    case 'partial': return '部分失败'
+    case 'failed': return '失败'
+    case 'cancelled': return '已取消'
+    default: return status || '未知'
+  }
+}
+
+async function translateContent() {
+  if (!detail.value) return
+  if (showTranslation.value) { showTranslation.value = false; return }
+  const title = (detail.value.title || '').trim()
+  const text = (detail.value.content || detail.value.summary || '').trim()
+  if (!title && !text) { ElMessage.info('暂无可翻译内容'); return }
+  translating.value = true
+  try {
+    const tasks: Promise<string>[] = []
+    tasks.push(title
+      ? api.post<{ translated_text: string }>('/translate', { text: title }).then(r => r.data.translated_text)
+      : Promise.resolve(''))
+    tasks.push(text
+      ? api.post<{ translated_text: string }>('/translate', { text }).then(r => r.data.translated_text)
+      : Promise.resolve(''))
+    const [tTitle, tBody] = await Promise.all(tasks)
+    translatedTitle.value = tTitle
+    translatedText.value = tBody
+    showTranslation.value = true
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || err?.response?.data?.message || '翻译失败，请稍后重试')
+  } finally {
+    translating.value = false
+  }
+}
 
 async function triggerAnalyze() {
   if (analyzing.value || !detail.value) return

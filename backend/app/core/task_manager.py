@@ -26,6 +26,7 @@ STATUS_PENDING = "pending"
 STATUS_RUNNING = "running"
 STATUS_SUCCESS = "success"
 STATUS_FAILED = "failed"
+STATUS_CANCELLED = "cancelled"
 
 # 后台任务线程池（与请求处理线程池隔离）。
 _executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="bg-task")
@@ -52,7 +53,7 @@ def _reap_tasks() -> None:
         # 1) TTL 回收：终态且超过保留期
         expired = [
             tid for tid, t in _tasks.items()
-            if t.status in (STATUS_SUCCESS, STATUS_FAILED)
+            if t.status in (STATUS_SUCCESS, STATUS_FAILED, STATUS_CANCELLED)
             and t.finished_at is not None
             and (now - t.finished_at).total_seconds() > ttl_seconds
         ]
@@ -62,7 +63,7 @@ def _reap_tasks() -> None:
         if len(_tasks) > settings.task_max_count:
             terminal = [
                 tid for tid, t in _tasks.items()
-                if t.status in (STATUS_SUCCESS, STATUS_FAILED)
+                if t.status in (STATUS_SUCCESS, STATUS_FAILED, STATUS_CANCELLED)
             ]
             terminal.sort(
                 key=lambda tid: (
@@ -91,6 +92,7 @@ class Task:
         self.created_at: Optional[datetime] = _now()
         self.started_at: Optional[datetime] = None
         self.finished_at: Optional[datetime] = None
+        self.cancel_requested: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -107,6 +109,7 @@ class Task:
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+            "cancel_requested": self.cancel_requested,
         }
 
 
@@ -147,7 +150,7 @@ def start_task(
         try:
             result = func(task, *args, **kwargs)
             task.result = result
-            task.status = STATUS_SUCCESS
+            task.status = STATUS_CANCELLED if task.cancel_requested else STATUS_SUCCESS
             task.progress = 100
             if not task.message:
                 task.message = "完成"
@@ -168,3 +171,16 @@ def get_task(task_id: str) -> Optional[Task]:
     _reap_tasks()
     with _tasks_lock:
         return _tasks.get(task_id)
+
+
+def cancel_task(task_id: str) -> Optional[Task]:
+    """Request cooperative cancellation for a pending/running task."""
+    _reap_tasks()
+    with _tasks_lock:
+        task = _tasks.get(task_id)
+        if task is None:
+            return None
+        if task.status in (STATUS_PENDING, STATUS_RUNNING):
+            task.cancel_requested = True
+            task.message = "Cancellation requested"
+        return task
