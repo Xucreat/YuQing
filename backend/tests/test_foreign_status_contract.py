@@ -184,6 +184,17 @@ def test_summarize_rss_probe_mixed_feed_states():
     assert summarize_rss_probe([_rep("http_failed", 0), _rep("network_failed", 0)])["status"] == "failed"
     # 7) 有效 Feed 且无失败 -> success
     assert summarize_rss_probe([_rep(None, 3)])["status"] == "success"
+    # 8) 非空但未知的 error_category 必须 fail-closed 当成失败（不得误判为可达）
+    u = summarize_rss_probe([_rep(None, 3), _rep("unknown_error", 0)])
+    assert u["status"] == "partial" and u["ok"] is False and u["verified"] is False
+    # 9a) 空 Feed(可达) + 未知错误 -> partial（不是 empty_feed/success）
+    u2 = summarize_rss_probe([_rep(None, 0), _rep("weird_category", 0)])
+    assert u2["status"] == "partial" and u2["ok"] is False
+    # 9b) 有效 Feed(可达) + 未知错误 -> partial（不是 success）
+    u3 = summarize_rss_probe([_rep(None, 2), _rep("mystery", 0)])
+    assert u3["status"] == "partial" and u3["ok"] is False
+    # 9c) 全部未知错误 -> failed（fail-closed）
+    assert summarize_rss_probe([_rep("unknown_error", 0), _rep("mystery", 1)])["status"] == "failed"
 
 
 def test_build_test_empty_feeds_not_masked_as_success(monkeypatch):

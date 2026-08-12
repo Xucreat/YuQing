@@ -24,7 +24,7 @@ import uuid
 import pytest
 import requests
 
-from app.collectors.common import RSSParseError, mask_url
+from app.collectors.common import RSSParseError, mask_url, summarize_rss_probe
 from app.collectors.foreign_rss import (
     ForeignRSSCollector,
     _mask_proxy_url,
@@ -477,6 +477,127 @@ def test_api_response_no_proxy_credential(client, auth_headers, monkeypatch):
             db.commit()
         finally:
             db.close()
+
+
+MANY_RSS = """<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <item><title>Alpha</title><link>https://news.example/1</link><description>topic a</description></item>
+  <item><title>Beta</title><link>https://news.example/2</link><description>topic b</description></item>
+  <item><title>Gamma</title><link>https://news.example/3</link><description>topic c</description></item>
+  <item><title>Delta</title><link>https://news.example/4</link><description>topic d</description></item>
+  <item><title>Epsilon</title><link>https://news.example/5</link><description>topic e</description></item>
+</channel></rss>"""
+
+
+# ---------------------------------------------------------------------------
+# 需求一（补全）：probe / fetch 的 feed_reports 中 Feed URL 必须脱敏
+# ---------------------------------------------------------------------------
+def test_probe_feed_reports_masked(monkeypatch, fixed_dns):
+    secret_feed = "http://user:pass@news.example/feed?token=secret#frag"
+    monkeypatch.setattr(
+        "app.collectors.foreign_rss.requests.get",
+        lambda url, **kw: FakeResponse(text=VALID_RSS),
+    )
+    collector = ForeignRSSCollector(
+        feeds=[secret_feed], keywords=["China"], is_foreign=True, max_retries=0
+    )
+    reports = collector.probe()
+    assert len(reports) == 1
+    feed = reports[0]["feed"]
+    assert feed == mask_url(secret_feed)
+    assert "pass" not in feed and "secret" not in feed and "token=secret" not in feed
+
+
+def test_fetch_feed_reports_masked(monkeypatch, fixed_dns):
+    secret_feed = "https://user:topsecret@news.example/rss?api_key=LEAK#sess"
+    monkeypatch.setattr(
+        "app.collectors.foreign_rss.requests.get",
+        lambda url, **kw: FakeResponse(text=VALID_RSS),
+    )
+    collector = ForeignRSSCollector(
+        feeds=[secret_feed], keywords=["China"], is_foreign=True, max_retries=0
+    )
+    collector.fetch()
+    reports = collector.last_feed_reports
+    assert len(reports) == 1
+    feed = reports[0]["feed"]
+    assert feed == mask_url(secret_feed)
+    assert "topsecret" not in feed and "LEAK" not in feed and "sess" not in feed
+
+
+# ---------------------------------------------------------------------------
+# 需求二：valid_count / matched_count 语义统一（不受关键词影响；probe==fetch）
+# ---------------------------------------------------------------------------
+def test_valid_count_independent_of_keyword(monkeypatch, fixed_dns):
+    """Feed 有有效文章但无关键词命中：valid_count>0 且 matched_count=0；
+    单 Feed 级别状态为 empty_feed（无命中），但顶层四态基于 valid_count 仍为 success（可达且有有效条目），
+    绝不可能是 failed；正式采集不写入 opinion，运行状态仍表达「可达」。"""
+    monkeypatch.setattr(
+        "app.collectors.foreign_rss.requests.get",
+        lambda url, **kw: FakeResponse(text=VALID_RSS),
+    )
+    collector = ForeignRSSCollector(
+        feeds=["https://news.example/rss"],
+        keywords=["NonexistentKeywordXYZ"], is_foreign=True, max_retries=0,
+    )
+    probe_reports = collector.probe()
+    # valid_count 不受关键词影响（仍为 2），matched_count 为 0。
+    assert probe_reports[0]["valid_count"] == 2
+    assert probe_reports[0]["matched_count"] == 0
+    # 单 Feed 级别状态反映相关性：可达但无命中 -> empty_feed。
+    assert probe_reports[0]["status"] == "empty_feed"
+    # 顶层四态（基于 error_category + valid_count）不得误判为 failed/partial。
+    summary = summarize_rss_probe(probe_reports)
+    assert summary["status"] in ("success", "empty_feed")
+    assert summary["status"] != "failed"
+
+    items = collector.fetch()
+    # 无命中则不写 opinion，但运行状态仍表达「可达」。
+    assert items == []
+    assert collector.last_feed_reports[0]["reachable"] is True
+    assert collector.last_feed_reports[0]["valid_count"] == 2
+    assert collector.last_feed_reports[0]["status"] == "empty_feed"
+
+
+def test_probe_fetch_consistent_valid_count(monkeypatch, fixed_dns):
+    """probe 与 fetch 对同一 RSS 内容应得到一致的 valid_count。"""
+    monkeypatch.setattr(
+        "app.collectors.foreign_rss.requests.get",
+        lambda url, **kw: FakeResponse(text=VALID_RSS),
+    )
+    collector = ForeignRSSCollector(
+        feeds=["https://news.example/rss"], keywords=["China"], is_foreign=True, max_retries=0
+    )
+    probe_reports = collector.probe()
+    collector.fetch()
+    fetch_reports = collector.last_feed_reports
+    assert probe_reports[0]["valid_count"] == fetch_reports[0]["valid_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# 需求三：即使达到 max_items，仍继续请求并记录后续 Feed（发现后续失败 -> partial）
+# ---------------------------------------------------------------------------
+def test_max_items_processes_all_feeds(monkeypatch, fixed_dns):
+    def fake_get(url, **kwargs):
+        if "bad" in url:
+            raise requests.exceptions.ConnectionError("refused")
+        return FakeResponse(text=MANY_RSS)
+
+    monkeypatch.setattr("app.collectors.foreign_rss.requests.get", fake_get)
+    collector = ForeignRSSCollector(
+        feeds=["https://news.example/ok", "https://news.example/bad"],
+        keywords=["topic"], is_foreign=True, max_items=2, max_retries=0,
+    )
+    items = collector.fetch()
+    reports = collector.last_feed_reports
+    # 两个 Feed 都必须被请求并记录（不得因达到 max_items 而跳过后续 Feed）。
+    assert len(reports) == 2, reports
+    # 第一个 Feed 有 5 条有效条目，max_items=2 仅限制写入数量，不限制计数。
+    assert len(items) == 2
+    assert reports[0]["valid_count"] == 5
+    # 第二个 Feed 失败 -> 整体必须为 partial（不是 success）。
+    assert reports[1]["error_category"] == "network_failed"
+    assert summarize_rss_probe(reports)["status"] == "partial"
 
 
 if __name__ == "__main__":

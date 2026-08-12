@@ -288,7 +288,7 @@ class ForeignRSSCollector(BaseCollector):
         for feed_url in self.feeds:
             self.last_http_status = None
             report: dict[str, Any] = {
-                "feed": self._feed_label(feed_url),
+                "feed": mask_url(feed_url),
                 "http_status": None,
                 "xml_parsed": False,
                 "raw_count": 0,
@@ -310,7 +310,9 @@ class ForeignRSSCollector(BaseCollector):
                 report["raw_count"] = len(parsed)
                 self.last_fetched_raw += len(parsed)
                 seen_urls: set[str] = set()
-                for item in parsed[: self.max_items]:
+                # valid_count / matched_count 反映 Feed 内容本身（不受 max_items 限制），
+                # 保证与 fetch() 对同一内容得到一致的计数。
+                for item in parsed:
                     title = str(item.get("title") or "").strip()
                     url = str(item.get("url") or "").strip()
                     summary = str(item.get("content") or "").strip()
@@ -359,7 +361,10 @@ class ForeignRSSCollector(BaseCollector):
                 report["error_category"] = RSS_PROBE_REQUEST_FAILED
                 report["status"] = RSS_PROBE_REQUEST_FAILED
             if not report["failure_count"]:
-                report["status"] = "success" if report["valid_count"] else "empty_feed"
+                # 单 Feed 级别状态反映「关键词相关性」：命中则为 success，可达但无命中则为
+                # empty_feed（不写 opinion）。顶层四态（success/empty_feed/partial/failed）
+                # 由 summarize_rss_probe 基于 error_category + valid_count 推导，二者语义解耦。
+                report["status"] = "success" if report["matched_count"] else "empty_feed"
                 report["error_category"] = None
                 report["reachable"] = True
             else:
@@ -408,13 +413,15 @@ class ForeignRSSCollector(BaseCollector):
         self.last_failed_feeds = 0
         self.last_reachable_feeds = 0
         self.last_feed_reports = []
+        reached_limit = False
         for feed_url in self.feeds:
             report: dict[str, Any] = {
-                "feed": self._feed_label(feed_url),
+                "feed": mask_url(feed_url),
                 "http_status": None,
                 "xml_parsed": False,
                 "raw_count": 0,
                 "valid_count": 0,
+                "matched_count": 0,
                 "error_category": None,
                 "error": None,
                 "reachable": False,
@@ -428,6 +435,16 @@ class ForeignRSSCollector(BaseCollector):
                 report["error_category"] = RSS_PROBE_INVALID_FEED
                 self.last_feed_reports.append(report)
                 continue
+            except RSSProbeError as exc:
+                # 保留探测层的真实失败类别（network_failed/http_failed/blocked/request_failed），
+                # 不得被兜底吞成 request_failed，否则后续 Feed 失败无法被 summarize 发现。
+                self.last_error = _safe_probe_message(exc)
+                self.last_failed_feeds += 1
+                report["error"] = _safe_probe_message(exc)
+                report["error_category"] = exc.category
+                report["status"] = exc.category
+                self.last_feed_reports.append(report)
+                continue
             except Exception as exc:  # noqa: BLE001
                 self.last_error = _safe_probe_message(exc)
                 self.last_failed_feeds += 1
@@ -435,7 +452,7 @@ class ForeignRSSCollector(BaseCollector):
                 report["error_category"] = RSS_PROBE_REQUEST_FAILED
                 self.last_feed_reports.append(report)
                 continue
-            # 解析成功：记录「可达」并统计原始条目数。
+            # 解析成功：记录「可达」并统计原始条目数（不受 max_items 限制）。
             report["xml_parsed"] = True
             report["raw_count"] = len(parsed)
             self.last_fetched_raw += len(parsed)
@@ -443,15 +460,28 @@ class ForeignRSSCollector(BaseCollector):
             report["reachable"] = True
             seen: set[tuple[str, str]] = set()
             feed_valid = 0
+            feed_matched = 0
             for item in parsed:
                 title = str(item.get("title") or "").strip()
                 summary = str(item.get("summary") or item.get("content") or "").strip()
                 raw_content = str(item.get("content") or summary).strip()
                 url = str(item.get("url") or "").strip()
-                summary = sanitize_foreign_html(summary)[: self.max_content_length]
-                content = sanitize_foreign_html(self._fetch_full_text(url) or raw_content or summary)[: self.max_content_length]
+                # valid_count：具有有效标题和 URL 的条目数（与关键词命中无关）。
+                if title and url:
+                    feed_valid += 1
+                merged = f"{title}\n{summary}\n{raw_content}".lower()
+                matched = [word for word in self.keywords if word.lower() in merged]
+                # matched_count：命中关键词的条目数（独立于是否写入 items）。
+                if matched:
+                    feed_matched += 1
+                # 达到 max_items 后：仅完成本 Feed 的解析与状态记录，跳过条目转换，
+                # 但仍必须继续请求并记录后续 Feed（需求三），以发现后续 Feed 的失败。
+                if reached_limit:
+                    continue
+                summary_san = sanitize_foreign_html(summary)[: self.max_content_length]
+                content_san = sanitize_foreign_html(self._fetch_full_text(url) or raw_content or summary_san)[: self.max_content_length]
                 external_id = str(item.get("external_id") or item.get("guid") or "").strip()
-                content_key = (title + "\n" + summary + "\n" + content).casefold()
+                content_key = (title + "\n" + summary_san + "\n" + content_san).casefold()
                 if external_id:
                     dedupe_key = ("external_id", external_id)
                 elif url:
@@ -461,19 +491,13 @@ class ForeignRSSCollector(BaseCollector):
                 if dedupe_key in seen:
                     continue
                 seen.add(dedupe_key)
-                merged = f"{title}\n{summary}\n{content}".lower()
-                matched = [
-                    word for word in self.keywords if word.lower() in merged
-                ]
                 if not matched:
                     continue
-                if title and url:
-                    feed_valid += 1
                 items.append(
                     {
                         "title": title,
-                        "summary": summary[: self.max_content_length],
-                        "content": content,
+                        "summary": summary_san,
+                        "content": content_san,
                         "url": url,
                         "author": item.get("author") or "",
                         "external_id": external_id or None,
@@ -484,11 +508,13 @@ class ForeignRSSCollector(BaseCollector):
                     }
                 )
                 if len(items) >= self.max_items:
-                    break
+                    reached_limit = True
             report["valid_count"] = feed_valid
+            report["matched_count"] = feed_matched
+            # 单 Feed 级别状态反映「关键词相关性」：命中则为 success，可达但无命中则为
+            # empty_feed；顶层四态由 summarize_rss_probe 基于 error_category + valid_count 推导。
+            report["status"] = "success" if feed_matched else "empty_feed"
             self.last_feed_reports.append(report)
-            if len(items) >= self.max_items:
-                break
             if self.request_interval:
                 time.sleep(self.request_interval)
         return items[: self.max_items]

@@ -18,10 +18,14 @@ from typing import Any, Optional
 from app.collectors.base import BaseCollector
 from app.collectors.common import (
     DEFAULT_UA,
+    RSSParseError,
     _feed_publish_time,
     http_get_guarded,
+    http_get_guarded_detailed,
     is_safe_rss_url,
     make_session,
+    mask_url,
+    parse_rss,
 )
 
 logger = logging.getLogger(__name__)
@@ -176,12 +180,12 @@ class RSSCollector(BaseCollector):
                 if not ok:
                     logger.warning(
                         "RSS 源被 SSRF 防护拦截 name=%s url=%s reason=%s",
-                        source, url, reason,
+                        source, mask_url(url), reason,
                     )
                     continue
                 xml = http_get(self.session, url, timeout)
                 if not xml:
-                    logger.warning("RSS 源抓取为空 name=%s url=%s", source, url)
+                    logger.warning("RSS 源抓取为空 name=%s url=%s", source, mask_url(url))
                     continue
                 parsed = feedparser.parse(xml)
                 for entry in getattr(parsed, "entries", []) or []:
@@ -199,7 +203,90 @@ class RSSCollector(BaseCollector):
                 # 单个 Feed 失败隔离：记录数据源名 + Feed 地址 + 原因，继续下一个
                 logger.error(
                     "RSS 源采集失败 name=%s url=%s err=%s",
-                    source, url, f"{type(exc).__name__}: {exc}",
+                    source, mask_url(url), f"{type(exc).__name__}: {exc}",
                 )
                 continue
         return items
+
+    def probe(self) -> list[dict[str, Any]]:
+        """探测每个 RSS Feed（不写状态），返回与 ForeignRSSCollector 一致的逐 Feed 报告。
+
+        状态明确区分：network_failed / http_failed / invalid_feed / blocked /
+        empty_feed / success。空 Feed 仅在「确实收到并成功解析响应」时才是 empty_feed，
+        绝不把网络/代理故障吞掉后统一报成「成功，命中 0 条」。
+        """
+        if not self.feeds:
+            return []
+        timeout = self._effective_timeout()
+        max_items = self._effective_max_items()
+        reports: list[dict[str, Any]] = []
+        import feedparser  # noqa: WPS433  (惰性导入；仅当确有源时才加载)
+
+        for feed in self.feeds:
+            url = feed["url"]
+            report: dict[str, Any] = {
+                "feed": mask_url(url),
+                "http_status": None,
+                "xml_parsed": False,
+                "raw_count": 0,
+                "valid_count": 0,
+                "title_count": 0,
+                "summary_count": 0,
+                "published_time_count": 0,
+                "url_duplicate_count": 0,
+                "languages": {"en": 0, "zh": 0, "mixed": 0, "unknown": 0},
+                "matched_count": 0,
+                "failure_count": 0,
+                "error": None,
+                "error_category": None,
+                "status": "empty_feed",
+            }
+            ok, reason = is_safe_rss_url(url)
+            if not ok:
+                report.update(status="blocked", error_category="blocked",
+                              error="地址未通过安全校验", failure_count=1)
+                reports.append(report)
+                continue
+            text, info = http_get_guarded_detailed(
+                self.session, url, timeout, guard=is_safe_rss_url
+            )
+            report["http_status"] = info.get("http_status")
+            if info["status"] != "ok":
+                report.update(status=info["status"], error_category=info["status"],
+                              error=info.get("error"), failure_count=1)
+                reports.append(report)
+                continue
+            try:
+                parsed = parse_rss(text)
+            except RSSParseError:
+                report.update(status="invalid_feed", error_category="invalid_feed",
+                              error="invalid XML", failure_count=1)
+                reports.append(report)
+                continue
+            report["xml_parsed"] = True
+            report["raw_count"] = len(parsed)
+            seen_urls: set[str] = set()
+            for item in parsed[:max_items]:
+                title = str(item.get("title") or "").strip()
+                iurl = str(item.get("url") or "").strip()
+                summary = str(item.get("content") or "").strip()
+                if title:
+                    report["title_count"] += 1
+                if summary:
+                    report["summary_count"] += 1
+                if item.get("publish_time"):
+                    report["published_time_count"] += 1
+                if title and iurl:
+                    report["valid_count"] += 1
+                    if iurl in seen_urls:
+                        report["url_duplicate_count"] += 1
+                    seen_urls.add(iurl)
+                sample = f"{title}\n{summary}"
+                has_zh = any("\u4e00" <= ch <= "\u9fff" for ch in sample)
+                has_en = any(ch.isascii() and ch.isalpha() for ch in sample)
+                lang = ("mixed" if has_zh and has_en else
+                        "zh" if has_zh else "en" if has_en else "unknown")
+                report["languages"][lang] += 1
+            report["status"] = "success" if report["valid_count"] else "empty_feed"
+            reports.append(report)
+        return reports

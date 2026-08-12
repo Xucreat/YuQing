@@ -88,10 +88,10 @@ def http_get(
         return resp.text
     except requests.exceptions.SSLError as exc:
         # Some government sites reject Python OpenSSL but accept the system TLS stack.
-        logger.warning("TLS 握手失败，尝试系统 curl 兼容抓取 url=%s err=%s", url, exc)
+        logger.warning("TLS 握手失败，尝试系统 curl 兼容抓取 url=%s err=%s", mask_url(url), exc)
         return _curl_get(session, url, timeout)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("抓取失败 url=%s err=%s", url, exc)
+        logger.warning("抓取失败 url=%s err=%s", mask_url(url), exc)
         return None
 
 
@@ -106,7 +106,7 @@ def _curl_get(
     """
     curl = shutil.which("curl.exe") or shutil.which("curl")
     if not curl:
-        logger.warning("系统 curl 不可用，无法执行 TLS 兼容抓取 url=%s", url)
+        logger.warning("系统 curl 不可用，无法执行 TLS 兼容抓取 url=%s", mask_url(url))
         return None
     user_agent = str(session.headers.get("User-Agent") or DEFAULT_UA)
     timeout_value = str(max(1, int(timeout)))
@@ -135,11 +135,11 @@ def _curl_get(
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        logger.warning("系统 curl 抓取失败 url=%s err=%s", url, exc)
+        logger.warning("系统 curl 抓取失败 url=%s err=%s", mask_url(url), exc)
         return None
     if result.returncode != 0:
         detail = (result.stderr or b"").decode("utf-8", errors="replace").strip()
-        logger.warning("系统 curl 返回失败 url=%s code=%s err=%s", url, result.returncode, detail)
+        logger.warning("系统 curl 返回失败 url=%s code=%s err=%s", mask_url(url), result.returncode, detail)
         return None
     return (result.stdout or b"").decode("utf-8", errors="replace") or None
 
@@ -170,10 +170,10 @@ def http_get_guarded(
         try:
             ok, reason = guard(current)
         except Exception as exc:  # noqa: BLE001  guard 自身异常不得导致崩溃
-            logger.warning("URL 安全校验异常 url=%s err=%s", current, exc)
+            logger.warning("URL 安全校验异常 url=%s err=%s", mask_url(current), exc)
             return None
         if not ok:
-            logger.warning("URL 被安全校验拦截 url=%s reason=%s", current, reason)
+            logger.warning("URL 被安全校验拦截 url=%s reason=%s", mask_url(current), reason)
             return None
         try:
             resp = session.get(current, timeout=timeout, allow_redirects=False)
@@ -189,7 +189,7 @@ def http_get_guarded(
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("Location")
             if not location:
-                logger.warning("重定向缺少 Location url=%s", current)
+                logger.warning("重定向缺少 Location url=%s", mask_url(current))
                 return None
             current = urllib.parse.urljoin(current, location)
             continue
@@ -211,6 +211,11 @@ RSS_PROBE_INVALID_FEED = "invalid_feed"
 RSS_PROBE_BLOCKED = "blocked"
 RSS_PROBE_REQUEST_FAILED = "request_failed"
 RSS_PROBE_OK = "ok"
+
+# 可达类别：仅「明确成功」才算可达（fail-closed）。任何非 None / 非 ok 的 error_category
+# —— 包括已知致命类别与未定义的未知类别 —— 一律视为「失败」，避免未知错误被乐观地
+# 当成「可达」从而把 partial/failed 误判为 success/empty_feed。
+RSS_PROBE_REACHABLE_CATEGORIES = frozenset({None, RSS_PROBE_OK})
 
 # 传输层/响应层失败的 Feed 视为「不可达」，不应被当作「成功，命中 0 条」。
 RSS_PROBE_FATAL_CATEGORIES = frozenset({
@@ -298,14 +303,14 @@ def summarize_rss_probe(reports: list[dict] | None) -> dict:
     if not reports:
         status = RSS_PROBE_STATUS_EMPTY_FEED
     else:
-        # 「可达」基于致命 error_category，而非 valid_count：
-        # 否则「可达但无条目」会被误判为失败，或「可达空 + 失败」被误判为全失败。
-        fatal = [r for r in reports if r.get("error_category") in RSS_PROBE_FATAL_CATEGORIES]
-        reachable = [r for r in reports if r.get("error_category") not in RSS_PROBE_FATAL_CATEGORIES]
+        # fail-closed：只有 error_category 为 None / RSS_PROBE_OK 才视为「可达」；
+        # 已知致命类别与任何非空的未知 error_category 一律算「失败」。不依赖 valid_count。
+        reachable = [r for r in reports if r.get("error_category") in RSS_PROBE_REACHABLE_CATEGORIES]
+        failed = [r for r in reports if r.get("error_category") not in RSS_PROBE_REACHABLE_CATEGORIES]
         has_valid = any(r.get("valid_count") for r in reachable)
-        if fatal and reachable:
+        if failed and reachable:
             status = RSS_PROBE_STATUS_PARTIAL
-        elif fatal and not reachable:
+        elif failed and not reachable:
             status = RSS_PROBE_STATUS_FAILED
         elif reachable and has_valid:
             status = RSS_PROBE_STATUS_SUCCESS
@@ -354,12 +359,12 @@ def http_get_guarded_detailed(
         try:
             ok, reason = guard(current)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("URL 安全校验异常 url=%s err=%s", current, exc)
+            logger.warning("URL 安全校验异常 url=%s err=%s", mask_url(current), exc)
             info.update(status=RSS_PROBE_BLOCKED, error_category=RSS_PROBE_BLOCKED,
                          error="URL 安全校验异常")
             return None, info
         if not ok:
-            logger.warning("URL 被安全校验拦截 url=%s reason=%s", current, reason)
+            logger.warning("URL 被安全校验拦截 url=%s reason=%s", mask_url(current), reason)
             info.update(status=RSS_PROBE_BLOCKED, error_category=RSS_PROBE_BLOCKED,
                         error="地址未通过安全校验")
             return None, info
