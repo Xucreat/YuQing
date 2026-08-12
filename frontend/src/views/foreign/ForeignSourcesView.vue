@@ -38,7 +38,7 @@
             </select>
           </el-form-item>
           <el-form-item label="RSS 地址">
-            <input v-model="sourceDraft.feedsText" class="input source-feed-input" placeholder="多个地址用换行分隔" />
+            <textarea v-model="sourceDraft.feedsText" class="input source-feed-input" rows="4" placeholder="多个地址用换行或逗号分隔（每行一个）" style="width:100%;min-height:88px;resize:vertical;font-family:inherit;padding:8px 10px;line-height:1.5;box-sizing:border-box;"></textarea>
           </el-form-item>
           <el-form-item label="代理环境变量">
             <input v-model="sourceDraft.proxyEnv" class="input" placeholder="如 FOREIGN_HTTP_PROXY" />
@@ -69,22 +69,27 @@
           </el-form-item>
         </el-form>
         <button class="btn btn-secondary" :disabled="sourceTesting" @click="testSourceDraft">{{ sourceTesting ? '测试中...' : '连通性测试' }}</button>
-        <span v-if="!sourceDraftTested" class="muted">保存前必须完成当前配置的 RSS 测试</span>
+        <span class="muted">可先点「连通性测试」验证；也可直接保存（保存后状态为「未验证」，由测试接口验证）</span>
       </div>
       <div v-if="sourceTestResult" class="source-test-result">
-        <strong>{{ sourceTestResult.success ? 'RSS 测试通过' : 'RSS 测试存在失败项' }}</strong>
-        <span v-for="feed in sourceTestResult.feeds || []" :key="feed.feed || feed.label">{{ feed.feed || feed.label }}: HTTP {{ feed.http_status ?? '-' }} · XML {{ feed.xml_parsed ? '是' : '否' }} · 原始 {{ feed.raw_count }} · 命中 {{ feed.matched_count }} · 失败 {{ feed.failure_count ?? 0 }}</span>
+        <strong :class="testResultClass(sourceTestResult)">{{ testResultText(sourceTestResult) }}（{{ sourceTestResult.status || 'unknown' }}）</strong>
+        <span class="result-field">验证：<b :class="sourceTestResult.verified ? 'txt-ok' : 'txt-fail'">{{ sourceTestResult.verified ? '已通过' : '未通过' }}</b> · 连接可用：<b :class="sourceTestResult.ok ? 'txt-ok' : 'txt-fail'">{{ sourceTestResult.ok ? '是' : '否' }}</b></span>
+        <span v-if="sourceTestResult.proxy_health" class="proxy-health">代理：{{ proxyHealthText(sourceTestResult.proxy_health) }}</span>
+        <span v-for="feed in sourceTestResult.feeds || []" :key="feed.feed || feed.label"
+              class="feed-status" :class="feedStatusClass(feed.status)">
+          {{ feed.feed || feed.label }}: {{ feedStatusLabel(feed.status) }} · HTTP {{ feed.http_status ?? '-' }} · XML {{ feed.xml_parsed ? '是' : '否' }} · 有效 {{ feed.valid_count ?? 0 }} · 原始 {{ feed.raw_count ?? 0 }} · 命中 {{ feed.matched_count ?? 0 }}<template v-if="feed.error_category"> · {{ feed.error_category }}</template>
+        </span>
       </div>
       <template #footer>
         <button class="btn btn-secondary" @click="sourceEditorVisible = false">取消</button>
-        <button class="btn btn-primary" :disabled="sourceSaving || !sourceDraftTested" @click="saveSource">{{ sourceSaving ? '保存中...' : '保存' }}</button>
+        <button class="btn btn-primary" :disabled="sourceSaving" @click="saveSource">{{ sourceSaving ? '保存中...' : '保存' }}</button>
       </template>
     </el-dialog>
     <div class="card source-table-card fw-src-table">
       <table class="tbl">
         <thead>
           <tr>
-            <th>来源</th><th>语言</th><th>文章数</th><th>风险完成</th><th>告警</th><th>失败次数</th><th>最近运行</th><th>最近抓取 / 新增</th><th>采集质量</th><th>最近运行时间</th><th>下一次采集</th><th>RSS</th><th>采集器</th><th>状态</th><th>调度</th><th>间隔</th><th>代理</th><th>操作</th>
+            <th>来源</th><th>语言</th><th>文章数</th><th>风险完成</th><th>告警</th><th>失败次数</th><th>最近运行</th><th>最近抓取 / 新增</th><th>采集质量</th><th>最近运行时间</th><th>下一次采集</th><th>RSS</th><th>采集器</th><th>状态</th><th>调度</th>            <th>间隔</th><th>代理</th><th>验证</th><th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -113,14 +118,21 @@
             <td><el-switch :model-value="row.enabled" :loading="sourceBusyId === row.id" :disabled="!canManageSource" @change="() => toggleSource(row)" /></td>
             <td><el-switch :model-value="row.schedule_enabled" :loading="sourceBusyId === row.id" :disabled="!row.enabled || !canManageSource" :title="!row.enabled ? '启用数据源后才能开启定时采集' : undefined" @change="() => toggleSchedule(row)" /></td>
             <td>{{ row.schedule_interval_minutes || '-' }} 分钟</td>
-            <td>{{ row.proxy_env || '直连' }}<span v-if="row.proxy_configured" class="proxy-mark">已配置</span></td>
+            <td>{{ proxyModeText(row.proxy_mode) }}</td>
+            <td>
+              <span class="pill" :class="verifyPillClass(row)">{{ verifyText(row) }}</span>
+              <div v-if="row.last_probe_status" class="muted verify-sub">
+                {{ row.last_probe_status }}<template v-if="row.last_probe_error_category"> · {{ row.last_probe_error_category }}</template>
+              </div>
+              <div v-if="row.last_probe_at" class="muted verify-sub">{{ formatTime(row.last_probe_at) }}</div>
+            </td>
             <td class="actions">
               <button v-if="canManageSource" class="link-btn" @click="editSource(row)">编辑</button>
               <button v-if="canTestSource" class="link-btn" @click="testSource(row)">测试</button>
               <button class="link-btn" @click="loadSourceRuns(row)">历史</button>
             </td>
           </tr>
-          <tr v-if="!visibleSources.length"><td colspan="18" class="empty">暂无外网来源</td></tr>
+          <tr v-if="!visibleSources.length"><td colspan="19" class="empty">暂无外网来源</td></tr>
         </tbody>
       </table>
     </div>
@@ -178,6 +190,15 @@ import { ElMessage } from 'element-plus'
 import Pager from '@/components/Pager.vue'
 import api from '@/api'
 import { usePermission } from '@/composables/usePermission'
+import {
+  verifyPillClass,
+  verifyText,
+  testResultClass,
+  testResultText,
+  feedStatusClass,
+  feedStatusLabel,
+  proxyModeText,
+} from './foreignSourceStatus'
 
 type Source = {
   id: number
@@ -197,6 +218,10 @@ type Source = {
   request_interval?: number
   max_content_length?: number
   respect_robots?: boolean
+  verified?: boolean
+  last_probe_at?: string | null
+  last_probe_status?: string | null
+  last_probe_error_category?: string | null
   latest_run_status?: string | null
   latest_run_at?: string | null
   next_collect_time?: string | null
@@ -339,7 +364,7 @@ function sourcePayload() {
   return {
     name: sourceDraft.name.trim(),
     key: sourceDraft.key.trim(),
-    feeds: sourceDraft.feedsText.split(/\r?\n|,/).map(item => item.trim()).filter(Boolean),
+    feeds: sourceDraft.feedsText.split(/[\r\n,;\s]+/).map(item => item.trim()).filter(Boolean),
     language: sourceDraft.language,
     proxy_env: sourceDraft.proxyEnv.trim() || null,
     timeout: sourceDraft.timeout,
@@ -376,13 +401,13 @@ async function testSourceDraft() {
   try {
     const response = await api.post('/foreign/sources/test', sourceTestPayload())
     sourceTestResult.value = response.data
-    sourceDraftTested.value = Boolean(response.data?.success)
-    if (!response.data?.success) ElMessage.warning('RSS 测试存在失败项，请检查配置')
+    sourceDraftTested.value = Boolean(response.data?.ok)
+    if (!response.data?.ok) ElMessage.warning('RSS 连通性异常，请检查配置（可仍保存为未验证）')
     else ElMessage.success('RSS 连通性测试通过')
   } catch (err: any) { sourceTestResult.value = null; ElMessage.error(err?.response?.data?.detail || '外网源连通性测试失败') } finally { sourceTesting.value = false }
 }
 async function saveSource() {
-  if (sourceSaving.value || !sourceDraftTested.value || !canManageSource.value) return
+  if (sourceSaving.value || !canManageSource.value) return
   sourceSaving.value = true
   try {
     const payload = sourcePayload()
@@ -401,7 +426,7 @@ async function testSource(row: Source) {
   try {
     const response = await api.post('/foreign/sources/test', { source_id: row.id, fetch_full_text: false })
     sourceTestResult.value = response.data
-    ElMessage[response.data?.success ? 'success' : 'warning'](response.data?.success ? 'RSS 连通性测试通过' : 'RSS 测试存在失败项')
+    ElMessage[response.data?.ok ? 'success' : 'warning'](response.data?.ok ? 'RSS 连通性测试通过' : 'RSS 连通性异常')
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网源测试失败') } finally { sourceTesting.value = false }
 }
 async function loadSourceRuns(row: Source) {
@@ -425,6 +450,17 @@ function qualityPill(risk: string): string {
 }
 function qualityText(risk: string): string {
   return ({ normal: '正常', warning: '空抓取', high: '高风险', unknown: '未运行' } as Record<string, string>)[risk] || '未知'
+}
+// 验证状态 / 测试结果 / 逐 Feed 状态 / 代理模式的映射已抽到 ./foreignSourceStatus
+// （纯函数，可单测；与后端四入口契约一致）。本文件仅做 UI 装配。
+function proxyHealthText(health: any): string {
+  if (!health) return '无代理信息'
+  if (health.tcp_reachable === true) {
+    const target = health.target_status ? ` · 目标 ${health.target_status}` : ''
+    return `端口可达${target}`
+  }
+  if (health.tcp_reachable === false) return '代理端口不可达'
+  return health.note || '直连(无代理)'
 }
 async function toggleSchedule(row: Source) {
   if (sourceBusyId.value || !row.enabled || !canManageSource.value) return

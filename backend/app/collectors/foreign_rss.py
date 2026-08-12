@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import time
 from typing import Any
 from urllib.parse import urljoin, urlsplit
@@ -13,11 +14,102 @@ from app.collectors.base import BaseCollector
 from app.collectors.common import (
     DEFAULT_UA,
     RSSParseError,
+    RSS_PROBE_BLOCKED,
+    RSS_PROBE_FATAL_CATEGORIES,
+    RSS_PROBE_HTTP_FAILED,
+    RSS_PROBE_INVALID_FEED,
+    RSS_PROBE_NETWORK_FAILED,
+    RSS_PROBE_OK,
+    RSS_PROBE_REQUEST_FAILED,
     extract_article_text,
     is_safe_rss_url,
     parse_rss,
 )
 from app.services.foreign_content_sanitizer import sanitize_foreign_html
+
+
+# ---------------------------------------------------------------------------
+# 探测失败分类异常（语义与 common.RSS_PROBE_* 对应；供 probe 映射 Feed 状态）
+# ---------------------------------------------------------------------------
+class RSSProbeError(Exception):
+    """探测失败基类，携带脱敏类别与可选 HTTP 状态码。"""
+
+    category: str = RSS_PROBE_REQUEST_FAILED
+    http_status: int | None = None
+
+    def __init__(self, message: str = "", *, http_status: int | None = None) -> None:
+        super().__init__(message)
+        self.http_status = http_status
+
+
+class RSSNetworkError(RSSProbeError):
+    category = RSS_PROBE_NETWORK_FAILED
+
+
+class RSSHTTPError(RSSProbeError):
+    category = RSS_PROBE_HTTP_FAILED
+
+
+class RSSBlockedError(RSSProbeError):
+    category = RSS_PROBE_BLOCKED
+
+
+class RSSRequestError(RSSProbeError):
+    category = RSS_PROBE_REQUEST_FAILED
+
+
+def _mask_proxy_url(url: str | None) -> str | None:
+    """把代理 URL 中的认证信息脱敏（user:pass@ -> ***@），避免日志/响应泄露凭据。"""
+    if not url:
+        return url
+    try:
+        parsed = urlsplit(url)
+    except Exception:  # noqa: BLE001
+        return None
+    if parsed.username or parsed.password:
+        netloc = "***:***@" + parsed.hostname + (f":{parsed.port}" if parsed.port else "")
+        return f"{parsed.scheme}://{netloc}"
+    return url
+
+
+def resolve_proxy_mode(
+    *,
+    proxy_override: str | None = None,
+    proxy_env: str | None = None,
+    use_direct: bool = False,
+) -> str:
+    """统一代理解析优先级，仅返回脱敏的 mode（绝不返回代理 URL / 凭据）。
+
+    供 ForeignRSSCollector._resolve_proxy 与列表接口 ``_foreign_source_item`` 共用，
+    保证「实际采集使用的代理」与「UI 展示的代理模式」完全一致，避免：
+
+    - UI 显示「未配置代理」但采集实际走了系统代理；
+    - 或反之。
+
+    优先级（与 ``_resolve_proxy`` 完全一致）：
+    1. proxy_override（显式代理 URL，API 不暴露，仅兜底兼容）
+    2. use_direct（显式直连，即便存在代理环境变量也强制直连，禁止从代理失败静默回退）
+    3. proxy_env 指向的环境变量（API 暴露的 ``proxy_env`` 字段）
+    4. FOREIGN_HTTP_PROXY
+    5. HTTPS_PROXY / https_proxy
+    6. HTTP_PROXY / http_proxy
+    7. 以上皆无 -> 直连（默认）
+
+    mode 取值：``explicit`` / ``direct`` / ``env:<NAME>`` / ``direct_default``。
+    """
+    if proxy_override:
+        return "explicit"
+    if use_direct:
+        return "direct"
+    if proxy_env and os.getenv(proxy_env, "").strip():
+        return f"env:{proxy_env}"
+    if os.getenv("FOREIGN_HTTP_PROXY", "").strip():
+        return "env:FOREIGN_HTTP_PROXY"
+    if os.getenv("HTTPS_PROXY", "").strip() or os.getenv("https_proxy", "").strip():
+        return "env:HTTPS_PROXY"
+    if os.getenv("HTTP_PROXY", "").strip() or os.getenv("http_proxy", "").strip():
+        return "env:HTTP_PROXY"
+    return "direct_default"
 
 
 class ForeignRSSCollector(BaseCollector):
@@ -31,6 +123,12 @@ class ForeignRSSCollector(BaseCollector):
         keywords: list[str] | str | None = None,
         is_foreign: bool = False,
         proxy_env: str | None = None,
+        # 显式代理 URL：仅在确实需要通过配置引用代理时使用，且代理地址需经协议/格式校验。
+        # 为避免凭据落库，推荐把代理地址放在环境变量中、用 proxy_env 引用其变量名，
+        # 而不是把 URL 直接写进 config_json。proxy= 仅作为兜底兼容。
+        proxy: str | None = None,
+        # 显式直连模式（不经过任何代理）。必须是显式开关，禁止从代理失败静默回退到直连。
+        use_direct: bool = False,
         timeout: int = 15,
         connect_timeout: float | None = None,
         read_timeout: float | None = None,
@@ -49,6 +147,8 @@ class ForeignRSSCollector(BaseCollector):
             keywords = keywords.split(",")
         self.keywords = [str(word).strip() for word in (keywords or []) if str(word).strip()]
         self.proxy_env = proxy_env or "FOREIGN_HTTP_PROXY"
+        self.proxy_override = proxy
+        self.use_direct = bool(use_direct)
         self.timeout = max(1, int(timeout))
         self.connect_timeout = max(
             0.1, float(connect_timeout if connect_timeout is not None else self.timeout)
@@ -71,48 +171,109 @@ class ForeignRSSCollector(BaseCollector):
         self.last_failed_feeds = 0
         self.last_feed_reports: list[dict[str, Any]] = []
         self.last_http_status: int | None = None
+        # 代理解析结果与本次请求是否实际走代理（准确反映是否使用代理）。
+        self.last_proxy_used: bool = False
+        self.proxy_mode: str = "unresolved"
+        self.last_proxy_url_masked: str | None = None
+
+    def _resolve_proxy(self) -> dict[str, Any]:
+        """统一代理解析（优先级见模块说明）。
+
+        返回 {proxies, url, url_masked, mode}：
+          - proxies: requests 可用的代理字典，或 None（直连）。
+          - mode: 解析来源（env:FOREIGN_HTTP_PROXY / env:HTTPS_PROXY / explicit / direct ...）。
+        代理地址必须校验协议与格式；缺省不自动从代理失败回退到直连。
+        """
+        candidate: str | None = None
+        if self.proxy_override:
+            candidate = self.proxy_override.strip()
+        elif self.use_direct:
+            # 显式直连：即便存在代理环境变量也强制直连（禁止从代理失败静默回退）。
+            candidate = None
+        elif self.proxy_env and os.getenv(self.proxy_env, "").strip():
+            candidate = os.getenv(self.proxy_env, "").strip()
+        elif os.getenv("FOREIGN_HTTP_PROXY", "").strip():
+            candidate = os.getenv("FOREIGN_HTTP_PROXY", "").strip()
+        elif os.getenv("HTTPS_PROXY", "").strip() or os.getenv("https_proxy", "").strip():
+            candidate = (os.getenv("HTTPS_PROXY") or os.getenv("https_proxy") or "").strip()
+        elif os.getenv("HTTP_PROXY", "").strip() or os.getenv("http_proxy", "").strip():
+            candidate = (os.getenv("HTTP_PROXY") or os.getenv("http_proxy") or "").strip()
+        else:
+            candidate = None
+        # mode 由共享函数统一推导，保证与列表接口 _foreign_source_item 完全一致。
+        mode = resolve_proxy_mode(
+            proxy_override=self.proxy_override,
+            proxy_env=self.proxy_env,
+            use_direct=self.use_direct,
+        )
+        if candidate:
+            _validate_proxy_url(candidate)  # 协议/格式非法 -> ValueError
+            proxies: dict[str, str] | None = {"http": candidate, "https": candidate}
+        else:
+            proxies = None
+        return {
+            "proxies": proxies,
+            "url": candidate,
+            "url_masked": _mask_proxy_url(candidate),
+            "mode": mode,
+        }
 
     def _proxies(self) -> dict[str, str] | None:
-        value = os.getenv(self.proxy_env, "").strip()
-        return {"http": value, "https": value} if value else None
+        # 向后兼容：返回解析出的代理字典（无代理返回 None）。
+        return self._resolve_proxy()["proxies"]
+
+    @property
+    def proxy_used(self) -> bool:
+        # 准确反映「本次请求是否实际使用了代理」（由 _get_response 在请求前赋值）。
+        return self.last_proxy_used
 
     def _get(self, url: str) -> str:
         return self._get_response(url).text
 
     def _get_response(self, url: str) -> requests.Response:
-        last_error: Exception | None = None
+        resolution = self._resolve_proxy()
+        proxies = resolution["proxies"]
+        self.proxy_mode = resolution["mode"]
+        self.last_proxy_url_masked = resolution["url_masked"]
+        self.last_proxy_used = bool(proxies)
         for attempt in range(self.max_retries + 1):
             try:
                 current = url
                 for hop in range(self.max_redirects + 1):
                     safe, reason = is_safe_rss_url(current, resolve_dns=True)
                     if not safe:
-                        raise ValueError(f"RSS URL blocked: {reason or 'unsafe URL'}")
+                        raise RSSBlockedError(reason or "unsafe URL")
                     response = requests.get(
                         current,
                         headers={"User-Agent": DEFAULT_UA},
                         timeout=(self.connect_timeout, self.read_timeout),
-                        proxies=self._proxies(),
+                        proxies=proxies,
                         allow_redirects=False,
                     )
                     self.last_http_status = response.status_code
                     if response.status_code in (301, 302, 303, 307, 308):
                         location = response.headers.get("Location")
                         if not location:
-                            raise RuntimeError("RSS redirect missing Location")
+                            raise RSSRequestError("RSS redirect missing Location")
                         if hop >= self.max_redirects:
-                            raise RuntimeError("RSS redirect limit exceeded")
+                            raise RSSRequestError("RSS redirect limit exceeded")
                         current = urljoin(current, location)
                         continue
                     response.raise_for_status()
                     response.encoding = response.encoding or response.apparent_encoding or "utf-8"
                     return response
-                raise RuntimeError("RSS redirect limit exceeded")
+                raise RSSRequestError("RSS redirect limit exceeded")
+            except RSSProbeError:
+                raise
+            except requests.exceptions.HTTPError as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                raise RSSHTTPError(str(exc), http_status=status)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
+                    requests.exceptions.SSLError, socket.gaierror, OSError) as exc:
+                raise RSSNetworkError(f"{type(exc).__name__}: network request failed")
             except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                if attempt < self.max_retries:
-                    time.sleep(min(2**attempt, 5))
-        raise RuntimeError(str(last_error) if last_error else "RSS request failed")
+                raise RSSRequestError(f"{type(exc).__name__}: request failed")
+        raise RSSRequestError("RSS request failed")
 
     @staticmethod
     def _feed_label(url: str) -> str:
@@ -182,16 +343,27 @@ class ForeignRSSCollector(BaseCollector):
                 self.last_failed_feeds += 1
                 self.last_error = "invalid RSS/Atom XML"
                 report["failure_count"] = 1
-                report["error"] = "invalid_xml"
-                report["status"] = "invalid_xml"
+                report["error"] = "invalid XML"
+                report["error_category"] = RSS_PROBE_INVALID_FEED
+                report["status"] = RSS_PROBE_INVALID_FEED
+            except RSSProbeError as exc:
+                self.last_failed_feeds += 1
+                self.last_error = _safe_probe_message(exc)
+                report["failure_count"] = 1
+                report["http_status"] = exc.http_status
+                report["error"] = _safe_probe_message(exc)
+                report["error_category"] = exc.category
+                report["status"] = exc.category
             except Exception:  # noqa: BLE001
                 self.last_failed_feeds += 1
                 self.last_error = "RSS request failed"
                 report["failure_count"] = 1
-                report["error"] = "request_failed"
-                report["status"] = "request_failed"
+                report["error"] = "request failed"
+                report["error_category"] = RSS_PROBE_REQUEST_FAILED
+                report["status"] = RSS_PROBE_REQUEST_FAILED
             if not report["failure_count"]:
                 report["status"] = "success" if report["valid_count"] else "empty_feed"
+                report["error_category"] = None
             self.last_feed_reports.append(report)
         return list(self.last_feed_reports)
 
@@ -304,3 +476,108 @@ class GuardianForeignCollector(ForeignRSSCollector):
 
 class NYTimesChineseForeignCollector(ForeignRSSCollector):
     source_name = "纽约时报中文网"
+
+
+# ---------------------------------------------------------------------------
+# 代理地址校验 / 脱敏 / 代理健康探针
+# ---------------------------------------------------------------------------
+def _validate_proxy_url(url: str) -> None:
+    """校验代理 URL 协议与格式；非法 -> ValueError。不校验可达性。"""
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("代理地址不能为空")
+    parsed = urlsplit(url.strip())
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in ("http", "https", "socks5", "socks5h", "socks4", "socks4a"):
+        raise ValueError(f"不支持的代理协议：{scheme or '无协议'}")
+    if not parsed.hostname:
+        raise ValueError("代理地址缺少主机名")
+
+
+def _safe_probe_message(exc: Exception) -> str:
+    """把探测异常转成脱敏短描述（不泄露代理密码 / Token / 完整带认证 URL）。"""
+    message = " ".join(str(exc).split())
+    lowered = message.casefold()
+    for marker in ("password", "token", "secret", "proxy", "://", "@",
+                   "authorization", "cookie", "credential"):
+        if marker in lowered:
+            return "网络请求失败（已隐藏敏感细节）"
+    return message[:240]
+
+
+def probe_proxy_health(
+    proxy_url: str,
+    sample_feed: str | None = None,
+    *,
+    timeout: int = 5,
+    resolve_dns: bool = True,
+) -> dict[str, Any]:
+    """可复用的代理探针：检查代理端口可达性，并可选经代理对样例 Feed 做短超时应用层探测。
+
+    - ``tcp_reachable``：代理 host:port 是否可建立 TCP 连接（区分「代理端口不可达」）。
+    - ``target_status``：经代理请求样例 Feed 的结果类别（无样例时为 None），
+      用于区分「代理可达但目标站点失败」。
+    - 不写入任何业务数据（opinions / collector_runs / 数据源）；遵守现有 SSRF 防护。
+    - 返回的代理地址均脱敏。供测试接口调用。
+    """
+    result: dict[str, Any] = {
+        "proxy_url_masked": _mask_proxy_url(proxy_url),
+        "tcp_reachable": False,
+        "tcp_error_category": None,
+        "target_status": None,
+        "target_http_status": None,
+        "target_error_category": None,
+        "mode": "health",
+    }
+    _validate_proxy_url(proxy_url)
+    parsed = urlsplit(proxy_url)
+    host = parsed.hostname
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((host, port), timeout=max(1, int(timeout))):
+            result["tcp_reachable"] = True
+    except (OSError, socket.gaierror, ValueError):
+        result["tcp_error_category"] = RSS_PROBE_NETWORK_FAILED
+        result["tcp_reachable"] = False
+        return result  # 代理端口不可达，无需继续
+    if not sample_feed:
+        return result
+    # 经代理对样例 Feed 做应用层探测（短超时），区分「代理可达但目标失败」。
+    ok, reason = is_safe_rss_url(sample_feed, resolve_dns=resolve_dns)
+    if not ok:
+        result["target_status"] = RSS_PROBE_BLOCKED
+        result["target_error_category"] = RSS_PROBE_BLOCKED
+        return result
+    proxies = {"http": proxy_url, "https": proxy_url}
+    try:
+        resp = requests.get(
+            sample_feed,
+            headers={"User-Agent": DEFAULT_UA},
+            timeout=(timeout, timeout),
+            proxies=proxies,
+            allow_redirects=False,
+        )
+        result["target_http_status"] = resp.status_code
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location")
+            if not location:
+                result["target_status"] = RSS_PROBE_REQUEST_FAILED
+                result["target_error_category"] = RSS_PROBE_REQUEST_FAILED
+                return result
+            # 仅做一层探测，不展开重定向链（健康检查目的）。
+            result["target_status"] = RSS_PROBE_OK
+            return result
+        resp.raise_for_status()
+        result["target_status"] = RSS_PROBE_OK
+    except requests.exceptions.HTTPError as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        result["target_http_status"] = status
+        result["target_status"] = RSS_PROBE_HTTP_FAILED
+        result["target_error_category"] = RSS_PROBE_HTTP_FAILED
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
+            requests.exceptions.SSLError, socket.gaierror, OSError):
+        result["target_status"] = RSS_PROBE_NETWORK_FAILED
+        result["target_error_category"] = RSS_PROBE_NETWORK_FAILED
+    except Exception:  # noqa: BLE001
+        result["target_status"] = RSS_PROBE_REQUEST_FAILED
+        result["target_error_category"] = RSS_PROBE_REQUEST_FAILED
+    return result

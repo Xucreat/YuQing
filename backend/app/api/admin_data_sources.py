@@ -43,7 +43,7 @@ from app.collectors.source_config import (
     validate_data_source_config,
     _validate_legacy_collection_config,
 )
-from app.collectors.common import is_safe_rss_url
+from app.collectors.common import is_safe_rss_url, summarize_rss_probe
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.core.permissions import require_admin, require_permission
@@ -241,6 +241,19 @@ def _is_rss(class_path: str) -> bool:
 RSS_URL_SCHEME_PREFIXES = ("http://", "https://")
 
 
+def _safe_rss_build_error(exc: Exception) -> str:
+    """把 RSS 探测/构建异常转成脱敏短描述（不泄露代理密码 / Token / 认证 URL）。"""
+    message = " ".join(str(exc).split())
+    lowered = message.casefold()
+    if any(
+        marker in lowered
+        for marker in ("password", "token", "secret", "proxy", "://", "@",
+                       "authorization", "cookie", "credential")
+    ):
+        return "RSS 探测失败（已隐藏敏感细节）"
+    return f"{type(exc).__name__}: {message[:200]}"
+
+
 def _validate_rss_config(cfg: dict) -> str | None:
     """校验通用 RSS 数据源的 config_json。返回首个错误；无错误返回 None。
 
@@ -286,6 +299,8 @@ FOREIGN_ALLOWED_KEYS = {
     "request_interval", "max_retries", "fetch_full_text", "connect_timeout",
     "read_timeout", "language",
     "respect_robots",
+    # 验证状态（存储于 config_json，无新增表/列）：创建/编辑期置为未验证。
+    "verified", "last_probe_at", "last_probe_status", "last_probe_error_category",
 }
 
 
@@ -303,6 +318,14 @@ def _validate_foreign_config(cfg: dict) -> str | None:
         if str(v).strip()
     ):
         return "foreign RSS feeds must use http:// or https:// URLs"
+    # 创建/编辑期静态 SSRF 拦截（不解析 DNS，避免抖动）：拒绝 localhost / 内网字面量。
+    for v in feeds:
+        url = str(v).strip()
+        if not url:
+            continue
+        ok, reason = is_safe_rss_url(url, resolve_dns=False)
+        if not ok:
+            return f"foreign RSS feed 地址不安全（{reason}）：{url}"
     keywords = cfg.get("keywords")
     if not isinstance(keywords, list) or not any(str(v).strip() for v in keywords):
         return "foreign data source requires at least one keyword"
@@ -656,10 +679,18 @@ def _build_test(
             "note": "外网数据源跳过实时网络校验，仅执行结构校验",
         }
     if _is_rss(class_path):
-        # RSS 源：构建采集器并做一次真实抓取校验（含 SSRF 防护），返回命中条数。
+        # RSS 源：构建采集器并做一次真实探测校验（含 SSRF 防护）。
+        # 使用 probe() 返回逐 Feed 状态，明确区分 network_failed / http_failed /
+        # invalid_feed / blocked / empty_feed / success，杜绝「0 条=成功」的假通过。
         try:
             cls = import_class(class_path)
-            collector = cls(**build_cfg)
+            # 仅传入 RSSCollector 构造函数接受的参数（避免额外键导致 TypeError）。
+            rss_kwargs = {
+                k: build_cfg[k]
+                for k in ("feeds", "max_items", "timeout", "keywords", "source_name")
+                if k in build_cfg
+            }
+            collector = cls(**rss_kwargs)
         except Exception as exc:
             return {
                 "ok": False,
@@ -667,20 +698,26 @@ def _build_test(
                 "error": f"采集器构建失败（{class_path}）：{type(exc).__name__}: {exc}",
             }
         try:
-            items = collector.fetch()
-            return {
-                "ok": True,
-                "verified": True,
-                "note": f"RSS 实时抓取成功，命中 {len(items)} 条",
-                "count": len(items),
-                "feeds": len(collector.feeds),
-            }
+            reports = collector.probe()
         except Exception as exc:
             return {
                 "ok": False,
                 "verified": False,
-                "error": f"RSS 实时抓取失败：{type(exc).__name__}: {exc}",
+                "error": f"RSS 探测失败：{type(exc).__name__}: {_safe_rss_build_error(exc)}",
             }
+        # 统一四入口契约：与 foreign_collection_service._probe_config / 前端展示一致。
+        summary = summarize_rss_probe(reports)
+        status = summary["status"]
+        ok = summary["ok"]
+        return {
+            "ok": ok,
+            "verified": summary["verified"],
+            "status": status,
+            "note": f"RSS 探测完成：{status}",
+            "count": sum(int(r.get("valid_count", 0)) for r in reports),
+            "feeds": len(reports),
+            "feed_reports": reports,
+        }
     # 策略键已在函数开头剥离为 build_cfg（见上方）。
     try:
         cls = import_class(class_path)
@@ -1293,6 +1330,11 @@ def update_data_source(
                 ferr = _validate_foreign_config(cfg)
                 if ferr:
                     raise HTTPException(status_code=422, detail=ferr)
+                # 配置发生变更 -> 旧探测结果失效，重置为「未验证」（由测试连接接口重新验证）。
+                cfg["verified"] = False
+                cfg.pop("last_probe_at", None)
+                cfg.pop("last_probe_status", None)
+                cfg.pop("last_probe_error_category", None)
                 ds.config_json = json.dumps(cfg, ensure_ascii=False)
             elif _is_rss(ds.class_path):
                 # 通用 RSS 源：校验 feeds 并保存（新建/编辑一律走 config_json）

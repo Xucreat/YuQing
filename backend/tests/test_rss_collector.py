@@ -278,8 +278,22 @@ def test_build_test_rss_branch_executes(monkeypatch):
     from app.api.admin_data_sources import RSS_CLASS_PATH, _build_test
 
     monkeypatch.setattr(admin_mod, "import_class", lambda cp: RSSCollector)
-    # 用 fixture 抓取替代真实网络；fetch 直接返回 3 条，避免任何 HTTP。
-    monkeypatch.setattr(RSSCollector, "fetch", lambda self, keywords=None: [1, 2, 3])
+    # 用 fixture 探测替代真实网络；probe 返回 3 条有效条目，避免任何 HTTP。
+    # 新 _build_test（需求五）走 probe() 而非 fetch()，故 mock 需对准 probe。
+    def fake_probe(self):
+        return [{
+            "feed": "https://example.com/feed.xml",
+            "http_status": 200,
+            "xml_parsed": True,
+            "raw_count": 3,
+            "valid_count": 3,
+            "matched_count": 3,
+            "failure_count": 0,
+            "error": None,
+            "error_category": None,
+        }]
+
+    monkeypatch.setattr(RSSCollector, "probe", fake_probe)
     # 构造期 is_safe_rss_url(resolve_dns=False) 对公网地址放行，不触网。
     res = _build_test(RSS_CLASS_PATH, {"feeds": [{"url": "https://example.com/feed.xml"}]})
     assert res.get("ok") is True, res

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -22,14 +23,16 @@ from app.api.admin_data_sources import (
 )
 from app.core.dependencies import get_current_user
 from app.core.permissions import get_user_permissions, is_superuser_user, require_permission
-from app.core.task_manager import DuplicateTaskError, Task, start_task
+from app.core.task_manager import DuplicateTaskError, Task, cancel_task, get_task, start_task
 from app.db.session import SessionLocal, get_db
 from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
 from app.models.foreign_keyword import ForeignKeyword
+from app.collectors.foreign_rss import resolve_proxy_mode
 from app.models.foreign_opinion import ForeignOpinion
 from app.models.foreign_analysis_run import ForeignAnalysisRun
 from app.models.foreign_ai_result import ForeignAIResult
+from app.models.foreign_manual_review import ForeignManualReview
 from app.models.foreign_risk_result import ForeignRiskResult
 from app.models.foreign_risk_term import ForeignRiskTerm
 from app.models.user import User
@@ -50,7 +53,10 @@ from app.services.foreign_keyword_service import (
     list_foreign_keyword_rows,
     update_foreign_keyword_row,
 )
-from app.services.foreign_collection_service import test_foreign_source
+from app.services.foreign_collection_service import (
+    _assert_foreign_source_constructable,
+    test_foreign_source,
+)
 from app.services.foreign_content_sanitizer import sanitize_foreign_html
 from app.services.foreign_effective_risk import (
     RULE_SOURCE,
@@ -63,6 +69,8 @@ from app.services.foreign_risk_service import (
     RULE_MODEL_VERSION,
     ForeignRiskService,
 )
+from app.services.foreign_event_service import ForeignEventService
+from app.services.foreign_alert_service import ForeignAlertService
 
 
 foreign_router = APIRouter(
@@ -70,6 +78,9 @@ foreign_router = APIRouter(
     tags=["foreign"],
     dependencies=[Depends(get_current_user)],
 )
+
+_FOREIGN_AI_BATCH_TASKS: dict[str, str] = {}
+_FOREIGN_AI_BATCH_META: dict[str, dict[str, Any]] = {}
 
 
 class ForeignKeywordPayload(BaseModel):
@@ -88,6 +99,40 @@ class ForeignKeywordPayload(BaseModel):
 class ForeignAIAlertAdmissionPayload(BaseModel):
     included: bool
     note: str = Field(min_length=1, max_length=4000)
+
+
+class ForeignAIBatchPayload(BaseModel):
+    """Selection contract for asynchronous foreign AI review."""
+
+    scope: Literal["count", "time", "full"] = "count"
+    opinion_ids: list[int] | None = Field(default=None, max_length=5000)
+    recent_n: int = Field(default=100, ge=1, le=100000)
+    limit: int = Field(default=100, ge=1, le=100000)
+    date_from: str | None = None
+    date_to: str | None = None
+    use_current_filters: bool = False
+    current_filters: dict[str, Any] = Field(default_factory=dict)
+    only_unanalyzed: bool = True
+    force: bool = False
+    full_confirmation: bool = False
+    token_budget: int = Field(default=100_000, ge=1_000, le=2_000_000)
+
+
+class ForeignAIReviewDecisionPayload(BaseModel):
+    decision: Literal[
+        "keep_rule", "use_ai_display", "confirm_event_change",
+        "confirm_alert_change", "reject_change"
+    ]
+    reason: str = Field(default="", max_length=4000)
+    request_id: str | None = Field(default=None, max_length=128)
+
+
+class ForeignAIReviewBatchPayload(BaseModel):
+    review_ids: list[int] | None = Field(default=None, max_length=5000)
+    decision: Literal["keep_rule", "use_ai_display", "confirm_event_change", "confirm_alert_change", "reject_change"]
+    reason: str = Field(default="", max_length=4000)
+    request_id: str | None = Field(default=None, max_length=128)
+    confirm_all: bool = False
 
 
 class ForeignKeywordUpdatePayload(BaseModel):
@@ -257,9 +302,19 @@ def _foreign_source_item(source: DataSource) -> dict[str, Any]:
         "language": cfg.get("language", "unknown"),
         "keywords": cfg.get("keywords") or [],
         "proxy_env": cfg.get("proxy_env"),
-        "proxy_configured": bool(
-            cfg.get("proxy_env") and __import__("os").getenv(str(cfg["proxy_env"]))
+        # proxy_mode 由统一解析函数推导（含 FOREIGN_HTTP_PROXY/HTTPS_PROXY/HTTP_PROXY 回退），
+        # 保证「实际采集使用的代理」与「UI 展示」完全一致；绝不包含代理 URL / 凭据。
+        "proxy_mode": resolve_proxy_mode(
+            proxy_env=cfg.get("proxy_env"),
+            proxy_override=cfg.get("proxy"),
+            use_direct=bool(cfg.get("use_direct")),
         ),
+        # 向后兼容的布尔字段：是否实际走了非直连代理（direct_default 之外即为有代理）。
+        "proxy_configured": resolve_proxy_mode(
+            proxy_env=cfg.get("proxy_env"),
+            proxy_override=cfg.get("proxy"),
+            use_direct=bool(cfg.get("use_direct")),
+        ) != "direct_default",
         "fetch_full_text": bool(cfg.get("fetch_full_text", False)),
         "max_items": cfg.get("max_items", 100),
         "timeout": cfg.get("timeout", 15),
@@ -269,6 +324,11 @@ def _foreign_source_item(source: DataSource) -> dict[str, Any]:
         "max_retries": cfg.get("max_retries", 2),
         "max_content_length": cfg.get("max_content_length", 200_000),
         "respect_robots": bool(cfg.get("respect_robots", True)),
+        # 验证状态（存储于 config_json，无新增表/列）：前端据此展示「未验证 / 已验证 / 失败」。
+        "verified": bool(cfg.get("verified", False)),
+        "last_probe_at": cfg.get("last_probe_at"),
+        "last_probe_status": cfg.get("last_probe_status"),
+        "last_probe_error_category": cfg.get("last_probe_error_category"),
         # Keep the legacy field for existing clients, but never echo arbitrary
         # source configuration that could contain a proxy URL or credential.
         "config_json": json.dumps(safe_config, ensure_ascii=False),
@@ -638,6 +698,8 @@ def create_foreign_source(
         "max_retries": payload.max_retries,
         "max_content_length": payload.max_content_length,
         "respect_robots": payload.respect_robots,
+        # 创建期不做真实网络探测：保存为「未验证」状态，由独立「测试连接」接口验证。
+        "verified": False,
     }
     error = _validate_foreign_config(cfg)
     if error:
@@ -645,13 +707,14 @@ def create_foreign_source(
     if payload.fetch_full_text:
         raise HTTPException(status_code=422, detail="fetch_full_text must remain false in the foreign manual phase")
     try:
-        test_foreign_source(
-            db, name=payload.name, feeds=cfg["feeds"],
-            keywords=cfg["keywords"], proxy_env=payload.proxy_env,
-            timeout=payload.timeout, connect_timeout=payload.connect_timeout,
-            read_timeout=payload.read_timeout, max_items=payload.max_items,
-            max_retries=payload.max_retries, respect_robots=payload.respect_robots,
-            require_success=True,
+        # 创建期仅做结构 + SSRF 静态校验 + 采集器装配，不发起网络请求。
+        # 目标站点宕机 / 代理抖动 / 暂时无条目都不会阻塞保存。
+        _assert_foreign_source_constructable(
+            feeds=cfg["feeds"], keywords=cfg["keywords"], name=payload.name,
+            proxy_env=payload.proxy_env, timeout=payload.timeout,
+            connect_timeout=payload.connect_timeout, read_timeout=payload.read_timeout,
+            max_items=payload.max_items, max_retries=payload.max_retries,
+            respect_robots=payload.respect_robots,
         )
     except (LookupError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -717,15 +780,26 @@ def update_foreign_source(
     error = _validate_foreign_config(cfg)
     if error:
         raise HTTPException(status_code=422, detail=error)
+    # 连接相关配置发生变化时，旧探测结果失效 -> 重置为「未验证」，由「测试连接」重新验证。
+    connection_keys = (
+        "feeds", "proxy_env", "timeout", "connect_timeout", "read_timeout",
+        "max_retries", "max_items", "respect_robots", "language", "fetch_full_text",
+    )
+    if any(key in changes for key in connection_keys):
+        cfg["verified"] = False
+        cfg.pop("last_probe_at", None)
+        cfg.pop("last_probe_status", None)
+        cfg.pop("last_probe_error_category", None)
     try:
-        test_foreign_source(
-            db, name=next_name, feeds=cfg.get("feeds") or [], keywords=cfg.get("keywords"),
-            proxy_env=cfg.get("proxy_env"), timeout=int(cfg.get("timeout", 15)),
+        # 编辑期同样不发起网络请求，仅做结构 + SSRF 静态校验 + 采集器装配。
+        _assert_foreign_source_constructable(
+            feeds=cfg.get("feeds") or [], keywords=cfg.get("keywords"),
+            name=next_name, proxy_env=cfg.get("proxy_env"),
+            timeout=int(cfg.get("timeout", 15)),
             connect_timeout=float(cfg.get("connect_timeout", cfg.get("timeout", 15))),
             read_timeout=float(cfg.get("read_timeout", cfg.get("timeout", 15))),
             max_items=int(cfg.get("max_items", 100)), max_retries=int(cfg.get("max_retries", 2)),
             respect_robots=bool(cfg.get("respect_robots", True)),
-            require_success=True,
         )
     except (LookupError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -788,6 +862,7 @@ def test_foreign_source_connection(
             connect_timeout=payload.connect_timeout, read_timeout=payload.read_timeout,
             max_items=payload.max_items, max_retries=payload.max_retries,
             respect_robots=payload.respect_robots,
+            persist=True,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -861,7 +936,7 @@ def _foreign_opinion_detail(
             select(ForeignAIResult)
             .where(
                 ForeignAIResult.foreign_opinion_id == row.id,
-                ForeignAIResult.is_current.is_(True),
+                ForeignAIResult.status == "completed",
             )
             .order_by(ForeignAIResult.id.desc())
         )
@@ -1063,6 +1138,366 @@ def set_foreign_ai_alert_admission(
         status_code=410,
         detail="Foreign AI results are historical only; AI alert admission is retired",
     )
+
+
+def _foreign_ai_batch_selection(db: Session, payload: ForeignAIBatchPayload) -> list[ForeignOpinion]:
+    if payload.scope == "time" and not (payload.date_from or payload.current_filters.get("date_from")):
+        raise HTTPException(status_code=422, detail="Time scope requires date_from")
+    if payload.scope == "time" and not (payload.date_to or payload.current_filters.get("date_to")):
+        raise HTTPException(status_code=422, detail="Time scope requires date_to")
+    filters = payload.current_filters if payload.use_current_filters else {}
+    stmt = select(ForeignOpinion)
+    if payload.opinion_ids:
+        stmt = stmt.where(ForeignOpinion.id.in_(sorted(set(payload.opinion_ids))))
+    source = filters.get("source")
+    keyword = filters.get("keyword")
+    q = filters.get("q")
+    language = filters.get("language")
+    risk_level = filters.get("risk_level")
+    analysis_status = filters.get("analysis_status")
+    risk_source = filters.get("risk_source") or RULE_SOURCE
+    date_from = payload.date_from or filters.get("date_from")
+    date_to = payload.date_to or filters.get("date_to")
+    if source:
+        stmt = stmt.where(ForeignOpinion.source_name_snapshot == str(source))
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(or_(ForeignOpinion.title.ilike(like), ForeignOpinion.summary.ilike(like), ForeignOpinion.content.ilike(like)))
+    if keyword:
+        stmt = stmt.where(cast(ForeignOpinion.matched_keywords, String).ilike(f"%{keyword}%"))
+    if language or analysis_status:
+        sub = select(ForeignRiskResult.foreign_opinion_id).where(ForeignRiskResult.is_current.is_(True))
+        if language:
+            sub = sub.where(ForeignRiskResult.language == str(language))
+        if analysis_status:
+            sub = sub.where(ForeignRiskResult.analysis_status == str(analysis_status))
+        stmt = stmt.where(ForeignOpinion.id.in_(sub))
+    if risk_level:
+        stmt = stmt.where(effective_risk_level_expression(risk_source=risk_source if risk_source in {RULE_SOURCE, "ai"} else RULE_SOURCE) == str(risk_level))
+    if date_from:
+        try:
+            stmt = stmt.where(ForeignOpinion.published_at >= datetime.strptime(str(date_from), "%Y-%m-%d"))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="date_from must be YYYY-MM-DD") from exc
+    if date_to:
+        try:
+            end = datetime.strptime(str(date_to), "%Y-%m-%d") + timedelta(days=1)
+            stmt = stmt.where(ForeignOpinion.published_at < end)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="date_to must be YYYY-MM-DD") from exc
+    rows = list(db.scalars(stmt.order_by(ForeignOpinion.published_at.desc(), ForeignOpinion.id.desc())).all())
+    if payload.only_unanalyzed and not payload.force and rows and inspect(db.get_bind()).has_table("foreign_ai_results"):
+        completed = set(db.scalars(select(ForeignAIResult.foreign_opinion_id).where(
+            ForeignAIResult.foreign_opinion_id.in_([row.id for row in rows]), ForeignAIResult.status == "completed",
+        )).all())
+        rows = [row for row in rows if row.id not in completed]
+    if payload.scope == "count":
+        rows = rows[: payload.recent_n]
+    elif payload.scope == "time":
+        rows = rows
+    return rows
+
+
+def _foreign_ai_batch_preview(db: Session, payload: ForeignAIBatchPayload) -> dict[str, Any]:
+    rows = _foreign_ai_batch_selection(db, payload)
+    all_rows = rows
+    if payload.only_unanalyzed:
+        all_rows = _foreign_ai_batch_selection(db, payload.model_copy(update={"only_unanalyzed": False}))
+    all_ids = [row.id for row in all_rows]
+    completed_count = 0
+    if all_ids and inspect(db.get_bind()).has_table("foreign_ai_results"):
+        completed_count = int(db.scalar(select(func.count()).select_from(ForeignAIResult).where(
+            ForeignAIResult.foreign_opinion_id.in_(all_ids), ForeignAIResult.status == "completed"
+        )) or 0)
+    token_estimate = sum(max(1, len("\n".join(part.strip() for part in (row.title, row.summary, row.content) if part and part.strip())) // 4) for row in rows)
+    risk_counts = {level: 0 for level in ("high", "medium", "low", "unknown")}
+    for row in rows:
+        try:
+            risk = resolve_one(db, row.id).get("rule_risk") or {}
+        except Exception:
+            risk = {}
+        risk_counts[risk.get("risk_level") or "unknown"] = risk_counts.get(risk.get("risk_level") or "unknown", 0) + 1
+    possible_event_count = 0
+    possible_alert_count = 0
+    if rows:
+        try:
+            _, _, event_items = ForeignEventService().rebuild_candidates(
+                db, user_id=None, dry_run=True, opinion_ids=[row.id for row in rows], commit=True
+            )
+            possible_event_count = len(event_items)
+        except Exception:
+            pass
+        try:
+            alert_run = ForeignAlertService.evaluate(
+                db, user_id=None, dry_run=True, max_items=200, opinion_ids=[row.id for row in rows]
+            )
+            possible_alert_count = int(alert_run.triggered_count or 0)
+        except Exception:
+            pass
+    return {
+        "matched_count": len(all_rows),
+        "existing_ai_result_count": completed_count,
+        "pending_analysis_count": len(rows),
+        "estimated_token_usage": token_estimate,
+        "estimated_duration_seconds": max(1, len(rows) * 2),
+        "estimated_cost": None,
+        "risk_level_counts": risk_counts,
+        "possible_event_count": possible_event_count,
+        "possible_alert_count": possible_alert_count,
+        "filters": payload.model_dump(mode="json"),
+        "opinion_ids": [row.id for row in rows],
+        "token_budget": payload.token_budget,
+        "token_budget_exceeded": token_estimate > payload.token_budget,
+    }
+
+
+def _run_foreign_ai_batch(task: Task, opinion_ids: list[int], force: bool, batch_run_id: str) -> dict[str, Any]:
+    db = SessionLocal()
+    processed = success = failed = skipped = 0
+    failures: list[dict[str, Any]] = []
+    try:
+        total = len(opinion_ids)
+        for opinion_id in opinion_ids:
+            if task.cancel_requested:
+                skipped += total - processed
+                break
+            processed += 1
+            task.progress = int((processed - 1) / total * 100) if total else 100
+            task.step = f"Foreign AI review {processed}/{total}"
+            try:
+                result, reused = ForeignAIService().analyze_opinion_manual(db, opinion_id, force=force)
+                if result.status == "completed":
+                    success += 1
+                    existing = db.scalar(select(ForeignManualReview).where(
+                        ForeignManualReview.foreign_opinion_id == opinion_id,
+                        ForeignManualReview.review_status == "pending_review",
+                    ).order_by(ForeignManualReview.id.desc()))
+                    if existing is None:
+                        resolved = resolve_one(db, opinion_id)
+                        db.add(ForeignManualReview(
+                            foreign_opinion_id=opinion_id,
+                            source_type="ai",
+                            rule_risk_snapshot=resolved.get("rule_risk") or {},
+                            ai_risk_snapshot=resolved.get("latest_ai_risk") or {},
+                            batch_run_id=batch_run_id,
+                        ))
+                        db.commit()
+                else:
+                    failed += 1
+                    failures.append({"opinion_id": opinion_id, "error": result.error_message or "AI analysis failed"})
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                failures.append({"opinion_id": opinion_id, "error": _safe_foreign_error(exc)})
+        event_preview: dict[str, Any] = {"candidate_count": 0, "items": [], "requires_manual_confirmation": True}
+        alert_preview: dict[str, Any] = {"triggered_count": 0, "deduplicated_count": 0, "requires_manual_confirmation": True}
+        try:
+            event_run, _, event_items = ForeignEventService().rebuild_candidates(
+                db, user_id=None, dry_run=True, opinion_ids=opinion_ids, commit=True
+            )
+            event_preview = {"run_id": event_run.id, "candidate_count": len(event_items), "items": event_items, "requires_manual_confirmation": True}
+        except Exception as exc:  # noqa: BLE001
+            event_preview["error"] = _safe_foreign_error(exc)
+        try:
+            alert_run = ForeignAlertService.evaluate(db, user_id=None, dry_run=True, max_items=200, opinion_ids=opinion_ids)
+            alert_preview = {"run_id": alert_run.id, "triggered_count": alert_run.triggered_count, "deduplicated_count": alert_run.deduplicated_count, "requires_manual_confirmation": True}
+        except Exception as exc:  # noqa: BLE001
+            alert_preview["error"] = _safe_foreign_error(exc)
+        for review in db.scalars(select(ForeignManualReview).where(ForeignManualReview.batch_run_id == batch_run_id)).all():
+            review.event_preview = event_preview
+            review.alert_preview = alert_preview
+        db.commit()
+        return {"run_id": batch_run_id, "processed_count": processed, "success_count": success,
+                "failed_count": failed, "skipped_count": skipped, "failures": failures,
+                "status": "cancelled" if task.cancel_requested else ("partial" if failed else "success"),
+                "event_preview": event_preview, "alert_preview": alert_preview}
+    finally:
+        db.close()
+
+
+@foreign_router.post("/ai-analysis/batch/preview")
+def preview_foreign_ai_batch(payload: ForeignAIBatchPayload, db: Session = Depends(get_db), _: User = Depends(require_permission("foreign:ai:analyze"))):
+    if not inspect(db.get_bind()).has_table("foreign_ai_results"):
+        raise HTTPException(status_code=503, detail="Foreign AI storage migration is not applied")
+    try:
+        return _foreign_ai_batch_preview(db, payload)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        # Preview is advisory and must never expose a raw database/provider
+        # traceback to the browser. Keep the request usable even when an
+        # optional impact calculator is unavailable during a rolling deploy.
+        return {
+            "matched_count": 0,
+            "existing_ai_result_count": 0,
+            "pending_analysis_count": 0,
+            "estimated_token_usage": 0,
+            "estimated_duration_seconds": 0,
+            "estimated_cost": None,
+            "risk_level_counts": {"high": 0, "medium": 0, "low": 0, "unknown": 0},
+            "possible_event_count": 0,
+            "possible_alert_count": 0,
+            "filters": payload.model_dump(mode="json"),
+            "opinion_ids": [],
+            "token_budget": payload.token_budget,
+            "token_budget_exceeded": False,
+            "preview_warning": "Foreign AI preview temporarily unavailable; retry shortly",
+        }
+
+
+@foreign_router.post("/ai-analysis/batch")
+def start_foreign_ai_batch(payload: ForeignAIBatchPayload, request: Request, current_user: User = Depends(require_permission("foreign:ai:analyze")), db: Session = Depends(get_db)):
+    if payload.scope == "full" and not payload.full_confirmation:
+        raise HTTPException(status_code=422, detail="Full foreign AI analysis requires explicit confirmation")
+    preview = _foreign_ai_batch_preview(db, payload)
+    if not preview["opinion_ids"]:
+        raise HTTPException(status_code=422, detail="No foreign opinions match the batch selection")
+    if preview["token_budget_exceeded"]:
+        raise HTTPException(status_code=422, detail="Estimated token usage exceeds the configured batch budget")
+    batch_run_id = uuid.uuid4().hex
+    dedupe_key = hashlib.sha256(json.dumps({"ids": preview["opinion_ids"], "force": payload.force}, sort_keys=True).encode()).hexdigest()
+    try:
+        task_id = start_task("foreign-ai-analysis", _run_foreign_ai_batch, preview["opinion_ids"], payload.force, batch_run_id, dedupe_key=dedupe_key)
+    except DuplicateTaskError as exc:
+        raise HTTPException(status_code=409, detail="Equivalent foreign AI batch is already running") from exc
+    _FOREIGN_AI_BATCH_TASKS[batch_run_id] = task_id
+    _FOREIGN_AI_BATCH_META[batch_run_id] = {"run_id": batch_run_id, "task_id": task_id, "total_count": len(preview["opinion_ids"]), "estimated_token_usage": preview["estimated_token_usage"], "started_at": datetime.now(timezone.utc).isoformat()}
+    log_operation(db, action="FOREIGN_AI_BATCH_START", operator=current_user, request=request, resource_type="foreign_ai_batch", resource_id=batch_run_id, details={"task_id": task_id, **preview})
+    db.commit()
+    return {**_FOREIGN_AI_BATCH_META[batch_run_id], "status": "pending", "processed_count": 0, "success_count": 0, "failed_count": 0, "skipped_count": 0}
+
+
+@foreign_router.get("/ai-analysis/batch/{run_id}")
+def get_foreign_ai_batch(run_id: str, _: User = Depends(require_permission("foreign:ai:batch:read"))):
+    task = get_task(_FOREIGN_AI_BATCH_TASKS.get(run_id, run_id))
+    if task is None:
+        # run_id is intentionally opaque; callers may use task_id for polling.
+        raise HTTPException(status_code=404, detail="Foreign AI batch not found")
+    payload = {**_FOREIGN_AI_BATCH_META.get(run_id, {}), **task.to_dict()}
+    result = task.result or {}
+    payload.update({key: result[key] for key in ("processed_count", "success_count", "failed_count", "skipped_count", "failures") if key in result})
+    payload["run_id"] = run_id
+    return payload
+
+
+@foreign_router.post("/ai-analysis/batch/{run_id}/cancel")
+def cancel_foreign_ai_batch(run_id: str, request: Request, current_user: User = Depends(require_permission("foreign:ai:analyze")), db: Session = Depends(get_db)):
+    task = cancel_task(_FOREIGN_AI_BATCH_TASKS.get(run_id, run_id))
+    if task is None:
+        raise HTTPException(status_code=404, detail="Foreign AI batch not found")
+    log_operation(db, action="FOREIGN_AI_BATCH_CANCEL", operator=current_user, request=request, resource_type="foreign_ai_batch", resource_id=run_id, details={"status": task.status})
+    db.commit()
+    return {**_FOREIGN_AI_BATCH_META.get(run_id, {}), **task.to_dict(), "run_id": run_id}
+
+
+@foreign_router.get("/ai-analysis/reviews")
+def list_foreign_manual_reviews(page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200), status: str | None = None, db: Session = Depends(get_db), _: User = Depends(require_permission("foreign:ai:review:read"))):
+    stmt = select(ForeignManualReview)
+    if status:
+        stmt = stmt.where(ForeignManualReview.review_status == status)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(stmt.order_by(ForeignManualReview.created_at.desc(), ForeignManualReview.id.desc()).offset((page - 1) * size).limit(size)).all()
+    return {"items": [_foreign_manual_review_item(row) for row in rows], "total": total, "page": page, "size": size}
+
+
+def _foreign_manual_review_item(row: ForeignManualReview) -> dict[str, Any]:
+    return {"id": row.id, "foreign_opinion_id": row.foreign_opinion_id, "source_type": row.source_type,
+            "rule_risk_snapshot": row.rule_risk_snapshot or {}, "ai_risk_snapshot": row.ai_risk_snapshot or {},
+            "review_status": row.review_status, "review_decision": row.review_decision, "review_reason": row.review_reason,
+            "reviewed_by": row.reviewed_by, "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
+            "batch_run_id": row.batch_run_id, "event_preview_id": row.event_preview_id, "alert_preview_id": row.alert_preview_id,
+            "confirmation_version": row.confirmation_version, "event_preview": row.event_preview or {}, "alert_preview": row.alert_preview or {}, "created_at": row.created_at.isoformat() if row.created_at else None}
+
+
+@foreign_router.post("/ai-analysis/reviews/{review_id}/decision")
+def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisionPayload, request: Request, current_user: User = Depends(require_permission("foreign:ai:review:read")), db: Session = Depends(get_db)):
+    row = db.get(ForeignManualReview, review_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Foreign manual review not found")
+    if row.review_status != "pending_review":
+        return _foreign_manual_review_item(row)
+    required = "foreign:ai:review:reject" if payload.decision == "reject_change" else (
+        "foreign:events:review:confirm" if payload.decision == "confirm_event_change" else
+        "foreign:alerts:review:confirm" if payload.decision == "confirm_alert_change" else
+        "foreign:ai:review:read"
+    )
+    if not is_superuser_user(current_user) and required not in get_user_permissions(current_user, db):
+        raise HTTPException(status_code=403, detail="Permission denied")
+    row.review_status = "confirmed" if payload.decision != "reject_change" else "rejected"
+    row.review_decision = payload.decision
+    row.review_reason = payload.reason.strip() or None
+    row.reviewed_by = current_user.id
+    row.reviewed_at = datetime.now(timezone.utc)
+    row.confirmation_version = f"manual-review-{row.id}-{int(row.reviewed_at.timestamp())}"
+    if payload.decision == "confirm_event_change":
+        preview_items = (row.event_preview or {}).get("items") or []
+        preview_ids = sorted({int(item_id) for item in preview_items for item_id in (item.get("opinion_ids") or [])})
+        if not preview_ids:
+            preview_ids = [row.foreign_opinion_id]
+        if preview_ids:
+            try:
+                event_run, candidates, _ = ForeignEventService().rebuild_candidates(
+                    db, user_id=current_user.id, dry_run=False, opinion_ids=preview_ids, commit=False
+                )
+                for candidate in candidates:
+                    if candidate.candidate_status == "candidate":
+                        try:
+                            ForeignEventService().confirm_candidate(
+                                db, candidate.id, user_id=current_user.id,
+                                reason=payload.reason or "AI manual review confirmed event change",
+                                request_id=payload.request_id,
+                                commit=False,
+                            )
+                        except ValueError:
+                            continue
+                row.event_preview_id = event_run.id
+            except ValueError:
+                row.event_preview_id = None
+    elif payload.decision == "confirm_alert_change":
+        # The evaluator remains rule-only; this explicit human action is the
+        # gate that permits the existing formal alert transaction to run.
+        alert_run = ForeignAlertService.evaluate(db, user_id=current_user.id, dry_run=False, max_items=200, opinion_ids=[row.foreign_opinion_id])
+        row.alert_preview_id = alert_run.id
+    log_operation(db, action="FOREIGN_AI_MANUAL_REVIEW", operator=current_user, request=request, resource_type="foreign_manual_review", resource_id=str(row.id), details={"decision": payload.decision, "reason": payload.reason})
+    db.commit()
+    db.refresh(row)
+    return _foreign_manual_review_item(row)
+
+
+@foreign_router.post("/ai-analysis/reviews/batch")
+def decide_foreign_manual_reviews_batch(payload: ForeignAIReviewBatchPayload, request: Request, current_user: User = Depends(require_permission("foreign:ai:review:read")), db: Session = Depends(get_db)):
+    if payload.decision == "reject_change":
+        required = "foreign:ai:review:reject"
+    elif payload.decision == "confirm_event_change":
+        required = "foreign:events:review:confirm"
+    elif payload.decision == "confirm_alert_change":
+        required = "foreign:alerts:review:confirm"
+    else:
+        required = "foreign:ai:review:read"
+    if not is_superuser_user(current_user) and required not in get_user_permissions(current_user, db):
+        raise HTTPException(status_code=403, detail="Permission denied")
+    if payload.confirm_all:
+        if not is_superuser_user(current_user) and "foreign:ai:full-confirm" not in get_user_permissions(current_user, db):
+            raise HTTPException(status_code=403, detail="Full confirmation permission required")
+        stmt = select(ForeignManualReview.id).where(ForeignManualReview.review_status == "pending_review")
+        review_ids = list(db.scalars(stmt).all())
+    else:
+        review_ids = list(dict.fromkeys(payload.review_ids or []))
+    if not review_ids:
+        raise HTTPException(status_code=422, detail="No pending reviews selected")
+    results = []
+    for index, review_id in enumerate(review_ids):
+        results.append(decide_foreign_manual_review(
+            review_id,
+            ForeignAIReviewDecisionPayload(
+                decision=payload.decision,
+                reason=payload.reason,
+                request_id=f"{payload.request_id or 'batch'}:{review_id}:{index}",
+            ),
+            request,
+            current_user,
+            db,
+        ))
+    return {"items": results, "total": len(results)}
 
 
 def _foreign_risk_item(result: ForeignRiskResult, opinion: ForeignOpinion) -> dict[str, Any]:

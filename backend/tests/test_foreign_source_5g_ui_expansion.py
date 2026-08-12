@@ -94,50 +94,54 @@ def test_foreign_probe_reports_article_fields_and_duplicate_urls(monkeypatch):
     assert report["url_duplicate_count"] == 1
 
 
-def test_foreign_source_persistence_requires_probe_success(client, auth_headers, monkeypatch):
+def test_foreign_source_creation_does_not_require_live_network(client, auth_headers, monkeypatch):
+    """创建/编辑外网源不再要求实时探测成功：结构 + SSRF 静态校验通过即可保存。"""
     import app.api.foreign as foreign_api
 
     key = f"fixture_5g_gate_{uuid4().hex[:10]}"
 
-    def fail_probe(*args, **kwargs):
-        raise ValueError("Foreign feed test failed")
+    # 若创建期发起真实网络请求，立即失败（确保语义：创建不联网）。
+    calls = []
 
-    monkeypatch.setattr(foreign_api, "test_foreign_source", fail_probe)
-    failed = client.post(
-        "/api/foreign/sources",
-        headers=auth_headers,
-        json={"name": "Failed probe fixture", "key": key, "feeds": ["https://fixture.test/rss"]},
+    def fake_get(url, **kwargs):
+        calls.append(url)
+        raise AssertionError("create must not make a network call")
+
+    monkeypatch.setattr("app.collectors.foreign_rss.requests.get", fake_get)
+    monkeypatch.setattr(
+        "app.collectors.foreign_rss.probe_proxy_health",
+        lambda *a, **k: {"mode": "direct_default", "tcp_reachable": None},
     )
-    assert failed.status_code == 422
-    db = SessionLocal()
-    try:
-        assert db.query(DataSource).filter(DataSource.key == key).count() == 0
-    finally:
-        db.close()
 
-    def pass_probe(*args, **kwargs):
-        return {"success": True, "valid_count": 1, "matched_count": 1, "feeds": []}
-
-    monkeypatch.setattr(foreign_api, "test_foreign_source", pass_probe)
     created = client.post(
         "/api/foreign/sources",
         headers=auth_headers,
-        json={"name": "Successful probe fixture", "key": key, "feeds": ["https://fixture.test/rss"]},
+        json={"name": "Offline create fixture", "key": key, "feeds": ["https://fixture.test/rss"]},
     )
     assert created.status_code == 201, created.text
+    assert created.json()["verified"] is False
+    assert calls == [], "创建期不得发起真实网络请求"
+
+    # 配置非法（SSRF 静态拦截）仍应被 422 拒绝。
+    bad = client.post(
+        "/api/foreign/sources",
+        headers=auth_headers,
+        json={"name": "Bad SSRF", "key": key + "_b", "feeds": ["http://127.0.0.1/rss"]},
+    )
+    assert bad.status_code == 422
+
     source_id = created.json()["id"]
-    monkeypatch.setattr(foreign_api, "test_foreign_source", fail_probe)
-    failed_update = client.patch(
+    # 编辑（仅改非连接字段）同样不经过网络，应成功。
+    updated = client.patch(
         f"/api/foreign/sources/{source_id}",
         headers=auth_headers,
-        json={"name": "Rejected update"},
+        json={"name": "Renamed fixture"},
     )
-    assert failed_update.status_code == 422
+    assert updated.status_code == 200, updated.text
     db = SessionLocal()
     try:
         source = db.get(DataSource, source_id)
         assert source is not None
-        assert source.name == "Successful probe fixture"
         assert source.enabled is False
         assert source.schedule_enabled is False
     finally:

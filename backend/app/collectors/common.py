@@ -204,6 +204,169 @@ def http_get_guarded(
     return None
 
 
+# Feed 探测失败分类（与 ForeignRSSCollector 共用一套语义）。
+RSS_PROBE_NETWORK_FAILED = "network_failed"
+RSS_PROBE_HTTP_FAILED = "http_failed"
+RSS_PROBE_INVALID_FEED = "invalid_feed"
+RSS_PROBE_BLOCKED = "blocked"
+RSS_PROBE_REQUEST_FAILED = "request_failed"
+RSS_PROBE_OK = "ok"
+
+# 传输层/响应层失败的 Feed 视为「不可达」，不应被当作「成功，命中 0 条」。
+RSS_PROBE_FATAL_CATEGORIES = frozenset({
+    RSS_PROBE_NETWORK_FAILED,
+    RSS_PROBE_HTTP_FAILED,
+    RSS_PROBE_INVALID_FEED,
+    RSS_PROBE_BLOCKED,
+    RSS_PROBE_REQUEST_FAILED,
+})
+
+# 顶层探测状态（四入口统一契约）。
+RSS_PROBE_STATUS_SUCCESS = "success"
+RSS_PROBE_STATUS_EMPTY_FEED = "empty_feed"
+RSS_PROBE_STATUS_PARTIAL = "partial"
+RSS_PROBE_STATUS_FAILED = "failed"
+
+
+def summarize_rss_probe(reports: list[dict] | None) -> dict:
+    """从逐 Feed 报告推导统一的顶层状态契约，供所有入口（外网测试接口、管理端
+    ``_build_test``、前端展示）共用，避免「一个入口把 partial 当成功、另一个当失败」。
+
+    契约：
+    - success    : 至少一个 Feed 拿到有效条目（valid_count>0），且无致命失败。
+                    -> ok=True,  verified=True
+    - empty_feed : 全部 Feed 可达且解析成功，但没有任何有效条目（连接正常但无内容）。
+                    -> ok=True,  verified=True（记为「可达但空源」，不阻塞保存）
+    - partial    : 至少一个 Feed 致命失败（network/http/invalid/blocked/request），
+                   但仍有 Feed 拿到有效条目（连接部分可用）。
+                    -> ok=False, verified=False
+    - failed     : 所有 Feed 均致命失败。
+                    -> ok=False, verified=False
+    """
+    reports = reports or []
+    if not reports:
+        status = RSS_PROBE_STATUS_EMPTY_FEED
+    else:
+        fatal = [r for r in reports if r.get("error_category") in RSS_PROBE_FATAL_CATEGORIES]
+        valid = [r for r in reports if r.get("valid_count")]
+        if fatal and not valid:
+            status = RSS_PROBE_STATUS_FAILED
+        elif fatal and valid:
+            status = RSS_PROBE_STATUS_PARTIAL
+        elif valid:
+            status = RSS_PROBE_STATUS_SUCCESS
+        else:
+            status = RSS_PROBE_STATUS_EMPTY_FEED
+    # ok / verified 同义：仅 success 与 empty_feed 视为「连接层面可用 / 已验证」；
+    # partial 与 failed 一律视为未通过验证（ok=False, verified=False）。
+    reachable = status in (RSS_PROBE_STATUS_SUCCESS, RSS_PROBE_STATUS_EMPTY_FEED)
+    return {"status": status, "ok": reachable, "verified": reachable}
+
+
+def http_get_guarded_detailed(
+    session: requests.Session,
+    url: str,
+    timeout: int = 10,
+    *,
+    guard=None,
+    max_redirects: int = 5,
+) -> Tuple[Optional[str], dict]:
+    """``http_get_guarded`` 的分类版本：返回 (文本或 None, 探测信息)。
+
+    探测信息 ``info`` 结构：
+      - ``status``: ``ok`` / ``network_failed`` / ``http_failed`` / ``blocked`` / ``request_failed``
+      - ``http_status``: 响应状态码（仅 ``ok`` / ``http_failed`` 时有值）
+      - ``error_category``: 失败时的脱敏类别（成功时为 None）
+      - ``error``: 脱敏后的简短错误（永不包含代理密码 / Token / 完整带认证 URL）
+
+    与 ``http_get_guarded`` 一样手动逐跳校验重定向（SSRF 防护），且任何异常
+    返回 ``(None, info)``（防御式，不崩溃）。本函数专供 RSS 探测使用，使
+    「网络/代理故障」与「源无内容」在代码路径上彻底区分，消除「0 条=成功」的假通过。
+    """
+    if guard is None:
+        def guard(_u):  # noqa: ANN001
+            return True, None
+
+    info: dict = {
+        "status": RSS_PROBE_NETWORK_FAILED,
+        "http_status": None,
+        "error_category": RSS_PROBE_NETWORK_FAILED,
+        "error": None,
+    }
+    current = url
+    for _hop in range(max_redirects + 1):
+        try:
+            ok, reason = guard(current)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("URL 安全校验异常 url=%s err=%s", current, exc)
+            info.update(status=RSS_PROBE_BLOCKED, error_category=RSS_PROBE_BLOCKED,
+                         error="URL 安全校验异常")
+            return None, info
+        if not ok:
+            logger.warning("URL 被安全校验拦截 url=%s reason=%s", current, reason)
+            info.update(status=RSS_PROBE_BLOCKED, error_category=RSS_PROBE_BLOCKED,
+                        error="地址未通过安全校验")
+            return None, info
+        try:
+            resp = session.get(current, timeout=timeout, allow_redirects=False)
+        except requests.exceptions.HTTPError as exc:  # noqa: BLE001
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            info.update(status=RSS_PROBE_HTTP_FAILED, error_category=RSS_PROBE_HTTP_FAILED,
+                        http_status=status, error=f"HTTP 错误 {status or ''}".strip())
+            return None, info
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
+                requests.exceptions.SSLError, socket.gaierror, OSError) as exc:
+            info.update(status=RSS_PROBE_NETWORK_FAILED, error_category=RSS_PROBE_NETWORK_FAILED,
+                        error=_masked_transport_error(exc))
+            return None, info
+        except Exception as exc:  # noqa: BLE001
+            info.update(status=RSS_PROBE_REQUEST_FAILED, error_category=RSS_PROBE_REQUEST_FAILED,
+                        error=_masked_transport_error(exc))
+            return None, info
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location")
+            if not location:
+                info.update(status=RSS_PROBE_REQUEST_FAILED, error_category=RSS_PROBE_REQUEST_FAILED,
+                            error="重定向缺少 Location")
+                return None, info
+            if _hop >= max_redirects:
+                info.update(status=RSS_PROBE_REQUEST_FAILED, error_category=RSS_PROBE_REQUEST_FAILED,
+                            error="重定向次数超限")
+                return None, info
+            current = urllib.parse.urljoin(current, location)
+            continue
+        try:
+            resp.raise_for_status()
+            resp.encoding = resp.apparent_encoding
+            info.update(status=RSS_PROBE_OK, error_category=None, http_status=resp.status_code,
+                        error=None)
+            return resp.text, info
+        except requests.exceptions.HTTPError as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            info.update(status=RSS_PROBE_HTTP_FAILED, error_category=RSS_PROBE_HTTP_FAILED,
+                        http_status=status, error=f"HTTP 错误 {status or ''}".strip())
+            return None, info
+        except Exception as exc:  # noqa: BLE001
+            info.update(status=RSS_PROBE_REQUEST_FAILED, error_category=RSS_PROBE_REQUEST_FAILED,
+                        error=_masked_transport_error(exc))
+            return None, info
+    info.update(status=RSS_PROBE_REQUEST_FAILED, error_category=RSS_PROBE_REQUEST_FAILED,
+                error="重定向次数超限")
+    return None, info
+
+
+def _masked_transport_error(exc: Exception) -> str:
+    """把传输层异常转成脱敏短描述（不泄露代理密码 / Token / 完整 URL）。"""
+    message = " ".join(str(exc).split())
+    lowered = message.casefold()
+    for marker in ("password", "token", "secret", "proxy", "://", "@", "authorization"):
+        if marker in lowered:
+            return "网络请求失败（已隐藏敏感细节）"
+    name = type(exc).__name__
+    # 剥离可能携带主机名的异常消息，仅保留异常类型级信息。
+    return f"{name}: 网络请求失败"
+
+
 def _join(base: str, href: str) -> str:
     """相对/协议相对/绝对 href → 绝对 URL。
 

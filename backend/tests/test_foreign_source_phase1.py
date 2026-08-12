@@ -78,6 +78,11 @@ def test_foreign_rss_body_match_and_body_failure_fallback(monkeypatch):
 
 
 def test_foreign_collection_deduplicates_url_and_content_without_opinions(monkeypatch):
+    # 隔离代理环境变量：本测试聚焦去重逻辑，期望直连（proxy_used=False）。
+    # 新代理解析（需求三）会回退读取 HTTPS_PROXY/HTTP_PROXY/FOREIGN_HTTP_PROXY，
+    # 测试 shell 中可能已设置，故此处显式清除以得到确定性结果。
+    for _v in ("HTTPS_PROXY", "HTTP_PROXY", "FOREIGN_HTTP_PROXY", "https_proxy", "http_proxy"):
+        monkeypatch.delenv(_v, raising=False)
     db = SessionLocal()
     suffix = uuid.uuid4().hex[:10]
     source_key = f"phase1_foreign_{suffix}"
@@ -336,7 +341,10 @@ def test_foreign_source_api_validates_feeds_and_keeps_schedule_manual(
         },
     )
     assert response.status_code == 201, response.text
-    assert requested == ["https://fixture.test/rss"]
+    # 创建期不再发起真实网络请求（仅结构 + SSRF 静态校验 + 采集器装配），
+    # 目标站点宕机 / 代理抖动 / 暂时无条目都不会阻塞保存。
+    assert requested == [], "创建期不得发起真实网络请求"
+    assert response.json()["verified"] is False
     source_id = response.json()["id"]
     assert response.json()["enabled"] is False
     assert response.json()["schedule_enabled"] is False

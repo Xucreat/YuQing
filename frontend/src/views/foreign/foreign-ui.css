@@ -73,6 +73,20 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 /* 外网数据源管理：新增按钮右置，对齐国内数据源管理「新建采集源」位置 */
 .toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .source-test-result { display: grid; gap: 6px; margin: 10px 0; padding: 12px; border: 1px solid #d9ead9; border-radius: 8px; background: #f4faf4; font-size: 13px; }
+.source-test-result strong.ok { color: #1a8e3c; }
+.source-test-result strong.fail { color: #c0352b; }
+.source-test-result strong.neutral { color: #6e6e73; }
+.source-test-result strong.warn { color: #9a6200; }
+.source-test-result .result-field { color: #424245; }
+.source-test-result .txt-ok { color: #1a8e3c; font-weight: 600; }
+.source-test-result .txt-fail { color: #c0352b; font-weight: 600; }
+.source-test-result .proxy-health { color: #36536f; }
+.source-test-result .feed-status { padding: 3px 8px; border-radius: 6px; border: 1px solid transparent; line-height: 1.6; }
+.source-test-result .feed-status.fs-ok { color: #1a8e3c; background: #eafaf0; border-color: #c6ecd2; }
+.source-test-result .feed-status.fs-empty { color: #6e6e73; background: #f2f2f5; border-color: #e3e3e8; }
+.source-test-result .feed-status.fs-warn { color: #9a6200; background: #fff6e6; border-color: #f3dca5; }
+.source-test-result .feed-status.fs-fail { color: #c0352b; background: #fff5f4; border-color: #f3c7c2; }
+.verify-sub { font-size: 12px; color: #86868b; margin-top: 2px; }
 .source-runs { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e8e8ed; }
 .history-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f3; font-size: 13px; color: #424245; }
 .number-input { min-width: 90px; width: 110px; }

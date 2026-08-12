@@ -112,6 +112,7 @@ def test_foreign_source_probe_does_not_write_rows(client, auth_headers, monkeypa
             "http_status": 200,
             "xml_parsed": True,
             "raw_count": 3,
+            "valid_count": 2,
             "matched_count": 2,
             "failure_count": 0,
             "error": None,
@@ -239,8 +240,10 @@ def test_confirmed_foreign_event_can_be_closed_and_frontend_uses_probe_contract(
         )
         assert closed.event_status == "resolved"
         sources_view = (Path(__file__).resolve().parents[2] / "frontend/src/views/foreign/ForeignSourcesView.vue").read_text(encoding="utf-8")
-        assert "sourceTestResult.success" in sources_view
-        assert "sourceTestResult.ok" not in sources_view
+        # 新探测契约：前端读取 sourceTestResult.ok（API 顶层用 ok 反映「连接层面可用」），
+        # 不再使用 success 字段。
+        assert "sourceTestResult.ok" in sources_view
+        assert "sourceTestResult.success" not in sources_view
     finally:
         db.query(ForeignEvent).filter(ForeignEvent.id == event.id).delete(synchronize_session=False)
         db.commit()

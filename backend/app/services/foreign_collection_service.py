@@ -10,8 +10,9 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.collectors.common import RSS_PROBE_FATAL_CATEGORIES, is_safe_rss_url, summarize_rss_probe
 from app.collectors.registry import import_class
-from app.collectors.foreign_rss import ForeignRSSCollector
+from app.collectors.foreign_rss import ForeignRSSCollector, probe_proxy_health
 from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
 from app.models.foreign_opinion import ForeignOpinion
@@ -55,6 +56,29 @@ def _lock_dedupe_key(db: Session, key: str) -> None:
         db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": key})
 
 
+def _summarize_probe(reports: list[dict]) -> str:
+    """从逐 Feed 报告推导顶层 status（清晰区分网络故障与无内容）。
+
+    委托给 ``common.summarize_rss_probe`` 以复用四入口统一契约
+    （success / empty_feed / partial / failed + ok / verified 同义判定）。
+    """
+    return summarize_rss_probe(reports).get("status")
+
+
+def _build_proxy_health(collector: ForeignRSSCollector, feeds: list[str]) -> dict:
+    """解析代理并做健康探针（仅测试接口调用；遵守 SSRF，不写业务数据）。"""
+    resolution = collector._resolve_proxy()
+    url = resolution.get("url")
+    if not url:
+        return {
+            "mode": resolution.get("mode"),
+            "tcp_reachable": None,
+            "target_status": None,
+            "note": "未配置代理（直连）",
+        }
+    return probe_proxy_health(url, sample_feed=feeds[0] if feeds else None, timeout=5)
+
+
 def _probe_config(*, feeds: list[str], keywords: list[str], source_name: str, proxy_env: str | None,
                   timeout: int, connect_timeout: float | None, read_timeout: float | None,
                   max_items: int, max_retries: int, respect_robots: bool) -> dict:
@@ -73,24 +97,22 @@ def _probe_config(*, feeds: list[str], keywords: list[str], source_name: str, pr
         is_foreign=True,
     )
     reports = collector.probe()
-    valid_counts = [
-        int(item.get("valid_count", item.get("raw_count", 0) if item.get("xml_parsed") else 0))
-        for item in reports
-    ]
-    success = bool(reports) and collector.last_failed_feeds == 0 and sum(valid_counts) > 0
-    if success:
-        status = "success"
-    elif collector.last_failed_feeds and sum(valid_counts) > 0:
-        status = "partial"
-    elif collector.last_failed_feeds:
-        status = "failed"
-    else:
-        status = "empty_feed"
+    summary = summarize_rss_probe(reports)
+    status = summary["status"]
+    valid_counts = [int(item.get("valid_count", 0)) for item in reports]
+    success = status == "success"
+    # ok / verified 同义：仅 success 与 empty_feed 视为「连接层面可用 / 已验证」。
+    # partial（部分 Feed 致命失败）与 failed（全部致命失败）一律 ok=False / verified=False，
+    # 不再把 partial 误判为成功或已验证。
+    ok = summary["ok"]
+    verified = summary["verified"]
     return {
         "source_name": source_name,
         "scope": "foreign",
         "collector": "foreign_rss",
-        "proxy_used": bool(collector._proxies()),
+        "proxy_used": bool(collector.proxy_used),
+        "proxy_mode": collector.proxy_mode,
+        "proxy_health": _build_proxy_health(collector, feeds),
         "fetch_full_text": False,
         "raw_count": collector.last_fetched_raw,
         "matched_count": sum(int(item["matched_count"]) for item in reports),
@@ -105,7 +127,8 @@ def _probe_config(*, feeds: list[str], keywords: list[str], source_name: str, pr
             for language in ("en", "zh", "mixed", "unknown")
         },
         "success": success,
-        "ok": success,
+        "ok": ok,
+        "verified": verified,
         "status": status,
         "feeds": reports,
         "error": _safe_error(collector.last_error) if collector.last_error else None,
@@ -126,9 +149,14 @@ def test_foreign_source(
     max_items: int = 100,
     max_retries: int = 2,
     respect_robots: bool = False,
-    require_success: bool = False,
+    persist: bool = False,
 ) -> dict:
-    """Run a foreign RSS connectivity test with zero database writes."""
+    """外网 RSS 连通性探测；默认零数据库写入（persist=False 仅探测并返回结果）。
+
+    persist=True 仅由「测试连接」接口显式调用：把验证状态写回数据源 config_json
+    （verified / last_probe_at / last_probe_status / last_probe_error_category），
+    不新增数据库表/列，符合「最小迁移」约束。
+    """
     source = db.get(DataSource, source_id) if source_id is not None else None
     if source_id is not None and (source is None or not _is_foreign(source)):
         raise LookupError("Foreign data source not found")
@@ -159,9 +187,69 @@ def test_foreign_source(
         max_retries=max_retries,
         respect_robots=respect_robots,
     )
-    if require_success and not result["success"]:
-        raise ValueError(result.get("error") or "RSS 测试失败：未获取到有效文章")
+    status = result.get("status", "failed")
+    # verified 由共享契约 summarize_rss_probe 给出：仅 success / empty_feed 为 True；
+    # partial / failed 一律为 False（不再把 partial 误判为已验证）。
+    verified = bool(result.get("verified"))
+    if persist and source is not None:
+        cfg = _config(source)
+        cfg["verified"] = verified
+        cfg["last_probe_at"] = datetime.now(timezone.utc).isoformat()
+        cfg["last_probe_status"] = status
+        fatal = [
+            r for r in result.get("feeds", [])
+            if r.get("error_category") in RSS_PROBE_FATAL_CATEGORIES
+        ]
+        cfg["last_probe_error_category"] = fatal[0].get("error_category") if fatal else None
+        source.config_json = json.dumps(cfg, ensure_ascii=False)
+        db.commit()
+    result["verified"] = verified
     return result
+
+
+def _assert_foreign_source_constructable(
+    *,
+    feeds: list[str],
+    keywords: list[str],
+    name: str,
+    proxy_env: str | None,
+    timeout: int,
+    connect_timeout: float | None,
+    read_timeout: float | None,
+    max_items: int,
+    max_retries: int,
+    respect_robots: bool,
+) -> ForeignRSSCollector:
+    """创建/编辑期的前置校验：仅做结构 + SSRF 静态校验 + 采集器装配，不发起任何网络请求。
+
+    替代原先「创建/编辑必须真实探测成功」的逻辑，使外网源在目标站点宕机 / 代理抖动 /
+    暂时无条目时仍可保存（保持 unverified 状态，由独立的「测试连接」接口验证）。
+    """
+    feeds = [str(f).strip() for f in (feeds or []) if str(f).strip()]
+    if not feeds:
+        raise ValueError("At least one RSS feed is required")
+    for feed in feeds:
+        # 创建/编辑期静态拦截（不解析 DNS，避免抖动）：拒绝 localhost / 内网字面量。
+        ok, reason = is_safe_rss_url(feed, resolve_dns=False)
+        if not ok:
+            raise ValueError(f"RSS 地址未通过安全校验（{reason}）：{feed}")
+    collector = ForeignRSSCollector(
+        feeds=feeds,
+        keywords=list(keywords or []),
+        source_name=name,
+        proxy_env=proxy_env,
+        timeout=timeout,
+        connect_timeout=connect_timeout,
+        read_timeout=read_timeout,
+        max_items=max_items,
+        max_retries=max_retries,
+        respect_robots=respect_robots,
+        fetch_full_text=False,
+        is_foreign=True,
+    )
+    # 触发一次代理解析：校验 proxy_env 指向的代理地址格式（仅读环境变量，不联网）。
+    collector._resolve_proxy()
+    return collector
 
 
 def collect_foreign(
