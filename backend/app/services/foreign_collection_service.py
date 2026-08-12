@@ -390,14 +390,36 @@ def collect_foreign(
                     result["created_ids"].append(opinion.id)
                     run.created += 1
                     result["created"] += 1
+            # 正式采集状态基于「Feed 级别可达性」（复用测试接口同一套共享契约），
+            # 不再依赖关键词命中 items：可达但无命中不应误判失败；可达 + 失败混合应为 partial。
+            reports = getattr(collector, "last_feed_reports", []) or []
             failed_feeds = int(getattr(collector, "last_failed_feeds", 0))
-            if failed_feeds and items:
+            summary = summarize_rss_probe(reports)
+            status = summary["status"]
+            if not reports:
+                # 无 Feed 被处理（配置缺失/空 feeds）：视为失败而非伪装成空源。
+                # 硬编码良性文案（无凭据），直接赋值，不走 _safe_error 脱敏（否则会被兜底成
+                # "Foreign feed test failed" 丢失语义）。
+                run.status = "failed"
+                run.error_msg = "未配置任何 RSS Feed，无法采集"
+                run.failed = 1
+                result["failed"] += 1
+            elif status == "empty_feed":
+                # 全部 Feed 可达但无内容：CollectorRun.status 自由字符串，但前端/运行契约
+                # 仅 success/partial/failed；映射为 success 并在 error_msg 保留「可达但无内容」。
+                # 该提示为硬编码良性文案（不含任何凭据），直接赋值，不走 _safe_error 脱敏，
+                # 否则会被兜底成 "Foreign feed test failed" 丢失语义。
+                run.status = "success"
+                run.error_msg = "全部 Feed 可达但无内容（无关键词命中或源当前为空）"
+            elif status == "partial":
                 run.status = "partial"
-            elif failed_feeds:
+                run.failed = failed_feeds
+                result["failed"] += 1
+            elif status == "failed":
                 run.status = "failed"
                 run.failed = failed_feeds
                 result["failed"] += 1
-            else:
+            else:  # success
                 run.status = "success"
         except Exception as exc:  # noqa: BLE001
             run.status = "failed"

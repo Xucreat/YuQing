@@ -705,6 +705,14 @@ def _build_test(
                 "verified": False,
                 "error": f"RSS 探测失败：{type(exc).__name__}: {_safe_rss_build_error(exc)}",
             }
+        # 「无待探测 Feed」由配置校验报错，不得伪装成 empty_feed（可达但空源）。
+        if not reports:
+            return {
+                "ok": False,
+                "verified": False,
+                "status": "failed",
+                "error": "至少配置一个 RSS 地址（无待探测 Feed）",
+            }
         # 统一四入口契约：与 foreign_collection_service._probe_config / 前端展示一致。
         summary = summarize_rss_probe(reports)
         status = summary["status"]
@@ -1068,7 +1076,15 @@ def test_data_source(
     class_path = body.get("class_path") or _TYPE_CLASS_PATH.get(type_, _TYPE_CLASS_PATH["generic_site"])
     cfg, _ = _parse_config_json(body.get("config_json"))
     test = _build_test(class_path, cfg, data_source_key=body.get("key"))
-    return {"ok": test.get("ok", False), "error": test.get("error"), "test": test}
+    # 方案 A：顶层返回与外网测试接口统一字段（ok/verified/status），同时保留旧
+    # test 嵌套结构兼容旧客户端。四态 success/empty_feed/partial/failed 一致。
+    return {
+        "ok": test.get("ok", False),
+        "verified": test.get("verified", False),
+        "status": test.get("status"),
+        "error": test.get("error"),
+        "test": test,
+    }
 
 
 @admin_ds_router.post("")

@@ -14,13 +14,21 @@
 """
 from __future__ import annotations
 
+import json
 import uuid
 
+from sqlalchemy import select
+
 from app.api.admin_data_sources import RSS_CLASS_PATH, _build_test
+from app.collectors.common import RSS_PROBE_FATAL_CATEGORIES, summarize_rss_probe
 from app.collectors.foreign_rss import ForeignRSSCollector
 from app.collectors.rss_collector import RSSCollector
 from app.db.session import SessionLocal
+from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
+from app.models.foreign_keyword import ForeignKeyword
+from app.models.foreign_opinion import ForeignOpinion
+from app.services.foreign_collection_service import collect_foreign
 
 
 def _report(error_category, valid_count, raw_count, matched_count, http_status, feed="https://f.test/rss"):
@@ -149,3 +157,229 @@ def test_proxy_mode_reflects_env_fallback(monkeypatch):
 
     # 显式直连优先于所有代理
     assert resolve_proxy_mode(use_direct=True, proxy_env="MY_PROXY") == "direct"
+
+
+# ---------------------------------------------------------------------------
+# 需求一：混合 Feed 状态判定（可达 != 有有效文章）
+# ---------------------------------------------------------------------------
+def _rep(error_category, valid_count, raw_count=0):
+    return {"error_category": error_category, "valid_count": valid_count, "raw_count": raw_count}
+
+
+def test_summarize_rss_probe_mixed_feed_states():
+    """可达性基于致命 error_category，而非 valid_count：空 Feed + 失败 Feed 必须判 partial。"""
+    # 1) 空 Feed 列表 -> 兜底 empty_feed（真实空 feeds 由调用方配置校验报错，见下）
+    assert summarize_rss_probe([])["status"] == "empty_feed"
+    # 2) 失败 Feed
+    assert summarize_rss_probe([_rep("network_failed", 0)])["status"] == "failed"
+    # 3) 空 Feed(可达) + 失败 Feed -> partial（曾误判为 failed）
+    s = summarize_rss_probe([_rep(None, 0), _rep("network_failed", 0)])
+    assert s["status"] == "partial" and s["ok"] is False and s["verified"] is False
+    # 4) 有效 Feed + 失败 Feed -> partial
+    assert summarize_rss_probe([_rep(None, 3), _rep("network_failed", 0)])["status"] == "partial"
+    # 5) 全部空 Feed(均可达) -> empty_feed（ok/verified=True）
+    e = summarize_rss_probe([_rep(None, 0), _rep(None, 0)])
+    assert e["status"] == "empty_feed" and e["ok"] is True and e["verified"] is True
+    # 6) 全部失败 Feed -> failed
+    assert summarize_rss_probe([_rep("http_failed", 0), _rep("network_failed", 0)])["status"] == "failed"
+    # 7) 有效 Feed 且无失败 -> success
+    assert summarize_rss_probe([_rep(None, 3)])["status"] == "success"
+
+
+def test_build_test_empty_feeds_not_masked_as_success(monkeypatch):
+    """需求一：无待探测 Feed 由配置校验报错，不得伪装成 success/empty_feed。"""
+    monkeypatch.setattr(RSSCollector, "probe", lambda self: [])
+    res = _build_test(RSS_CLASS_PATH, {"feeds": []})
+    assert res["ok"] is False
+    assert res["status"] == "failed"
+    assert "RSS" in (res.get("error") or "")
+
+
+# ---------------------------------------------------------------------------
+# 需求四：管理端测试接口顶层返回与四态契约（方案 A）
+# ---------------------------------------------------------------------------
+def test_admin_endpoint_four_state_contract(client, auth_headers, monkeypatch):
+    created_keys = []
+    try:
+        for state in ("success", "empty_feed", "partial", "failed"):
+            monkeypatch.setattr(RSSCollector, "probe", lambda self: list(STATE_REPORTS[state]))
+            key = f"admin_contract_{state}_{uuid.uuid4().hex[:8]}"
+            created_keys.append(key)
+            resp = client.post(
+                "/api/admin/data-sources/test",
+                headers=auth_headers,
+                json={
+                    "name": f"Admin {state}",
+                    "key": key,
+                    "type": "rss",
+                    "config_json": {"feeds": [{"url": "https://f.test/rss"}]},
+                },
+            )
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            exp_ok, exp_verified = EXPECT[state]
+            # 顶层与外网测试接口统一
+            assert body["status"] == state, body
+            assert body["ok"] is exp_ok, body
+            assert body["verified"] is exp_verified, body
+            # 旧客户端嵌套 test 仍可用
+            assert body["test"]["status"] == state, body
+            assert body["test"]["ok"] is exp_ok, body
+    finally:
+        db = SessionLocal()
+        try:
+            for k in created_keys:
+                db.query(DataSource).filter(DataSource.key == k).delete(synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()
+
+
+# ---------------------------------------------------------------------------
+# 需求五：空 Feed + 失败 Feed 持久化状态为 partial / ok=false / verified=false
+# ---------------------------------------------------------------------------
+def test_persist_empty_feed_plus_failed(client, auth_headers, monkeypatch):
+    _patch_probe(
+        monkeypatch,
+        [
+            _report(None, 0, 5, 0, 200, feed="https://f.test/a"),
+            _report("network_failed", 0, 0, 0, None, feed="https://f.test/b"),
+        ],
+    )
+    key = f"persist_partial_{uuid.uuid4().hex[:8]}"
+    created = client.post(
+        "/api/foreign/sources",
+        headers=auth_headers,
+        json={"name": "Persist partial", "key": key, "feeds": ["https://f.test/rss"]},
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+    try:
+        test_resp = client.post(
+            "/api/foreign/sources/test",
+            headers=auth_headers,
+            json={"source_id": source_id, "fetch_full_text": False},
+        )
+        assert test_resp.status_code == 200, test_resp.text
+        body = test_resp.json()
+        assert body["status"] == "partial", body
+        assert body["ok"] is False, body
+        assert body["verified"] is False, body
+        listing = client.get("/api/foreign/sources", headers=auth_headers)
+        item = next((it for it in listing.json()["items"] if it["id"] == source_id), None)
+        assert item is not None
+        assert item["last_probe_status"] == "partial", item
+        assert item["verified"] is False, item
+    finally:
+        db = SessionLocal()
+        try:
+            db.query(DataSource).filter(DataSource.id == source_id).delete(synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()
+
+
+# ---------------------------------------------------------------------------
+# 需求二：正式采集状态语义（基于 Feed 级别可达性，而非关键词命中 items）
+# ---------------------------------------------------------------------------
+def _foreign_source_id(db, key, name, feeds, keyword_word):
+    # keyword_word 在同一测试运行中跨多个 scenario 复用，仅首次创建，避免
+    # uq_foreign_keywords_word 唯一约束在后续 scenario 重复插入时冲突。
+    existing = db.scalar(select(ForeignKeyword).where(ForeignKeyword.word == keyword_word))
+    if existing is None:
+        kw = ForeignKeyword(word=keyword_word)
+        db.add(kw)
+    src = DataSource(
+        key=key,
+        name=name,
+        type="foreign_rss",
+        class_path="app.collectors.foreign_rss.ForeignRSSCollector",
+        enabled=True,
+        schedule_enabled=False,
+        config_json=json.dumps(
+            {
+                "is_foreign": True,
+                "collector": "foreign_rss",
+                "feeds": feeds,
+                "keywords": [keyword_word],
+                "collection_mode": "foreign",
+            }
+        ),
+    )
+    db.add(src)
+    db.commit()
+    return src.id
+
+
+def _fake_fetch(reports, items):
+    def _f(self, **kwargs):
+        self.last_feed_reports = [dict(r) for r in reports]
+        self.last_failed_feeds = sum(
+            1 for r in reports if r.get("error_category") in RSS_PROBE_FATAL_CATEGORIES
+        )
+        self.last_reachable_feeds = sum(
+            1 for r in reports if r.get("error_category") not in RSS_PROBE_FATAL_CATEGORIES
+        )
+        self.last_fetched_raw = sum(r.get("raw_count", 0) for r in reports)
+        self.last_error = None
+        return list(items)
+
+    return _f
+
+
+def test_collect_foreign_status_semantics(monkeypatch):
+    """正式采集：success/partial/failed 与测试接口同语义；空源映射 success 但保留信息。"""
+    keyword_word = f"kw_{uuid.uuid4().hex[:8]}"
+    scenarios = [
+        # (描述, reports, items, 期望 run.status, 期望 run.failed)
+        ("all_success_no_hit", [_rep(None, 0)], [], "success", 0),
+        ("empty_plus_failed", [_rep(None, 0), _rep("network_failed", 0)], [], "partial", 1),
+        ("valid_plus_failed", [_rep(None, 3), _rep("network_failed", 0)],
+         [{"title": "t", "url": "https://x/a", "content": "b", "summary": "s",
+           "matched_keywords": [keyword_word]}], "partial", 1),
+        ("all_failed", [_rep("network_failed", 0), _rep("http_failed", 0)], [], "failed", 2),
+    ]
+    created = []
+    try:
+        for desc, reports, items, exp_status, exp_failed in scenarios:
+            monkeypatch.setattr(ForeignRSSCollector, "fetch", _fake_fetch(reports, items))
+            key = f"collect_{desc}_{uuid.uuid4().hex[:8]}"
+            name = f"Collect {desc}"
+            feeds = [f"https://f.test/{desc}/rss"]
+            sid = _foreign_source_id(SessionLocal(), key, name, feeds, keyword_word)
+            created.append((key, name, sid))
+            db = SessionLocal()
+            try:
+                result = collect_foreign(db, source_ids=[sid])
+                assert result["sources"] == 1, result
+                run = (
+                    db.query(CollectorRun)
+                    .filter(CollectorRun.collector_name == name, CollectorRun.scope == "foreign")
+                    .order_by(CollectorRun.id.desc())
+                    .first()
+                )
+                assert run is not None, f"{desc}: no run"
+                assert run.status == exp_status, f"{desc}: status={run.status}"
+                assert int(run.failed or 0) == exp_failed, f"{desc}: failed={run.failed}"
+                if desc == "all_success_no_hit":
+                    # 空源：映射 success 但保留「可达但无内容」信息
+                    assert run.error_msg and "可达但无内容" in run.error_msg, run.error_msg
+            finally:
+                db.close()
+    finally:
+        db = SessionLocal()
+        try:
+            for key, name, sid in created:
+                db.query(ForeignOpinion).filter(ForeignOpinion.source_key == key).delete(
+                    synchronize_session=False
+                )
+                db.query(CollectorRun).filter(CollectorRun.collector_name == name).delete(
+                    synchronize_session=False
+                )
+                db.query(DataSource).filter(DataSource.id == sid).delete(synchronize_session=False)
+            db.query(ForeignKeyword).filter(ForeignKeyword.word == keyword_word).delete(
+                synchronize_session=False
+            )
+            db.commit()
+        finally:
+            db.close()

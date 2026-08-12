@@ -180,11 +180,11 @@ def http_get_guarded(
         except requests.exceptions.SSLError as exc:
             logger.warning(
                 "TLS 握手失败，尝试系统 curl 兼容抓取（禁止重定向） url=%s err=%s",
-                current, exc,
+                mask_url(current), exc,
             )
             return _curl_get(session, current, timeout, follow_redirects=False)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("抓取失败 url=%s err=%s", current, exc)
+            logger.warning("抓取失败 url=%s err=%s", mask_url(current), exc)
             return None
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("Location")
@@ -198,9 +198,9 @@ def http_get_guarded(
             resp.encoding = resp.apparent_encoding
             return resp.text
         except Exception as exc:  # noqa: BLE001
-            logger.warning("抓取失败 url=%s err=%s", current, exc)
+            logger.warning("抓取失败 url=%s err=%s", mask_url(current), exc)
             return None
-    logger.warning("重定向次数超过上限（%s） url=%s", max_redirects, url)
+    logger.warning("重定向次数超过上限（%s） url=%s", max_redirects, mask_url(url))
     return None
 
 
@@ -228,39 +228,95 @@ RSS_PROBE_STATUS_PARTIAL = "partial"
 RSS_PROBE_STATUS_FAILED = "failed"
 
 
+# 统一 URL 脱敏（代理地址 / Feed 地址共用）：移除 userinfo、敏感 query 参数、
+# fragment，保留 scheme/host/port/path 用于排障。绝不返回代理密码 / Token / 完整认证 URL。
+_SENSITIVE_QUERY_KEYS = frozenset({
+    "token", "password", "passwd", "secret", "api_key", "apikey",
+    "key", "authorization", "auth", "credential", "credentials",
+    "access_token", "refresh_token", "sig", "signature", "private_key",
+    "ak", "sk",
+})
+
+
+def mask_url(url: str | None) -> str | None:
+    """统一 URL 脱敏：移除 userinfo、敏感 query 参数、fragment；保留协议/主机/端口/路径。
+
+    - 代理 URL（http://user:pass@host:port）-> http://***:***@host:port
+    - 含敏感 query（?token=secret）-> ?token=<redacted>
+    - 含 fragment（#session）-> 丢弃
+    返回脱敏字符串；非法输入返回 None。Feed 地址含敏感 query 同样适用，避免日志/响应泄露。
+    """
+    if not url:
+        return url
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except Exception:  # noqa: BLE001
+        return None
+    if not parsed.scheme and not parsed.netloc:
+        return url
+    netloc = parsed.netloc
+    if parsed.username or parsed.password:
+        host = parsed.hostname or ""
+        port = f":{parsed.port}" if parsed.port else ""
+        netloc = f"***:***@{host}{port}"
+    query = ""
+    if parsed.query:
+        pairs = []
+        for key, val in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
+            if key.strip().lower() in _SENSITIVE_QUERY_KEYS:
+                pairs.append(f"{key}=<redacted>")
+            else:
+                pairs.append(f"{key}={val}")
+        query = "&".join(pairs)
+    return urllib.parse.urlunsplit((parsed.scheme, netloc, parsed.path, query, ""))
+
+
 def summarize_rss_probe(reports: list[dict] | None) -> dict:
     """从逐 Feed 报告推导统一的顶层状态契约，供所有入口（外网测试接口、管理端
-    ``_build_test``、前端展示）共用，避免「一个入口把 partial 当成功、另一个当失败」。
+    ``_build_test``、正式采集 ``collect_foreign``、前端展示）共用，避免「一个入口把
+    partial 当成功、另一个当失败」。
+
+    「可达」的判定独立于「是否有有效文章」：
+    - 可达 = 请求成功 + HTTP 成功 + XML 解析成功，等价于该 Feed 报告无致命
+      ``error_category``（不依赖 ``valid_count``）；
+    - 否则为「失败」（network/http/invalid/blocked/request 之一）。
 
     契约：
-    - success    : 至少一个 Feed 拿到有效条目（valid_count>0），且无致命失败。
+    - success    : 所有 Feed 均可达，且至少一个 Feed 有有效条目。
                     -> ok=True,  verified=True
-    - empty_feed : 全部 Feed 可达且解析成功，但没有任何有效条目（连接正常但无内容）。
+    - empty_feed : 所有 Feed 均可达且解析成功，但没有任何有效条目（连接正常但无内容）。
                     -> ok=True,  verified=True（记为「可达但空源」，不阻塞保存）
-    - partial    : 至少一个 Feed 致命失败（network/http/invalid/blocked/request），
-                   但仍有 Feed 拿到有效条目（连接部分可用）。
+    - partial    : 至少一个 Feed 可达，且至少一个 Feed 致命失败（无论可达 Feed 是否有文章）。
                     -> ok=False, verified=False
     - failed     : 所有 Feed 均致命失败。
                     -> ok=False, verified=False
+
+    空报告（``reports`` 为空）是防御性兜底：真实「无待探测 Feed」必须由调用方
+    （``test_foreign_source`` / ``_build_test``）在配置校验阶段报错，不应伪装成 empty_feed。
     """
     reports = reports or []
     if not reports:
         status = RSS_PROBE_STATUS_EMPTY_FEED
     else:
+        # 「可达」基于致命 error_category，而非 valid_count：
+        # 否则「可达但无条目」会被误判为失败，或「可达空 + 失败」被误判为全失败。
         fatal = [r for r in reports if r.get("error_category") in RSS_PROBE_FATAL_CATEGORIES]
-        valid = [r for r in reports if r.get("valid_count")]
-        if fatal and not valid:
-            status = RSS_PROBE_STATUS_FAILED
-        elif fatal and valid:
+        reachable = [r for r in reports if r.get("error_category") not in RSS_PROBE_FATAL_CATEGORIES]
+        has_valid = any(r.get("valid_count") for r in reachable)
+        if fatal and reachable:
             status = RSS_PROBE_STATUS_PARTIAL
-        elif valid:
+        elif fatal and not reachable:
+            status = RSS_PROBE_STATUS_FAILED
+        elif reachable and has_valid:
             status = RSS_PROBE_STATUS_SUCCESS
-        else:
+        elif reachable and not has_valid:
             status = RSS_PROBE_STATUS_EMPTY_FEED
+        else:
+            status = RSS_PROBE_STATUS_FAILED
     # ok / verified 同义：仅 success 与 empty_feed 视为「连接层面可用 / 已验证」；
     # partial 与 failed 一律视为未通过验证（ok=False, verified=False）。
-    reachable = status in (RSS_PROBE_STATUS_SUCCESS, RSS_PROBE_STATUS_EMPTY_FEED)
-    return {"status": status, "ok": reachable, "verified": reachable}
+    reachable_flag = status in (RSS_PROBE_STATUS_SUCCESS, RSS_PROBE_STATUS_EMPTY_FEED)
+    return {"status": status, "ok": reachable_flag, "verified": reachable_flag}
 
 
 def http_get_guarded_detailed(

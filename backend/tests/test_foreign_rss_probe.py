@@ -18,12 +18,13 @@
 """
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
 import requests
 
-from app.collectors.common import RSSParseError
+from app.collectors.common import RSSParseError, mask_url
 from app.collectors.foreign_rss import (
     ForeignRSSCollector,
     _mask_proxy_url,
@@ -389,6 +390,93 @@ def test_legacy_foreign_http_proxy_compat(monkeypatch):
     bad = ForeignRSSCollector(feeds=["https://x/rss"], is_foreign=True)
     with pytest.raises(ValueError):
         bad._resolve_proxy()
+
+
+# ---------------------------------------------------------------------------
+# 场景 15：统一 URL 脱敏（user/pass、敏感 query、fragment、Feed 地址）
+# ---------------------------------------------------------------------------
+def test_mask_url_sensitive_fields():
+    # 15a) user/pass 脱敏
+    assert mask_url("http://user:topsecret@proxy.example:7897") == "http://***:***@proxy.example:7897"
+    # 15b) query token
+    m = mask_url("http://proxy.example:7897/?token=secret")
+    assert "secret" not in m and "token=<redacted>" in m
+    # 15c) query api_key
+    m2 = mask_url("http://proxy.example:7897/?api_key=abc123")
+    assert "abc123" not in m2 and "api_key=<redacted>" in m2
+    # 15d) fragment 丢弃
+    m3 = mask_url("http://proxy.example:7897/path#sessiontoken")
+    assert "#" not in m3 and "sessiontoken" not in m3
+    # 15e) 三个显式示例
+    assert mask_url("http://proxy.example:7897/?token=secret") == "http://proxy.example:7897/?token=<redacted>"
+    assert mask_url("http://proxy.example:7897/?api_key=secret") == "http://proxy.example:7897/?api_key=<redacted>"
+    assert mask_url("http://user:pass@proxy.example:7897/path?token=secret") == "http://***:***@proxy.example:7897/path?token=<redacted>"
+    # 15f) 保留协议/主机/端口/路径用于排障
+    assert mask_url("http://proxy.example:7897/path") == "http://proxy.example:7897/path"
+
+
+def test_feed_url_sensitive_query_masked():
+    # Feed 地址含敏感 query 也必须脱敏
+    m = mask_url("https://news.example/rss?api_key=LEAK&token=X")
+    assert "LEAK" not in m and "X" not in m
+    # 经 _feed_label 截断同样安全（仅 scheme://netloc/path，丢弃 query）
+    assert "LEAK" not in ForeignRSSCollector._feed_label("https://news.example/rss?api_key=LEAK")
+
+
+def test_request_exception_url_no_leak(monkeypatch, fixed_dns):
+    # 异常消息携带完整认证 URL 时不泄露凭据
+    def fake_get(*args, **kwargs):
+        raise requests.exceptions.ConnectionError(
+            "Failed to connect to http://user:topsecret@proxy.internal:7897/?token=secret"
+        )
+
+    monkeypatch.setattr("app.collectors.foreign_rss.requests.get", fake_get)
+    collector = ForeignRSSCollector(
+        feeds=["https://news.example/rss"], keywords=["x"], is_foreign=True, max_retries=0
+    )
+    report = collector.probe()[0]
+    assert report["status"] == "network_failed"
+    assert "topsecret" not in (report["error"] or "")
+    assert "secret" not in (report["error"] or "")
+
+
+def test_api_response_no_proxy_credential(client, auth_headers, monkeypatch):
+    # API 响应与列表接口均不得泄露代理凭据
+    monkeypatch.setenv("SECRET_PROXY", "http://user:topsecret@127.0.0.1:7897")
+    monkeypatch.setattr(
+        "app.collectors.foreign_rss.probe_proxy_health",
+        lambda *a, **k: {
+            "mode": "env:SECRET_PROXY",
+            "proxy_url_masked": "http://***:***@127.0.0.1:7897",
+            "tcp_reachable": None,
+        },
+    )
+    key = f"mask_resp_{uuid.uuid4().hex[:8]}"
+    created = client.post(
+        "/api/foreign/sources",
+        headers=auth_headers,
+        json={"name": "Mask resp", "key": key, "feeds": ["https://fixture.test/rss"],
+              "proxy_env": "SECRET_PROXY"},
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+    try:
+        resp = client.post(
+            "/api/foreign/sources/test",
+            headers=auth_headers,
+            json={"source_id": source_id, "fetch_full_text": False},
+        )
+        assert resp.status_code == 200, resp.text
+        assert "topsecret" not in json.dumps(resp.json())
+        listing = client.get("/api/foreign/sources", headers=auth_headers)
+        assert "topsecret" not in json.dumps(listing.json())
+    finally:
+        db = SessionLocal()
+        try:
+            db.query(DataSource).filter(DataSource.id == source_id).delete(synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()
 
 
 if __name__ == "__main__":

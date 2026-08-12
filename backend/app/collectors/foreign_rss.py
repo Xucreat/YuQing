@@ -23,6 +23,7 @@ from app.collectors.common import (
     RSS_PROBE_REQUEST_FAILED,
     extract_article_text,
     is_safe_rss_url,
+    mask_url,
     parse_rss,
 )
 from app.services.foreign_content_sanitizer import sanitize_foreign_html
@@ -59,17 +60,12 @@ class RSSRequestError(RSSProbeError):
 
 
 def _mask_proxy_url(url: str | None) -> str | None:
-    """把代理 URL 中的认证信息脱敏（user:pass@ -> ***@），避免日志/响应泄露凭据。"""
-    if not url:
-        return url
-    try:
-        parsed = urlsplit(url)
-    except Exception:  # noqa: BLE001
-        return None
-    if parsed.username or parsed.password:
-        netloc = "***:***@" + parsed.hostname + (f":{parsed.port}" if parsed.port else "")
-        return f"{parsed.scheme}://{netloc}"
-    return url
+    """代理 URL 脱敏（user:pass@ -> ***@，敏感 query/fragment 剥离）。
+
+    统一委托给 ``common.mask_url``（代理地址 / Feed 地址共用同一脱敏规则）。
+    保留此名称仅为向后兼容既有测试；新代码请直接用 ``mask_url``。
+    """
+    return mask_url(url)
 
 
 def resolve_proxy_mode(
@@ -169,6 +165,7 @@ class ForeignRSSCollector(BaseCollector):
         self.last_fetched_raw = 0
         self.last_error: str | None = None
         self.last_failed_feeds = 0
+        self.last_reachable_feeds = 0
         self.last_feed_reports: list[dict[str, Any]] = []
         self.last_http_status: int | None = None
         # 代理解析结果与本次请求是否实际走代理（准确反映是否使用代理）。
@@ -364,6 +361,9 @@ class ForeignRSSCollector(BaseCollector):
             if not report["failure_count"]:
                 report["status"] = "success" if report["valid_count"] else "empty_feed"
                 report["error_category"] = None
+                report["reachable"] = True
+            else:
+                report["reachable"] = False
             self.last_feed_reports.append(report)
         return list(self.last_feed_reports)
 
@@ -406,18 +406,43 @@ class ForeignRSSCollector(BaseCollector):
         self.last_fetched_raw = 0
         self.last_error = None
         self.last_failed_feeds = 0
+        self.last_reachable_feeds = 0
+        self.last_feed_reports = []
         for feed_url in self.feeds:
+            report: dict[str, Any] = {
+                "feed": self._feed_label(feed_url),
+                "http_status": None,
+                "xml_parsed": False,
+                "raw_count": 0,
+                "valid_count": 0,
+                "error_category": None,
+                "error": None,
+                "reachable": False,
+            }
             try:
                 parsed = parse_rss(self._get(feed_url))
             except RSSParseError:
                 self.last_error = "invalid RSS/Atom XML"
                 self.last_failed_feeds += 1
+                report["error"] = "invalid XML"
+                report["error_category"] = RSS_PROBE_INVALID_FEED
+                self.last_feed_reports.append(report)
                 continue
-            except Exception:  # noqa: BLE001
-                self.last_error = "RSS request failed"
+            except Exception as exc:  # noqa: BLE001
+                self.last_error = _safe_probe_message(exc)
                 self.last_failed_feeds += 1
+                report["error"] = _safe_probe_message(exc)
+                report["error_category"] = RSS_PROBE_REQUEST_FAILED
+                self.last_feed_reports.append(report)
                 continue
+            # 解析成功：记录「可达」并统计原始条目数。
+            report["xml_parsed"] = True
+            report["raw_count"] = len(parsed)
+            self.last_fetched_raw += len(parsed)
+            self.last_reachable_feeds += 1
+            report["reachable"] = True
             seen: set[tuple[str, str]] = set()
+            feed_valid = 0
             for item in parsed:
                 title = str(item.get("title") or "").strip()
                 summary = str(item.get("summary") or item.get("content") or "").strip()
@@ -442,6 +467,8 @@ class ForeignRSSCollector(BaseCollector):
                 ]
                 if not matched:
                     continue
+                if title and url:
+                    feed_valid += 1
                 items.append(
                     {
                         "title": title,
@@ -458,7 +485,8 @@ class ForeignRSSCollector(BaseCollector):
                 )
                 if len(items) >= self.max_items:
                     break
-            self.last_fetched_raw += len(parsed)
+            report["valid_count"] = feed_valid
+            self.last_feed_reports.append(report)
             if len(items) >= self.max_items:
                 break
             if self.request_interval:
