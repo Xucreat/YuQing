@@ -66,6 +66,9 @@ class EventAlertOut(BaseModel):
     id: int
     title: str
     risk_level: str
+    formal_risk_score: Optional[int] = None
+    formal_risk_level: Optional[str] = None
+    linked_opinion_current_risk: Optional[dict] = None
     status: str
     created_at: datetime
 
@@ -97,6 +100,9 @@ class EventOut(BaseModel):
     region_name: Optional[str] = None
     risk_level: str
     risk_score: int = 0
+    formal_risk_score: Optional[int] = None
+    formal_risk_level: Optional[str] = None
+    linked_opinion_current_risk: Optional[dict] = None
     # Read-only event-level reference score; the existing risk_score remains
     # unchanged for compatibility with current filters and alert behavior.
     risk_shadow_score: Optional[int] = None
@@ -111,6 +117,15 @@ class EventOut(BaseModel):
     status: str = "active"
     first_time: Optional[datetime] = None
     last_time: Optional[datetime] = None
+    confirmation_source: Optional[str] = None
+    confirmation_version: Optional[str] = None
+    rule_risk_snapshot: Optional[dict] = None
+    ai_risk_snapshot: Optional[dict] = None
+    review_reason: Optional[str] = None
+    confirmed_by: Optional[int] = None
+    confirmed_at: Optional[datetime] = None
+    origin_review_id: Optional[int] = None
+    origin_ai_result_id: Optional[int] = None
 
 
 class EventListResponse(BaseModel):

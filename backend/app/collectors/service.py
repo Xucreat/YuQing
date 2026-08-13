@@ -54,6 +54,7 @@ from app.services.keyword_service import (
     get_sensitive_keywords,
 )
 from app.services.risk_engine import RISK_MODEL_VERSION, RiskEngine
+from app.services.current_risk import sync_domestic_rule_if_not_ai_adopted
 from app.services.opinion_admission_service import OpinionAdmissionService
 from app.services.opinion_region_service import OpinionRegionService, is_national_scope
 from app.services.keyword_filter_service import KeywordFilterService
@@ -686,6 +687,7 @@ class CollectorService:
                     opinion.summary = analysis.summary
                     opinion.sentiment = analysis.sentiment
                     opinion.risk_score = refine.final_risk_score
+                    sync_domestic_rule_if_not_ai_adopted(opinion)
                     opinion.severity_score = refine.severity_score
                     opinion.event_state = refine.event_state
                     opinion.resolution_flag = refine.resolution_flag

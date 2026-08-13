@@ -16,9 +16,56 @@ from app.schemas.alert import (
 )
 from app.services.alert_service import AlertService
 from app.services.audit_service import audit_write
+from app.services.current_risk import current_risk_payload
 
 alerts_router = APIRouter(tags=["alerts"], dependencies=[Depends(get_current_user)])
 MAX_SIZE = 100
+
+
+def _alert_record_payload(row: AlertRecord) -> dict:
+    payload = {
+        "id": row.id,
+        "rule_id": row.rule_id,
+        "rule_name": row.rule_name,
+        "risk_level": row.risk_level,
+        "formal_risk_score": None,
+        "formal_risk_level": row.risk_level,
+        "opinion_id": row.opinion_id,
+        "opinion_title": row.opinion_title,
+        "event_id": row.event_id,
+        "event_title": row.event_title,
+        "trigger_reason": row.trigger_reason,
+        "handled": row.handled,
+        "status": row.status,
+        "handled_by": row.handled_by,
+        "handled_by_name": row.handled_by_name,
+        "handled_at": row.handled_at,
+        "handle_note": row.handle_note,
+        "confirmation_source": row.confirmation_source,
+        "evaluation_source": row.evaluation_source,
+        "confirmation_version": row.confirmation_version,
+        "rule_risk_snapshot": row.rule_risk_snapshot,
+        "ai_risk_snapshot": row.ai_risk_snapshot,
+        "review_reason": row.review_reason,
+        "confirmed_by": row.confirmed_by,
+        "confirmed_at": row.confirmed_at,
+        "origin_review_id": row.origin_review_id,
+        "origin_ai_result_id": row.origin_ai_result_id,
+        "deduplication_key": row.deduplication_key,
+        "created_at": row.created_at,
+    }
+    opinion = getattr(row, "opinion", None)
+    if opinion is None and row.opinion_id:
+        from app.models.opinion import Opinion
+        opinion = row._sa_instance_state.session.get(Opinion, row.opinion_id)
+    payload["linked_opinion_current_risk"] = current_risk_payload(opinion)
+    rule_snapshot = row.rule_risk_snapshot or {}
+    ai_snapshot = row.ai_risk_snapshot or {}
+    if "risk_score" in rule_snapshot:
+        payload["formal_risk_score"] = rule_snapshot.get("risk_score")
+    elif "risk_score" in ai_snapshot:
+        payload["formal_risk_score"] = ai_snapshot.get("risk_score")
+    return payload
 
 # 处置状态白名单（与 AlertRecord.status CheckConstraint 一致）
 _ALLOWED_ALERT_STATUSES = {"pending", "processing", "resolved", "ignored", "false_positive"}
@@ -107,7 +154,7 @@ def unread_alerts(
         q = q.where(AlertRecord.created_at > since_dt)
     total = q.count()
     rows = q.order_by(AlertRecord.id.desc()).limit(10).all()
-    return AlertRecordListResponse(items=rows, total=total, page=1, size=10)
+    return AlertRecordListResponse(items=[_alert_record_payload(row) for row in rows], total=total, page=1, size=10)
 
 
 @alerts_router.get("/records", response_model=AlertRecordListResponse)
@@ -158,7 +205,7 @@ def list_records(
             pass
     total = q.count()
     rows = q.order_by(AlertRecord.id.desc()).offset((page - 1) * size).limit(size).all()
-    return AlertRecordListResponse(items=rows, total=total, page=page, size=size)
+    return AlertRecordListResponse(items=[_alert_record_payload(row) for row in rows], total=total, page=page, size=size)
 
 
 # 处置状态 → handled 布尔双写映射（保护旧 ?handled= 过滤与前端标签）。
@@ -204,4 +251,4 @@ def handle_record(
         rec.handle_note = req.note or ""
         db.commit()
     db.refresh(rec)
-    return rec
+    return _alert_record_payload(rec)

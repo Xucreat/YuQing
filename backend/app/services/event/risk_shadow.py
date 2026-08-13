@@ -19,7 +19,7 @@ class EventRiskShadowService:
     def calculate(cls, event, opinions: Iterable) -> dict:
         rows = list(opinions)
         count = len(rows)
-        risks = [_score(getattr(row, "risk_score", 0)) for row in rows]
+        risks = [_score(getattr(row, "current_risk_score", getattr(row, "risk_score", 0))) for row in rows]
         content_risk = sum(risks) / count if count else 0.0
         high_risk_count = sum(1 for value in risks if value >= 70)
         # A single high-risk opinion contributes evidence, but cannot alone make

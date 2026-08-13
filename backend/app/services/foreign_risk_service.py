@@ -21,6 +21,7 @@ from app.models.foreign_opinion import ForeignOpinion
 from app.models.foreign_risk_term import ForeignRiskTerm
 from app.core.config import settings
 from app.models.foreign_risk_result import ForeignRiskResult
+from app.services.current_risk import sync_foreign_rule_if_not_ai_adopted
 from app.services.foreign_content_sanitizer import (
     detect_foreign_language,
     normalize_foreign_article,
@@ -399,6 +400,8 @@ class ForeignRiskService:
                 result.is_current = True
             else:
                 result.is_current = False
+            db.flush()
+            sync_foreign_rule_if_not_ai_adopted(opinion, result)
             db.flush()
             return result, True
         except Exception as exc:

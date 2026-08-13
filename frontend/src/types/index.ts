@@ -5,6 +5,16 @@
 
 export type Sentiment = 'positive' | 'negative' | 'neutral'
 
+export interface CurrentRisk {
+  source: 'rule' | 'ai' | 'current' | string
+  risk_score: number | null
+  risk_level: string
+  ai_result_id?: number | null
+  updated_at?: string | null
+  opinion_id?: number
+  opinion_count?: number
+}
+
 // 鍒嗘瀽鐘舵€侊紙鍚庣 analysis_status锛?
 export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed'
 export type OpinionContentType =
@@ -68,6 +78,56 @@ export interface OpinionListResponse {
   size: number
 }
 
+export interface DomesticAIReview {
+  id: number
+  review_id: number
+  opinion_id: number
+  opinion_title: string
+  source: string
+  publish_time: string | null
+  rule_risk_snapshot: Record<string, any>
+  ai_risk_snapshot: Record<string, any>
+  display_source: string
+  event_candidate_count: number
+  alert_candidate_count: number
+  review_status: string
+  review_decision: string | null
+  event_review_status?: 'pending' | 'confirmed' | 'rejected' | string
+  alert_review_status?: 'pending' | 'confirmed' | 'rejected' | string
+  review_reason?: string | null
+  reviewed_by?: number | null
+  reviewed_by_name?: string | null
+  reviewed_at?: string | null
+  batch_run_id?: string | null
+  event_preview?: Record<string, any>
+  alert_preview?: Record<string, any>
+  created_at: string | null
+}
+
+export interface DomesticAIBatchRun {
+  run_id: string
+  task_id: string | null
+  scope: string
+  filters: Record<string, any>
+  opinion_ids: number[]
+  total_count: number
+  processed_count: number
+  success_count: number
+  failed_count: number
+  skipped_count: number
+  status: string
+  current_step: string
+  started_at?: string | null
+  finished_at?: string | null
+  estimated_token_usage: number
+  failures: Array<Record<string, any>>
+  event_preview?: Record<string, any>
+  alert_preview?: Record<string, any>
+  progress?: number
+  step?: string
+  message?: string
+}
+
 // 与后端 EventOut 对齐；status 为持久化的人工处置状态。
 export interface EventItem {
   id: number
@@ -76,6 +136,9 @@ export interface EventItem {
   region_name?: string | null
   risk_level: string
   risk_score: number
+  formal_risk_score?: number | null
+  formal_risk_level?: string | null
+  linked_opinion_current_risk?: CurrentRisk | null
   risk_shadow_score?: number | null
   risk_shadow_level?: string | null
   risk_shadow_version?: string | null
@@ -123,6 +186,9 @@ export interface EventAlert {
   id: number
   title: string
   risk_level: string
+  formal_risk_score?: number | null
+  formal_risk_level?: string | null
+  linked_opinion_current_risk?: CurrentRisk | null
   status: string
   created_at: string
 }
@@ -254,6 +320,7 @@ export interface AlertRule {
   name: string
   description: string
   risk_threshold: number
+  rule_type?: string
   keywords: string
   sources: string
   risk_level: string
@@ -274,6 +341,9 @@ export interface AlertRecord {
   rule_id: number
   rule_name: string
   risk_level: string
+  formal_risk_score?: number | null
+  formal_risk_level?: string | null
+  linked_opinion_current_risk?: CurrentRisk | null
   opinion_id: number | null
   opinion_title: string
   event_id: number | null

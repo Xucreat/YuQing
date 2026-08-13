@@ -61,6 +61,24 @@ class Opinion(Base):
     # AI 生成的研判建议（可为空）
     ai_analysis_suggestion: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Current risk is the human-adopted display risk. Rule/AI source fields
+    # remain immutable history; these fields are the cross-page read model.
+    current_risk_source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="rule", server_default="rule"
+    )
+    current_risk_score: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    current_risk_level: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="low", server_default="low"
+    )
+    current_ai_result_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("domestic_ai_results.id", ondelete="SET NULL"), nullable=True
+    )
+    current_risk_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+
     # ===== Phase 2-A：Severity / Event State / Resolution Flag =====
     # severity_score：真实危害严重度（仅计真实风险词），供 AlertService 派生 critical 档。
     severity_score: Mapped[int] = mapped_column(
@@ -127,6 +145,14 @@ class Opinion(Base):
         CheckConstraint(
             "ai_analysis_status IN ('pending','processing','completed','failed')",
             name="ck_opinions_ai_analysis_status",
+        ),
+        CheckConstraint(
+            "current_risk_source IN ('rule','ai')",
+            name="ck_opinions_current_risk_source",
+        ),
+        CheckConstraint(
+            "current_risk_level IN ('low','medium','high','unknown')",
+            name="ck_opinions_current_risk_level",
         ),
         CheckConstraint(
             "event_state IN ('occurred','notice','deploy','prevent','resolved')",

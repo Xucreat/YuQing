@@ -115,132 +115,13 @@
 
 
 
-    <section v-if="activeTab === 'opinions'" class="panel">
+    <section v-if="activeTab === 'opinions'">
       <div class="subtabs">
         <button class="tab" :class="{ active: opinionSection === 'list' }" @click="opinionSection = 'list'">国外舆情</button>
         <button class="tab" :class="{ active: opinionSection === 'ai-review' }" @click="opinionSection = 'ai-review'; loadManualReviews()">AI 人工复核</button>
       </div>
-      <template v-if="opinionSection === 'list'">
-        <div class="toolbar">
-          <input v-model="opinionFilters.q" class="input" placeholder="搜索标题、摘要、正文" @keyup.enter="loadOpinions" />
-          <select v-model="opinionFilters.source" class="input" @change="loadOpinions">
-            <option value="">全部来源</option>
-            <option v-for="source in opinionSources" :key="source" :value="source">{{ source }}</option>
-          </select>
-          <input v-model="opinionFilters.keyword" class="input" placeholder="命中关键词" @keyup.enter="loadOpinions" />
-          <select v-model="riskFilters.language" class="input" @change="loadOpinions(); loadRisk()">
-            <option value="">全部语言</option><option value="zh">中文</option><option value="en">英文</option><option value="mixed">中英混合</option><option value="unknown">未知</option>
-          </select>
-          <select v-model="riskSource" class="input" aria-label="risk view source" @change="setRiskSource(riskSource)">
-            <option value="rule">系统规则</option><option value="ai">AI 研判</option>
-          </select>
-          <span class="muted">当前查看口径：{{ displaySourceLabel() }}</span>
-          <select v-model="riskFilters.risk_level" class="input" @change="loadOpinions(); loadRisk()">
-            <option value="">全部风险等级</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option><option value="unknown">未知</option>
-          </select>
-          <select v-model="riskFilters.analysis_status" class="input" @change="loadOpinions(); loadRisk()">
-            <option value="">全部分析状态</option><option value="completed">完成</option><option value="skipped">跳过</option><option value="failed">失败</option>
-          </select>
-          <input v-model="opinionFilters.date_from" class="input date-input" type="date" title="发布时间起始" @change="loadOpinions" />
-          <input v-model="opinionFilters.date_to" class="input date-input" type="date" title="发布时间截止" @change="loadOpinions" />
-          <button class="btn btn-secondary" @click="loadOpinions">搜索</button>
-          <button v-if="canAnalyzeAI" class="btn btn-primary" :disabled="aiBatchLoading" @click="openAIBatch">批量 AI 研判</button>
-          <button v-if="canReadAIBatches" class="btn btn-secondary" :disabled="aiBatchLoading" @click="openAIBatchHistory">AI 研判运行记录</button>
-          <span class="muted">AI 研判结果仅用于辅助分析，不改变系统正式风险和告警</span>
-        </div>
-        <div v-if="aiBatchRun && !isAIBatchFinished" class="ai-batch-status">
-          <div class="ai-batch-status-head">
-            <strong>AI 批量研判 {{ zh(aiBatchRun.status) }}</strong>
-            <span class="ai-batch-count">{{ aiBatchRun.processed_count || 0 }} / {{ aiBatchRun.total_count || 0 }}</span>
-          <span class="ai-batch-step">{{ aiBatchStepText(aiBatchRun.step) }}</span>
-            <button class="link-btn danger" v-if="canCancelAIBatch && (aiBatchRun.status === 'running' || aiBatchRun.status === 'pending')" @click="cancelAIBatch">取消</button>
-          </div>
-          <div class="ai-batch-progress-track" role="progressbar" :aria-valuenow="batchProgress" aria-valuemin="0" aria-valuemax="100">
-            <span class="ai-batch-progress-bar" :style="{ width: `${batchProgress}%` }"></span>
-          </div>
-          <div class="ai-batch-status-meta">
-            <span>{{ batchProgress }}%</span>
-            <span>成功 {{ aiBatchRun.success_count || 0 }}</span>
-            <span>失败 {{ aiBatchRun.failed_count || 0 }}</span>
-            <span>跳过 {{ aiBatchRun.skipped_count || 0 }}</span>
-            <span v-if="aiBatchRun.started_at" class="muted">开始：{{ formatTime(aiBatchRun.started_at) }}</span>
-          </div>
-          <p v-if="(aiBatchRun.failures || []).length" class="ai-batch-inline-error">失败 {{ aiBatchRun.failures.length }} 条：{{ (aiBatchRun.failures || []).map((item: any) => item.error || item.message || item.code || '未知错误').slice(0, 2).join('；') }}</p>
-        </div>
-        <div class="table-wrap tbl-scroll">
-          <table>
-            <thead><tr><th>标题</th><th>来源快照</th><th>命中关键词</th><th>发布时间</th><th>采集时间</th><th>当前风险分</th><th>当前等级</th><th>风险来源</th><th>规则 / AI</th><th>情感</th><th>风险类别</th><th>命中风险词</th><th>分析状态</th><th>分析时间</th><th>版本</th><th>操作</th></tr></thead>
-            <tbody>
-              <tr v-for="row in opinions" :key="row.id" @click="openOpinion(row.id)">
-                <td class="title-cell">{{ row.title || '无标题' }}</td>
-                <td>{{ row.source_name_snapshot }}</td>
-                <td><span v-for="word in row.matched_keywords" :key="word" class="tag">{{ word }}</span></td>
-                <td>{{ formatTime(row.published_at) }}</td>
-                <td>{{ formatTime(row.collected_at) }}</td>
-                <td>{{ displayOf(row)?.risk_score ?? '-' }}</td>
-                <td><span class="status" :class="{ on: displayOf(row)?.risk_level === 'high' }">{{ zh(displayOf(row)?.risk_level) }}</span></td>
-                <td><span class="src-tag" :class="{ ai: displayOf(row)?.source === 'ai' }">{{ displayOf(row)?.source === 'ai' ? 'AI 研判' : '系统规则' }}</span></td>
-                <td class="dual-cell">
-                  <span>规则 {{ ruleOf(row)?.risk_score ?? '-' }}</span>
-                  <span class="muted">{{ aiHistoryLabel(row) }}</span>
-                </td>
-                <td>{{ zh(displayOf(row)?.sentiment) }}</td>
-                <td>{{ zh(ruleOf(row)?.risk_category) }}</td>
-                <td>
-                  <span v-for="term in (riskOf(row.id)?.matched_terms || [])" :key="term.word" class="tag">{{ term.word }}</span>
-                  <span v-if="!(riskOf(row.id)?.matched_terms || []).length" class="muted">无</span>
-                </td>
-                <td><span class="status" :class="{ on: ruleOf(row)?.analysis_status === 'completed' }">{{ zh(ruleOf(row)?.analysis_status) }}</span></td>
-                <td>{{ formatTime(displayOf(row)?.evaluated_at) }}</td>
-                <td>{{ displayOf(row)?.model_version || '-' }}</td>
-                <td class="actions">
-                  <button class="link-btn" :disabled="!canAnalyzeRisk" @click.stop="analyzeRisk(row.id)">{{ ruleOf(row) ? '重新分析' : '分析' }}</button>
-                </td>
-              </tr>
-              <tr v-if="!opinions.length"><td colspan="16" class="empty">暂无外网舆情</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="pager" v-if="opinionTotal > 0">
-          <Pager :total="opinionTotal" v-model:current-page="opinionPage" :page-size="opinionSize" @current-change="loadOpinions" />
-        </div>
-      </template>
-      <div v-else-if="opinionSection === 'ai-review' && canReadReviewSection" class="table-wrap">
-        <div class="review-filter">
-          <button class="seg" :class="{ active: reviewStatusFilter === 'pending_review' }" @click="reviewStatusFilter = 'pending_review'; loadManualReviews()">待复核</button>
-          <button class="seg" :class="{ active: reviewStatusFilter === 'confirmed' }" @click="reviewStatusFilter = 'confirmed'; loadManualReviews()">已确认</button>
-          <button class="seg" :class="{ active: reviewStatusFilter === 'rejected' }" @click="reviewStatusFilter = 'rejected'; loadManualReviews()">已驳回</button>
-          <button class="seg" :class="{ active: reviewStatusFilter === 'all' }" @click="reviewStatusFilter = 'all'; loadManualReviews()">全部</button>
-          <span class="muted review-filter-tip">操作后不会丢失：已处理的舆情可在「已确认 / 已驳回 / 全部」中回看与追溯</span>
-        </div>
-        <div v-if="reviewStatusFilter === 'pending_review'" class="review-toolbar">
-          <el-dropdown trigger="click" :disabled="!!reviewActionId" @command="onBatchCommand">
-            <button class="btn btn-primary" :disabled="!!reviewActionId">批量操作 ▾</button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item v-if="canReviewAI" command="use_ai_display" :disabled="!selectedReviewIds.length">确认选中采用 AI 展示</el-dropdown-item>
-                <el-dropdown-item v-if="canConfirmEventReview" command="confirm_event_change" :disabled="!selectedReviewIds.length">确认选中事件影响</el-dropdown-item>
-                <el-dropdown-item v-if="canConfirmAlertReview" command="confirm_alert_change" :disabled="!selectedReviewIds.length">确认选中预警影响</el-dropdown-item>
-                <el-dropdown-item v-if="canRejectAIReview" command="reject_change" :disabled="!selectedReviewIds.length">驳回选中</el-dropdown-item>
-                <el-dropdown-item v-if="canFullConfirmAI && canConfirmEventReview" command="confirm_event_all" divided :disabled="!manualReviews.length">全量确认事件</el-dropdown-item>
-                <el-dropdown-item v-if="canFullConfirmAI && canRejectAIReview" command="reject_all" :disabled="!manualReviews.length">全量驳回</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-          <span class="muted review-toolbar-hint">先勾选左侧复选框，再从「批量操作」中选择动作</span>
-        </div>
-        <table>
-          <thead><tr><th><input type="checkbox" :checked="selectedReviewIds.length === manualReviews.length && manualReviews.length > 0" @change="toggleAllReviews" /></th><th>舆情标题</th><th>舆情 ID</th><th>规则风险</th><th>AI 风险</th><th>事件影响</th><th>预警影响</th><th>状态</th><th>决策</th><th>操作人</th><th>操作时间</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="review in manualReviews" :key="review.id">
-              <td><input v-model="selectedReviewIds" type="checkbox" :value="review.id" /></td><td class="review-title-cell"><button class="title-link" type="button" :title="review.opinion_title || '打开舆情详情'" @click="openOpinion(review.foreign_opinion_id)">{{ review.opinion_title || `舆情 #${review.foreign_opinion_id}` }}</button><span class="muted">{{ review.opinion_source || '-' }}</span></td><td>{{ review.foreign_opinion_id }}</td><td>{{ review.rule_risk_snapshot?.risk_score ?? '-' }} / {{ zh(review.rule_risk_snapshot?.risk_level) }}</td><td>{{ review.ai_risk_snapshot?.risk_score ?? '-' }} / {{ zh(review.ai_risk_snapshot?.risk_level) }}</td><td>{{ review.event_candidate_count || review.event_preview?.candidate_count || 0 }} 个候选</td><td>{{ review.alert_candidate_count || review.alert_preview?.candidate_count || 0 }} 个候选</td><td>{{ zh(review.review_status) }}</td><td>{{ zh(review.review_decision) }}</td><td>{{ review.reviewed_by_name || (review.reviewed_by ? '#' + review.reviewed_by : '-') }}</td><td>{{ review.reviewed_at ? new Date(review.reviewed_at).toLocaleString() : '-' }}</td>
-              <td v-if="review.review_status === 'pending_review'" class="actions"><button v-if="canReviewAI" class="link-btn" :disabled="reviewActionId === review.id" @click="decideReview(review, 'use_ai_display')">采用 AI 展示</button><button v-if="canReviewAI" class="link-btn" :disabled="reviewActionId === review.id" @click="decideReview(review, 'keep_rule')">保留规则</button><button v-if="canConfirmEventReview" class="link-btn" :disabled="reviewActionId === review.id" @click="decideReview(review, 'confirm_event_change')">确认事件</button><button v-if="canConfirmAlertReview" class="link-btn" :disabled="reviewActionId === review.id" @click="decideReview(review, 'confirm_alert_change')">确认预警</button><button v-if="canRejectAIReview" class="link-btn danger" :disabled="reviewActionId === review.id" @click="decideReview(review, 'reject_change')">驳回</button></td>
-              <td v-else class="muted">{{ review.review_reason || '-' }}</td>
-            </tr>
-            <tr v-if="!manualReviews.length"><td colspan="12" class="empty">{{ reviewStatusFilter === 'pending_review' ? '暂无待复核结果' : '该筛选下暂无复核记录' }}</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <ForeignOpinionListView v-if="opinionSection === 'list'" />
+      <ForeignAIReviewView v-else-if="opinionSection === 'ai-review'" />
     </section>
 
 
@@ -292,14 +173,22 @@
       </div>
       <div v-else-if="eventSection === 'confirmed'" class="table-wrap">
         <table>
-          <thead><tr><th>标题</th><th>语言</th><th>确认来源</th><th>状态</th><th>风险快照</th><th>热度</th><th>文章数</th><th>来源数</th><th>置信度</th><th>首次出现</th><th>最近出现</th><th>操作</th></tr></thead>
+          <thead><tr><th>标题</th><th>语言</th><th>确认来源</th><th>状态</th><th>正式记录风险</th><th>关联舆情当前风险</th><th>热度</th><th>文章数</th><th>来源数</th><th>置信度</th><th>首次出现</th><th>最近出现</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="row in foreignEvents" :key="row.id" @click="loadEventDetail(row.id)">
               <td class="title-cell">{{ row.title || '无标题' }}</td>
                <td>{{ zh(row.language) }}</td>
                <td>{{ zh(row.confirmation_source || 'manual') }}</td>
               <td><span class="status" :class="{ on: row.event_status === 'monitoring', failed: row.event_status === 'failed' }">{{ zh(row.event_status) }}</span></td>
-              <td>{{ zh(row.risk_level) }}</td>
+              <td>{{ zh(row.formal_risk_level || row.risk_level) }}</td>
+              <td>
+                <span v-if="row.linked_opinion_current_risk">
+                  {{ row.linked_opinion_current_risk.risk_score ?? '-' }} ·
+                  {{ zh(row.linked_opinion_current_risk.risk_level) }}
+                  <small class="muted">（{{ row.linked_opinion_current_risk.source === 'ai' ? 'AI' : '规则' }}）</small>
+                </span>
+                <span v-else>-</span>
+              </td>
               <td>{{ row.heat_score ?? '-' }}</td>
               <td>{{ row.opinion_count }}</td>
               <td>{{ row.source_count }}</td>
@@ -308,7 +197,7 @@
               <td>{{ formatTime(row.last_seen_at) }}</td>
               <td><button class="link-btn" :disabled="!canChangeEventStatus || eventActionKey === `event-close-${row.id}`" @click.stop="closeEvent(row)">关闭</button><button class="link-btn" :disabled="!canChangeEventStatus || eventActionKey === `event-archive-${row.id}`" @click.stop="archiveEvent(row)">归档</button></td>
             </tr>
-            <tr v-if="!foreignEvents.length"><td colspan="12" class="empty">暂无已确认外网事件</td></tr>
+            <tr v-if="!foreignEvents.length"><td colspan="13" class="empty">暂无已确认外网事件</td></tr>
           </tbody>
         </table>
       </div>
@@ -319,6 +208,8 @@
           <span>审核来源：{{ zh(selectedForeignEvent.auto_aggregation?.review_source) }}</span>
           <span>置信度：{{ Math.round((selectedForeignEvent.confidence || 0) * 100) }}%</span>
           <span>文章数：{{ selectedForeignEvent.opinion_count }} · 来源数：{{ selectedForeignEvent.source_count }}</span>
+          <span>正式记录风险：{{ selectedForeignEvent.formal_risk_score ?? selectedForeignEvent.risk_score ?? '-' }} · {{ zh(selectedForeignEvent.formal_risk_level || selectedForeignEvent.risk_level) }}</span>
+          <span v-if="selectedForeignEvent.linked_opinion_current_risk">关联舆情当前风险：{{ selectedForeignEvent.linked_opinion_current_risk.risk_score ?? '-' }} · {{ zh(selectedForeignEvent.linked_opinion_current_risk.risk_level) }}</span>
           <details v-if="selectedForeignEvent.auto_aggregation?.evidence"><summary>聚合证据</summary><pre>{{ JSON.stringify(selectedForeignEvent.auto_aggregation.evidence, null, 2) }}</pre></details>
         </div>
         <div class="event-detail-head">
@@ -335,83 +226,14 @@
         <div v-for="opinion in selectedForeignEvent.opinions" :key="opinion.id" class="event-opinion">
           <strong>{{ opinion.title }}</strong>
           <span class="muted">{{ opinion.source_name_snapshot }} · {{ formatTime(opinion.published_at) }}</span>
+          <span v-if="opinion.current_risk" class="muted">当前风险：{{ opinion.current_risk.risk_score ?? '-' }} · {{ zh(opinion.current_risk.risk_level) }}</span>
           <a :href="opinion.url" target="_blank" rel="noreferrer" class="original">原文</a>
         </div>
       </article>
     </section>
 
     <ForeignOpinionDetailModal v-model="detailVisible" :opinion-id="detailId" :risk-source="riskSource" @update:risk-source="setRiskSource" />
-    <el-dialog v-model="aiBatchDialog" title="批量 AI 研判" width="min(640px, calc(100vw - 24px))">
-      <div class="ai-batch-options">
-        <label>研判范围
-          <select v-model="aiBatchConfig.scope" class="input" @change="refreshAIBatchPreview">
-            <option value="count">按数量（最近 N 条）</option>
-            <option value="time">按时间范围</option>
-            <option value="full">全量 AI 研判</option>
-          </select>
-        </label>
-        <label v-if="aiBatchConfig.scope === 'count'">最近 N 条
-          <input v-model.number="aiBatchConfig.recent_n" class="input" type="number" min="1" max="100000" @change="refreshAIBatchPreview" />
-        </label>
-        <template v-if="aiBatchConfig.scope === 'time'">
-          <label>发布时间起始日期<input v-model="aiBatchConfig.date_from" class="input" type="date" @change="refreshAIBatchPreview" /></label>
-          <label>发布时间结束日期<input v-model="aiBatchConfig.date_to" class="input" type="date" @change="refreshAIBatchPreview" /></label>
-        </template>
-        <label class="check-row"><input v-model="aiBatchConfig.use_current_filters" type="checkbox" @change="refreshAIBatchPreview" /> 仅选择当前筛选结果</label>
-        <label class="check-row"><input v-model="aiBatchConfig.only_unanalyzed" type="checkbox" @change="refreshAIBatchPreview" /> 仅处理未完成 AI 研判的记录</label>
-        <label class="check-row"><input v-model="aiBatchConfig.force" type="checkbox" @change="refreshAIBatchPreview" /> 强制重新研判已有 AI 结果</label>
-        <p v-if="aiBatchConfig.scope === 'full'" class="warning-text">全量任务可能消耗大量 Token 并运行较长时间。AI 结果仍须人工复核后才会进入正式事件或预警。</p>
-      </div>
-      <div v-if="aiBatchPreview" class="ai-batch-preview">
-        <p>符合条件舆情：<strong>{{ aiBatchPreview.matched_count }}</strong> 条</p>
-        <p>已有 AI 结果：<strong>{{ aiBatchPreview.existing_ai_result_count }}</strong> 条 · 待分析：<strong>{{ aiBatchPreview.pending_analysis_count }}</strong> 条</p>
-        <p>待分析：<strong>{{ aiBatchPreview.pending_analysis_count }}</strong> 条 · 预计 Token：<strong>{{ aiBatchPreview.estimated_token_usage }}</strong></p>
-        <p>预计耗时：{{ aiBatchPreview.estimated_duration_seconds }} 秒</p>
-        <p>风险分布：高 {{ aiBatchPreview.risk_level_counts?.high || 0 }} · 中 {{ aiBatchPreview.risk_level_counts?.medium || 0 }} · 低 {{ aiBatchPreview.risk_level_counts?.low || 0 }}</p>
-        <p>可能影响：事件候选 {{ aiBatchPreview.possible_event_count || 0 }} 个 · 预警 {{ aiBatchPreview.possible_alert_count || 0 }} 个</p>
-        <p class="muted">AI 结果必须经过人工复核后，才可用于正式事件或预警变更。</p>
-        <p v-if="aiBatchPreview.preview_warning" class="warning-text">⚠ {{ aiBatchPreview.preview_warning }}</p>
-        <p v-if="aiBatchPreview.token_budget_exceeded" class="warning-text">⚠ 预计 Token 超出预算，提交将被拦截，请缩小范围或调高预算。</p>
-      </div>
-      <template #footer><button class="btn btn-secondary" @click="aiBatchDialog = false">取消</button><button class="btn btn-primary" :disabled="aiBatchLoading || !aiBatchPreview?.opinion_ids?.length" @click="startAIBatch">确认提交</button></template>
-    </el-dialog>
   </div>
-  <!-- AI 研判运行记录（批量任务历史） -->
-  <el-dialog v-model="aiBatchHistoryDialog" title="AI 研判运行记录" width="min(880px, calc(100vw - 24px))">
-    <div v-if="aiBatchHistoryLoading" class="muted">加载中...</div>
-    <div v-else-if="!aiBatchHistory.length" class="muted">暂无批量 AI 研判运行记录</div>
-    <div v-else class="table-wrap">
-      <table>
-        <thead><tr><th>运行号</th><th>范围</th><th>状态</th><th>进度</th><th>成功/失败/跳过</th><th>开始</th><th>结束</th><th>操作</th></tr></thead>
-        <tbody>
-          <tr v-for="r in aiBatchHistory" :key="r.run_id" :class="{ active: aiBatchHistorySel && aiBatchHistorySel.run_id === r.run_id }" @click="openAIBatchHistoryDetail(r.run_id)">
-            <td>{{ r.run_id.slice(0, 8) }}</td>
-            <td>{{ zh(r.scope) }}</td>
-            <td><span class="status" :class="{ on: r.status === 'success' || r.status === 'partial' }">{{ zh(r.status) }}</span></td>
-            <td>{{ r.processed_count || 0 }}/{{ r.total_count || 0 }}</td>
-            <td>{{ r.success_count || 0 }} / {{ r.failed_count || 0 }} / {{ r.skipped_count || 0 }}</td>
-            <td>{{ formatTime(r.started_at) }}</td>
-            <td>{{ formatTime(r.finished_at) }}</td>
-            <td><button class="link-btn" @click.stop="openAIBatchHistoryDetail(r.run_id)">查看</button></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div v-if="aiBatchHistorySel" class="ai-batch-details ai-batch-history-detail">
-      <h4>运行详情 {{ aiBatchHistorySel.run_id }}</h4>
-      <span>状态：{{ zh(aiBatchHistorySel.status) }}</span>
-      <span>进度：{{ aiBatchHistorySel.processed_count || 0 }}/{{ aiBatchHistorySel.total_count || 0 }}（{{ batchProgressOf(aiBatchHistorySel) }}%）</span>
-      <span>当前步骤：{{ aiBatchHistorySel.step || '-' }}</span>
-      <span>成功 {{ aiBatchHistorySel.success_count || 0 }} · 失败 {{ aiBatchHistorySel.failed_count || 0 }} · 跳过 {{ aiBatchHistorySel.skipped_count || 0 }}</span>
-      <span>开始：{{ aiBatchHistorySel.started_at || '-' }}</span>
-      <span>结束：{{ aiBatchHistorySel.finished_at || '-' }}</span>
-      <span>预估 Token：{{ aiBatchHistorySel.estimated_token_usage ?? '-' }}</span>
-      <span>实际 Token：{{ aiBatchHistorySel.actual_token_usage ?? '-' }}</span>
-      <p v-if="(aiBatchHistorySel.failures || []).length" class="failures">失败明细：{{ (aiBatchHistorySel.failures || []).map((item: any) => `#${item.opinion_id}: ${item.error}`).join('；') }}</p>
-      <p v-if="aiBatchHistorySel.event_preview" class="muted">可能影响事件候选：{{ aiBatchHistorySel.event_preview?.candidate_count ?? 0 }}</p>
-      <p v-if="aiBatchHistorySel.alert_preview" class="muted">可能影响预警：{{ aiBatchHistorySel.alert_preview?.triggered_count ?? 0 }}</p>
-    </div>
-  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -423,6 +245,8 @@ import api, { pollTask } from '@/api'
 import { useRoute, useRouter } from 'vue-router'
 import { usePermission } from '@/composables/usePermission'
 import ForeignOpinionDetailModal from '@/views/foreign/ForeignOpinionDetailModal.vue'
+import ForeignAIReviewView from '@/views/foreign/ForeignAIReviewView.vue'
+import ForeignOpinionListView from '@/views/foreign/ForeignOpinionListView.vue'
 import Pager from '@/components/Pager.vue'
 
 type Tab = 'dashboard' | 'opinions' | 'events'
@@ -524,13 +348,17 @@ type ForeignEvent = {
   confirmation_source?: string
   auto_aggregation?: { review_source?: string; evidence?: Record<string, unknown> }
   risk_level: string
+  risk_score: number | null
+  formal_risk_score?: number | null
+  formal_risk_level?: string | null
+  linked_opinion_current_risk?: { source: 'current' | 'rule' | 'ai'; risk_score: number | null; risk_level: string; opinion_id?: number; opinion_count?: number } | null
   opinion_count: number
   source_count: number
   confidence: number
   heat_score: number | null
   first_seen_at?: string | null
   last_seen_at?: string | null
-  opinions?: Array<{ id: number; title: string; source_name_snapshot: string; url: string; summary?: string; content?: string; published_at?: string | null }>
+  opinions?: Array<{ id: number; title: string; source_name_snapshot: string; url: string; summary?: string; content?: string; published_at?: string | null; current_risk?: { source: 'current' | 'rule' | 'ai'; risk_score: number | null; risk_level: string } | null }>
 }
 type ForeignEventRun = {
   id: number
@@ -635,12 +463,14 @@ const riskSize = 100
 const riskMaxPages = 20
 const detailVisible = ref(false)
 const detailId = ref<number | null>(null)
-type RiskSource = 'rule' | 'ai'
+type RiskSource = 'current' | 'rule' | 'ai'
 const riskSource = ref<RiskSource>(
-  window.localStorage.getItem('foreign-risk-source') === 'ai' ? 'ai' : 'rule',
+  window.localStorage.getItem('foreign-risk-source') === 'ai'
+    ? 'ai'
+    : window.localStorage.getItem('foreign-risk-source') === 'rule' ? 'rule' : 'current',
 )
 function setRiskSource(value: RiskSource) {
-  riskSource.value = value === 'ai' ? 'ai' : 'rule'
+  riskSource.value = value === 'ai' || value === 'rule' ? value : 'current'
   window.localStorage.setItem('foreign-risk-source', riskSource.value)
   loadOpinions()
 }
@@ -669,9 +499,8 @@ function effSourceLabel(row: EffectiveRiskView | null | undefined) {
   const eff = effOf(row)
   if (!eff) return '-'
   if (eff.reason === 'not_analyzed') return '未研判'
-  return '规则'
+  return eff.source === 'ai' ? 'AI 研判' : '规则'
 }
-// AI 结果始终保留为历史，不参与当前有效风险。
 function aiHistoryLabel(row: EffectiveRiskView | null | undefined) {
   const ai = aiOf(row)
   if (!ai) return '未做 AI 研判'
@@ -679,7 +508,7 @@ function aiHistoryLabel(row: EffectiveRiskView | null | undefined) {
   return `AI ${score}（历史）`
 }
 function displaySourceLabel() {
-  return riskSource.value === 'ai' ? 'AI 研判' : '系统规则'
+  return riskSource.value === 'ai' ? 'AI 研判' : riskSource.value === 'rule' ? '系统规则' : '持久化当前风险'
 }
 // 枚举值中文映射（仅前端展示，不改变任何接口取值）
 const ZH_DICT: Record<string, string> = {
@@ -688,7 +517,7 @@ const ZH_DICT: Record<string, string> = {
   completed: '已完成', pending: '待处理', processing: '进行中', running: '运行中', queued: '排队中',
   failed: '失败', success: '成功', partial: '部分成功', skipped: '已跳过', error: '异常',
   candidate: '候选', converted: '已转正', confirmed: '已确认', rejected: '已拒绝', merged: '已合并',
-  pending_review: '待人工复核', use_ai_display: '采用 AI 展示', keep_rule: '保留规则',
+  pending_review: '待人工复核', use_ai_display: '采用 AI 作为当前风险', keep_rule: '保留规则',
   confirm_event_change: '确认事件影响', confirm_alert_change: '确认预警影响', reject_change: '驳回',
   monitoring: '监测中', closed: '已关闭', archived: '已归档', split: '已拆分', dismissed: '已忽略',
   triggered: '待处理', acknowledged: '已确认', resolved: '已解决', suppressed: '已抑制',
@@ -1398,8 +1227,8 @@ function reviewResultSummary(body: any): string {
   return parts.join('；')
 }
 const REVIEW_DECISION_HINT: Record<string, string> = {
-  use_ai_display: '将把该舆情展示用的风险分切换为 AI 风险分（不改变正式规则风险，仅影响展示）。此操作不可撤销。',
-  keep_rule: '将保留系统规则风险分作为展示用风险。此操作不可撤销。',
+  use_ai_display: '将采用 AI 研判结果作为该舆情的当前风险，普通列表、驾驶舱、统计及关联展示将读取 AI 风险；正式预警和事件记录风险保持不变。此操作不可撤销。',
+  keep_rule: '将保留系统规则风险作为该舆情的当前风险；正式预警和事件记录风险保持不变。此操作不可撤销。',
   confirm_event_change: '将为该舆情簇创建正式外网事件并生成正式记录。此操作不可撤销。',
   confirm_alert_change: '将依据 AI 预警候选生成正式外网预警（站内告警，不发送外部通知）。此操作不可撤销。',
   reject_change: '将驳回该条复核（状态置为已驳回），不再生成正式事件或预警。此操作不可撤销。',

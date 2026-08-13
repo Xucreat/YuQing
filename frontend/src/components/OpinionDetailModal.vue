@@ -381,9 +381,9 @@ async function triggerAnalyze() {
   const id = detail.value.id
   analyzing.value = true
   try {
-    const { data } = await api.post<Opinion>('/analyze/' + id)
+    const { data } = await api.post<Opinion & { message?: string }>('/analyze/' + id)
     detail.value = data
-    ElMessage.success('AI 分析完成')
+    ElMessage.success(data.message || 'AI 研判完成，已进入人工复核')
   } catch (err: any) {
     // RBAC 403 已由全局拦截器统一提示
     if (!isPermissionDenied(err)) {

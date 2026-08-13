@@ -17,11 +17,11 @@ from html.parser import HTMLParser
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import func, or_, select, delete as sa_delete, text
+from sqlalchemy import case, func, or_, select, delete as sa_delete, text
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
-from app.core.permissions import require_permission, require_admin
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.opinion import Opinion
 from app.models.user import User
@@ -43,6 +43,13 @@ MAX_SIZE = 100
 # 默认舆情列表隐藏的低价值内容类型（数据仍保留，仅不默认展示）。
 # 注意：entertainment 不在其中——部分娱乐内容可能演化为公共事件，保持展示。
 LOW_VALUE_CONTENT_TYPES = frozenset({"irrelevant", "advertising"})
+
+
+def _current_risk_score_expression():
+    return case(
+        (Opinion.current_risk_updated_at.is_not(None), Opinion.current_risk_score),
+        else_=Opinion.risk_score,
+    )
 
 
 @opinions_router.get("", response_model=OpinionListResponse)
@@ -89,10 +96,11 @@ def list_opinions(
         stmt = stmt.where(Opinion.source == source)
     if risk_level:
         stmt = stmt.where(Opinion.sentiment == risk_level)
+    current_score = _current_risk_score_expression()
     if risk_min is not None:
-        stmt = stmt.where(Opinion.risk_score >= risk_min)
+        stmt = stmt.where(current_score >= risk_min)
     if risk_max is not None:
-        stmt = stmt.where(Opinion.risk_score <= risk_max)
+        stmt = stmt.where(current_score <= risk_max)
     if content_type:
         stmt = stmt.where(Opinion.content_type == content_type)
     # 展示治理：默认隐藏低价值类型（irrelevant / advertising）。
@@ -487,10 +495,10 @@ def update_opinion_batch(
 def delete_opinion_batch(
     payload: OpinionBatchDelete,
     request: Request,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("opinions:delete")),
     db: Session = Depends(get_db),
 ) -> dict:
-    """批量删除舆情（admin）。
+    """批量删除舆情（opinions:delete）。
 
     - ids 去重；超过 200 条返回 400。
     - 循环复用 _delete_opinion（audit=False）做级联清理，不逐条审计。
@@ -528,10 +536,10 @@ def delete_opinion_batch(
 def delete_opinion(
     opinion_id: int,
     request: Request,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("opinions:delete")),
     db: Session = Depends(get_db),
 ) -> dict:
-    """删除舆情（admin）。含级联清理，写单条 OPINION_DELETE 审计。"""
+    """删除舆情（opinions:delete）。含级联清理，写单条 OPINION_DELETE 审计。"""
     res = _delete_opinion(db, opinion_id, request, current_user, audit=True)
     if res is None:
         raise HTTPException(

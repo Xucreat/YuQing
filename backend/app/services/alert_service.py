@@ -37,6 +37,10 @@ class AlertService:
         now = datetime.now(timezone.utc)
 
         for rule in rules:
+            # AI-risk rules are review-only: they create DomesticAIAlertCandidate
+            # rows after AI analysis, never formal AlertRecord rows here.
+            if getattr(rule, "rule_type", "risk_score") == "ai_risk_score":
+                continue
             q = db.query(Opinion)
             if rule.risk_threshold > 0:
                 q = q.where(Opinion.risk_score >= rule.risk_threshold)
@@ -147,6 +151,12 @@ class AlertService:
                     # Phase 2-B.1：新告警统一初始为待处置。仅赋初值，
                     # evaluate 不查询/不依赖 status，风险等级与 trigger_reason 逻辑完全不变。
                     status="pending",
+                    rule_risk_snapshot={
+                        "source": "rule",
+                        "risk_score": opinion.risk_score,
+                        "risk_level": derived_level,
+                        "sentiment": opinion.sentiment,
+                    },
                     created_at=now,
                 )
                 db.add(record)

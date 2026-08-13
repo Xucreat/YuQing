@@ -13,7 +13,7 @@ import logging
 import re
 from typing import Any, Callable, TypeVar
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.models.collector_run import CollectorRun
@@ -139,6 +139,37 @@ def _current_risks(db: Session, opinion_ids: set[int] | None = None) -> list[For
     return list(db.scalars(stmt).all())
 
 
+def _current_risk_levels(
+    db: Session,
+    opinion_ids: set[int] | None = None,
+) -> dict[int, str]:
+    rule_level = (
+        select(ForeignRiskResult.risk_level)
+        .where(
+            ForeignRiskResult.foreign_opinion_id == ForeignOpinion.id,
+            ForeignRiskResult.is_current.is_(True),
+        )
+        .order_by(ForeignRiskResult.id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    stmt = select(
+        ForeignOpinion.id,
+        case(
+            (ForeignOpinion.current_risk_updated_at.is_not(None), ForeignOpinion.current_risk_level),
+            else_=rule_level,
+        ),
+    )
+    if opinion_ids is not None:
+        if not opinion_ids:
+            return {}
+        stmt = stmt.where(ForeignOpinion.id.in_(opinion_ids))
+    return {
+        int(opinion_id): (level or "unknown")
+        for opinion_id, level in db.execute(stmt).all()
+    }
+
+
 def _distribution(counter: Counter[str], *, key: str = "label") -> list[dict[str, Any]]:
     return [{key: label, "count": count} for label, count in sorted(counter.items(), key=lambda item: (-item[1], item[0]))]
 
@@ -151,9 +182,13 @@ def get_dashboard_summary(db: Session, *, days: int = 7) -> dict[str, Any]:
         all_count = int(db.scalar(select(func.count()).select_from(ForeignOpinion)) or 0)
         ids = {row.id for row in rows}
         risks = _current_risks(db, ids)
+        current_levels = _current_risk_levels(db, ids)
         status = Counter((row.analysis_status or "unknown") for row in risks)
         completed = [row for row in risks if row.analysis_status == "completed"]
-        risk_levels = Counter(row.risk_level or "unknown" for row in completed)
+        risk_levels = Counter(
+            current_levels.get(row.foreign_opinion_id, "unknown")
+            for row in completed
+        )
         language = Counter(_language(None, "") for _ in [])
         for row in rows:
             risk = next((item for item in risks if item.foreign_opinion_id == row.id), None)
@@ -184,9 +219,19 @@ def _collection_summary(db: Session, start: datetime, end: datetime) -> dict[str
 def get_dashboard_risk(db: Session, *, days: int = 7) -> dict[str, Any]:
     start, end, days = _window(days)
     rows = _opinions(db, start, end)
-    risks = _current_risks(db, {row.id for row in rows})
+    opinion_ids = {row.id for row in rows}
+    risks = _current_risks(db, opinion_ids)
+    current_levels = _current_risk_levels(db, opinion_ids)
     completed = [row for row in risks if row.analysis_status == "completed"]
-    return {**_base_meta(start, end, days), "analysis_status": dict(Counter(row.analysis_status for row in risks)), "risk_levels": dict(Counter(row.risk_level or "unknown" for row in completed)), "risk_categories": dict(Counter(row.risk_category or "unknown" for row in completed)), "sentiments": dict(Counter(row.sentiment or "unknown" for row in completed))}
+    return {
+        **_base_meta(start, end, days),
+        "analysis_status": dict(Counter(row.analysis_status for row in risks)),
+        "risk_levels": dict(
+            Counter(current_levels.get(row.foreign_opinion_id, "unknown") for row in completed)
+        ),
+        "risk_categories": dict(Counter(row.risk_category or "unknown" for row in completed)),
+        "sentiments": dict(Counter(row.sentiment or "unknown" for row in completed)),
+    }
 
 
 @safe_visualization_query

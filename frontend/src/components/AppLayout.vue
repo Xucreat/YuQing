@@ -91,6 +91,10 @@
           </div>
         </div>
         <div class="actions">
+          <el-radio-group v-model="cockpitScope" v-if="route.path === '/dashboard'" style="margin-right: 12px;">
+            <el-radio-button label="domestic">国内</el-radio-button>
+            <el-radio-button label="foreign">外网</el-radio-button>
+          </el-radio-group>
           <CollectMenu />
         </div>
       </header>
@@ -165,6 +169,7 @@ import { useAlertNotifier } from '@/composables/useAlertNotifier'
 import AlertToastHost from '@/components/AlertToastHost.vue'
 import CollectMenu from '@/components/CollectMenu.vue'
 import api from '@/api'
+import { cockpitScope } from '@/composables/useCockpitScope'
 
 const route = useRoute()
 const router = useRouter()
@@ -255,6 +260,9 @@ const activeMenu = computed(() => {
   if (route.path.startsWith('/opinion')) return '/opinions'
   if (route.path.startsWith('/event')) return '/events'
   if (route.path.startsWith('/system')) return '/system'
+  if (route.path.startsWith('/foreign')) {
+    return '/foreign'
+  }
   return route.path
 })
 
@@ -280,6 +288,7 @@ const pageTitle = computed(() => {
     '/command-screen': '指挥大屏',
   }
   if (route.path.startsWith('/opinion/')) return '舆情详情'
+  if (route.path.startsWith('/opinion') && route.query.scope === 'foreign') return '外网舆情'
   if (route.path.startsWith('/event/')) return '事件详情'
   if (route.path.startsWith('/ai-search/')) return 'AI检索'
   return m[route.path] || '驾驶舱'

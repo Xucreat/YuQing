@@ -294,7 +294,13 @@ def get_dashboard_stats(db: Session, days: int = 7) -> dict:
     high_risk = (
         db.scalar(
             select(func.count(Opinion.id))
-            .where(Opinion.risk_score >= HIGH_RISK_THRESHOLD)
+            .where(
+                case(
+                    (Opinion.current_risk_updated_at.is_not(None), Opinion.current_risk_score),
+                    else_=Opinion.risk_score,
+                )
+                >= HIGH_RISK_THRESHOLD
+            )
             .where(Opinion.geo_filtered.isnot(True))
         )
         or 0
@@ -417,7 +423,10 @@ def get_recent_opinions(db: Session, limit: int = 8) -> list[dict]:
                 Opinion.title,
                 Opinion.source,
                 Opinion.sentiment,
-                Opinion.risk_score,
+                case(
+                    (Opinion.current_risk_updated_at.is_not(None), Opinion.current_risk_score),
+                    else_=Opinion.risk_score,
+                ).label("current_risk_score"),
                 Region.name.label("region_name"),
                 Opinion.created_at,
             )
@@ -435,7 +444,7 @@ def get_recent_opinions(db: Session, limit: int = 8) -> list[dict]:
             "title": r["title"] or "(无标题)",
             "source": r["source"] or "未知",
             "sentiment": r["sentiment"] or "neutral",
-            "risk_score": r["risk_score"] or 0,
+            "risk_score": r["current_risk_score"] or 0,
             "region_name": r["region_name"] or "未知",
             "created_at": r["created_at"].isoformat() if r["created_at"] else "",
         }
@@ -515,7 +524,11 @@ def get_kpi_trends(db: Session, days: int = 14) -> dict:
         )
         .where(and_(
             cast(Opinion.created_at, Date) >= window_start,
-            Opinion.risk_score >= HIGH_RISK_THRESHOLD,
+            case(
+                (Opinion.current_risk_updated_at.is_not(None), Opinion.current_risk_score),
+                else_=Opinion.risk_score,
+            )
+            >= HIGH_RISK_THRESHOLD,
         ))
         .where(Opinion.geo_filtered.isnot(True))
         .group_by(cast(Opinion.created_at, Date))
@@ -680,8 +693,22 @@ def get_risk_distribution(db: Session, days: int = 7) -> dict:
     rl_rows = db.execute(
         select(
             case(
-                (Opinion.risk_score >= 70, "high"),
-                (Opinion.risk_score >= 40, "medium"),
+                (
+                    case(
+                        (Opinion.current_risk_updated_at.is_not(None), Opinion.current_risk_score),
+                        else_=Opinion.risk_score,
+                    )
+                    >= 70,
+                    "high",
+                ),
+                (
+                    case(
+                        (Opinion.current_risk_updated_at.is_not(None), Opinion.current_risk_score),
+                        else_=Opinion.risk_score,
+                    )
+                    >= 40,
+                    "medium",
+                ),
                 else_="low",
             ).label("level"),
             func.count(Opinion.id).label("cnt"),

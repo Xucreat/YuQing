@@ -1,7 +1,7 @@
 """Collector 采集接口（Phase 3A）。
 
 路由（挂载在 /api 下，由 main.py 统一加前缀）：
-  POST   /collector/run     触发一次采集 + 自动 AI 分析闭环（仅超级管理员 require_admin）
+  POST   /collector/run     触发一次采集 + 自动 AI 分析闭环（需 collector:run 权限）
   GET    /collector/status  查询采集状态（登录即可，内存，重启丢失）
 
 严格范围（本阶段）：
@@ -33,7 +33,7 @@ from app.collectors.service import (
     get_collector_status,
 )
 from app.core.dependencies import get_current_user
-from app.core.permissions import require_admin
+from app.core.permissions import require_permission
 from app.core.task_manager import start_task
 from app.db.session import SessionLocal, get_db
 from app.models.data_source import DataSource
@@ -154,11 +154,11 @@ def run_collector(
     request: Request,
     data_source_ids: Optional[list[int]] = Body(None, embed=True),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("collector:run")),
 ) -> CollectorTaskResponse:
     """触发一次采集 + 自动 AI 分析 + 自动聚合闭环（后台异步执行）。
 
-    仅超级管理员可触发（require_admin）：采集属于系统基础设施操作（消耗外部
+    需 collector:run 权限（system_admin / operator 持有）：采集属于系统基础设施操作（消耗外部
     抓取额度与 AI 计费、向 opinions/events 表写入），故收敛为 admin-only。
 
     本接口立即返回 task_id，采集在后台并发抓取（各数据源独立线程，整体耗时≈最慢

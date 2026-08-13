@@ -14,20 +14,19 @@ interpret the raw tables on their own.
 
 Resolution contract
 -------------------
-1. The current effective risk is always the current rule result.
-2. A manually triggered AI result is returned as ``latest_ai_risk`` history
-   and never replaces or escalates the rule result.
-3. Alerts describe their own lifecycle. Their status, expiry, and evaluation
-   source never change ``effective_risk``.
-4. History is never max()-ed into the current risk: an old high AI score cannot
-   inflate a foreign opinion after the rule evaluation changes.
+1. The persisted ``current_risk_*`` fields are the ordinary cross-page risk.
+2. An explicit AI review decision can adopt the latest completed AI result as
+   current risk; otherwise current risk remains the rule baseline.
+3. Rule and AI evaluations remain available as comparison/history fields.
+4. Formal alerts/events keep their own snapshots and never rewrite current risk.
+5. History is never max()-ed into the current risk.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Iterable, Literal, Sequence
 
-from sqlalchemy import inspect, select
+from sqlalchemy import case, inspect, select
 from sqlalchemy.orm import Session
 
 from app.models.foreign_ai_result import ForeignAIResult
@@ -38,6 +37,7 @@ from app.services.foreign_risk_service import (
     HIGH_RISK_THRESHOLD,
     MEDIUM_RISK_THRESHOLD,
 )
+from app.services.current_risk import current_risk_payload
 
 
 # Kept for alert lifecycle presentation and compatibility with existing callers.
@@ -47,7 +47,8 @@ CLOSED_ALERT_STATUSES = ("resolved", "suppressed", "failed")
 
 RULE_SOURCE = "rule"
 AI_SOURCE = "ai"
-RiskSource = Literal["rule", "ai"]
+RiskSource = Literal["current", "rule", "ai"]
+CURRENT_SOURCE = "current"
 
 
 def _utcnow() -> datetime:
@@ -205,10 +206,16 @@ def _effective_payload(
 def _display_payload(
     *,
     source: RiskSource,
+    current: dict[str, Any] | None,
     rule: dict[str, Any] | None,
     ai: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Return the user-selected display risk without changing the effective risk."""
+    """Return current risk by default, or an explicit comparison source."""
+    if source == CURRENT_SOURCE and current is not None:
+        return {
+            **current,
+            "fallback": False,
+        }
     if source == AI_SOURCE and ai is not None:
         return {
             **ai,
@@ -237,10 +244,9 @@ def _display_payload(
 
 def _empty_view() -> dict[str, Any]:
     return {
-        "effective_risk": _effective_payload(
-            rule=None, alert=None
-        ),
-        "display_risk": _display_payload(source=RULE_SOURCE, rule=None, ai=None),
+        "current_risk": None,
+        "effective_risk": _effective_payload(rule=None, alert=None),
+        "display_risk": _display_payload(source=CURRENT_SOURCE, current=None, rule=None, ai=None),
         "rule_risk": None,
         "latest_ai_risk": None,
         "alert": None,
@@ -251,7 +257,7 @@ def resolve_effective_risk(
     db: Session,
     opinion_ids: Sequence[int] | Iterable[int],
     *,
-    risk_source: RiskSource = RULE_SOURCE,
+    risk_source: RiskSource = CURRENT_SOURCE,
     now: datetime | None = None,
 ) -> dict[int, dict[str, Any]]:
     """Resolve the effective-risk view for a batch of foreign opinions."""
@@ -289,6 +295,11 @@ def resolve_effective_risk(
             # whether a later retry has reset ``is_current`` on older rows.
             ai_by_opinion[ai_result.foreign_opinion_id] = ai_result
 
+    opinion_by_id = {
+        row.id: row
+        for row in db.scalars(select(ForeignOpinion).where(ForeignOpinion.id.in_(ids))).all()
+    }
+
     rule_alert_by_opinion: dict[int, ForeignAlert] = {}
     for alert in db.scalars(
         select(ForeignAlert)
@@ -313,13 +324,41 @@ def resolve_effective_risk(
         rule_alert = rule_alert_by_opinion.get(opinion_id)
         rule_payload = _rule_payload(rule_result)
         ai_payload = _ai_payload(ai_result, None, is_active=False)
+        current_payload = current_risk_payload(opinion_by_id.get(opinion_id))
+        opinion_row = opinion_by_id.get(opinion_id)
+        if (
+            current_payload is not None
+            and current_payload["source"] == RULE_SOURCE
+            and opinion_row is not None
+            and opinion_row.current_risk_updated_at is None
+            and rule_payload is None
+        ):
+            current_payload = None
+        if (
+            current_payload is not None
+            and current_payload["source"] == RULE_SOURCE
+            and opinion_row is not None
+            and opinion_row.current_risk_updated_at is None
+            and rule_payload is not None
+        ):
+            current_payload = {
+                **rule_payload,
+                "source": RULE_SOURCE,
+                "ai_result_id": None,
+                "updated_at": None,
+                "reason": "rule_baseline",
+            }
+        if current_payload is not None:
+            current_payload = {
+                **current_payload,
+                "reason": "human_adopted" if current_payload["source"] == AI_SOURCE else "rule_baseline",
+            }
         views[opinion_id] = {
-            "effective_risk": _effective_payload(
-                rule=rule_payload,
-                alert=rule_alert,
-            ),
+            "current_risk": current_payload,
+            "effective_risk": current_payload or _effective_payload(rule=rule_payload, alert=rule_alert),
             "display_risk": _display_payload(
                 source=risk_source,
+                current=current_payload,
                 rule=rule_payload,
                 ai=ai_payload,
             ),
@@ -337,7 +376,7 @@ def resolve_one(
     db: Session,
     opinion_id: int,
     *,
-    risk_source: RiskSource = RULE_SOURCE,
+    risk_source: RiskSource = CURRENT_SOURCE,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Resolve a single opinion; always returns a complete view."""
@@ -347,7 +386,7 @@ def resolve_one(
         opinion_id,
         {
             **_empty_view(),
-            "display_risk": _display_payload(source=risk_source, rule=None, ai=None),
+            "display_risk": _display_payload(source=risk_source, current=None, rule=None, ai=None),
         },
     )
 
@@ -357,7 +396,7 @@ def attach_effective_risk(
     items: list[dict[str, Any]],
     *,
     id_key: str = "id",
-    risk_source: RiskSource = RULE_SOURCE,
+    risk_source: RiskSource = CURRENT_SOURCE,
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Merge the resolver output into already serialized dictionaries.
@@ -374,6 +413,7 @@ def attach_effective_risk(
             item.update(
                 {
                     "effective_risk": None,
+                    "current_risk": None,
                     "display_risk": None,
                     "rule_risk": None,
                     "latest_ai_risk": None,
@@ -386,12 +426,28 @@ def attach_effective_risk(
 
 
 def effective_risk_level_expression(
-    *, risk_source: RiskSource = RULE_SOURCE, now: datetime | None = None
+    *, risk_source: RiskSource = CURRENT_SOURCE, now: datetime | None = None
 ):
     """SQL expression for the selected foreign display risk level.
 
     Used for list filtering so the filter and the rendered column always agree.
     """
+    if risk_source == CURRENT_SOURCE:
+        rule_level = (
+            select(ForeignRiskResult.risk_level)
+            .where(
+                ForeignRiskResult.foreign_opinion_id == ForeignOpinion.id,
+                ForeignRiskResult.is_current.is_(True),
+            )
+            .order_by(ForeignRiskResult.id.desc())
+            .limit(1)
+            .scalar_subquery()
+        )
+        return case(
+            (ForeignOpinion.current_risk_updated_at.is_not(None), ForeignOpinion.current_risk_level),
+            else_=rule_level,
+        )
+
     rule_level = (
         select(ForeignRiskResult.risk_level)
         .where(
@@ -413,8 +469,6 @@ def effective_risk_level_expression(
             .limit(1)
             .scalar_subquery()
         )
-        from sqlalchemy import case
-
         ai_result_id = (
             select(ForeignAIResult.id)
             .where(

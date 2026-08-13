@@ -713,7 +713,7 @@ class ForeignEventService:
                 select(ForeignOpinion).where(ForeignOpinion.id.in_(member_ids))
             ).all()
         )
-        if len(opinions) < 2:
+        if len(opinions) < 2 and confirmation_source != "manual_review_ai":
             raise ValueError("A confirmed foreign event requires at least two articles")
         now = _utcnow()
         event = ForeignEvent(
@@ -1073,6 +1073,9 @@ def serialize_event(event: ForeignEvent) -> dict:
         "event_type": event.event_type,
         "risk_level": event.risk_level,
         "heat_score": event.heat_score,
+        "formal_risk_score": event.heat_score,
+        "formal_risk_level": event.risk_level,
+        "linked_opinion_current_risk": None,
         "first_seen_at": event.first_seen_at.isoformat() if event.first_seen_at else None,
         "last_seen_at": event.last_seen_at.isoformat() if event.last_seen_at else None,
         "opinion_count": event.opinion_count,

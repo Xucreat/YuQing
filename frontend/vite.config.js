@@ -13,7 +13,7 @@ export default defineConfig({
     target: 'esnext',
     minify: false,
     modulePreload: false,
-    emptyOutDir: true,
+    emptyOutDir: false,
   },
   server: {
     port: 5173,

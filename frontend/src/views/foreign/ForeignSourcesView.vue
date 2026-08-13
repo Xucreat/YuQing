@@ -211,6 +211,7 @@ type Source = {
   schedule_interval_minutes?: number
   class_path?: string
   proxy_env?: string
+  proxy_mode?: string | null
   proxy_configured?: boolean
   timeout?: number
   max_retries?: number

@@ -226,8 +226,10 @@ def list_foreign_alerts(
         .limit(size)
     ).all()
     items = [serialize_alert(row) for row in rows]
-    # The alert center reads the same rule-only resolver as the opinion list.
+    # Keep formal alert risk separate from the linked opinion current risk.
     attach_effective_risk(db, items, id_key="foreign_opinion_id")
+    for item in items:
+        item["linked_opinion_current_risk"] = item.get("current_risk")
     return {"items": items, "total": total, "page": page, "size": size}
 
 
@@ -287,8 +289,9 @@ def get_foreign_alert(
         payload.update(resolve_one(db, alert.foreign_opinion_id))
     else:
         payload.update(
-            {"effective_risk": None, "rule_risk": None, "latest_ai_risk": None, "alert": None}
+            {"effective_risk": None, "current_risk": None, "rule_risk": None, "latest_ai_risk": None, "alert": None}
         )
+    payload["linked_opinion_current_risk"] = payload.get("current_risk")
     payload["rule"] = serialize_rule(db.get(ForeignAlertRule, alert.rule_id)) if alert.rule_id and db.get(ForeignAlertRule, alert.rule_id) else None
     payload["actions"] = [serialize_action(item) for item in ForeignAlertService.list_actions(db, alert_id)]
     if alert.foreign_opinion_id:

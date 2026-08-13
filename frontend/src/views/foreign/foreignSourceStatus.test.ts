@@ -71,3 +71,7 @@ if (failures > 0) {
   process.exit(1)
 }
 console.log('\n全部前端状态映射断言通过（success/empty_feed/partial/failed + 代理模式）')
+declare const process: {
+  env: Record<string, string | undefined>
+  exit: (code?: number) => never
+}

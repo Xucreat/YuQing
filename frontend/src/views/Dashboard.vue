@@ -1,5 +1,8 @@
 <template>
   <div class="cockpit" v-loading="loading">
+
+    <!-- ===== 国内：驾驶舱原内容（仅移动展示位置，样式/功能不变） ===== -->
+    <div v-show="scope === 'domestic'" class="cs-domestic">
     <!-- ===== KPI 指标条：一眼掌握核心总量 ===== -->
     <section class="kpi-row" aria-label="核心指标">
       <article class="kpi-card kpi-blue">
@@ -145,6 +148,12 @@
         <div ref="regionRef" class="chart-box"></div>
       </article>
     </section>
+    </div>
+
+    <!-- ===== 外网：Dashboard（复用 ForeignWorkspace；原 /foreign 页面不变） ===== -->
+    <KeepAlive>
+      <div v-if="scope === 'foreign'" class="cs-foreign-wrap"><ForeignWorkspace /></div>
+    </KeepAlive>
 
     <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
 
@@ -204,9 +213,14 @@ import SegmentedControl from "@/components/SegmentedControl.vue"
 import SentimentDonut from "@/components/SentimentDonut.vue"
 import OpinionDetailModal from "@/components/OpinionDetailModal.vue"
 import ReportExportDrawer from "@/components/report/ReportExportDrawer.vue"
+import ForeignWorkspace from "@/views/ForeignWorkspace.vue"
 
 const { can } = usePermission()
 const router = useRouter()
+
+// 国内/外网 视图切换（默认国内驾驶舱；外网复用 ForeignWorkspace 组件，原 /foreign 页面不变）
+import { cockpitScope } from '@/composables/useCockpitScope'
+const scope = cockpitScope
 
 // 点击实时快讯 / 预警滚动条目 -> 打开舆情详情弹窗（与「舆情列表」一致）
 const detailVisible = ref(false)
@@ -521,6 +535,11 @@ watch(wordMode, async (m) => {
   renderWordCloud()
 })
 
+// 国内/外网 切换：切回国内时，ECharts 可能处于隐藏态（v-show），强制 resize 一次保证尺寸正确（无痕切换）
+watch(scope, (s) => {
+  if (s === 'domestic') nextTick(handleResize)
+})
+
 // helpers
 function fmtTime(s: string): string {
   if (!s) return "-"
@@ -573,7 +592,16 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.cockpit { min-height: 100%; max-width: 100%; overflow-x: hidden; }
+.cockpit { position: relative; min-height: 100%; max-width: 100%; overflow-x: hidden; }
+
+.cs-domestic { min-height: 100%; }
+.cs-foreign-wrap { min-height: calc(100vh - 140px); }
+/* 嵌入驾驶舱时隐藏外网页面自身的横向导航栏（概览/舆情/事件等子页签），
+   否则点击会触发 router.push('/foreign') 跳出驾驶舱跳转到其他子页面 */
+.cs-foreign-wrap :deep(.tabs) { display: none !important; }
+@media (max-width: 760px) {
+  .kpi-row { padding-right: 0; }
+}
 
 /* ============ KPI 指标条 ============ */
 .kpi-row {

@@ -29,6 +29,7 @@ from app.services.foreign_event_service import (
     serialize_run,
 )
 from app.services.foreign_content_sanitizer import sanitize_foreign_html
+from app.services.current_risk import current_risk_payload
 from app.services.foreign_event_auto_aggregation_service import (
     ForeignEventAutoAggregationService,
     serialize_auto_result,
@@ -63,6 +64,80 @@ def foreign_event_auto_aggregation_status(
     }
 
 MAX_SIZE = 100
+
+
+def _foreign_current_risk_summary(
+    db: Session,
+    opinions: list[ForeignOpinion],
+) -> dict[str, Any] | None:
+    if not opinions:
+        return None
+    opinion_ids = [item.id for item in opinions]
+    rule_rows = db.scalars(
+        select(ForeignRiskResult)
+        .where(
+            ForeignRiskResult.foreign_opinion_id.in_(opinion_ids),
+            ForeignRiskResult.is_current.is_(True),
+        )
+        .order_by(ForeignRiskResult.id.desc())
+    ).all()
+    rule_by_opinion = {
+        row.foreign_opinion_id: row
+        for row in rule_rows
+    }
+
+    def score(item: ForeignOpinion) -> int:
+        if (
+            (item.current_risk_source or "rule") == "rule"
+            and item.current_risk_updated_at is None
+        ):
+            return int((rule_by_opinion.get(item.id).risk_score or 0) if rule_by_opinion.get(item.id) else 0)
+        return int(item.current_risk_score or 0)
+
+    row = max(opinions, key=score)
+    if (
+        (row.current_risk_source or "rule") == "rule"
+        and row.current_risk_updated_at is None
+        and row.id in rule_by_opinion
+    ):
+        rule = rule_by_opinion[row.id]
+        current = {
+            "source": "rule",
+            "risk_score": rule.risk_score,
+            "risk_level": rule.risk_level,
+        }
+    else:
+        current = current_risk_payload(row) or {}
+    return {
+        "source": current.get("source", "rule"),
+        "risk_score": current.get("risk_score"),
+        "risk_level": current.get("risk_level") or "unknown",
+        "opinion_id": row.id,
+        "opinion_count": len(opinions),
+    }
+
+
+def _attach_foreign_event_current_risk(
+    db: Session,
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    event_ids = [item["id"] for item in items if item.get("id") is not None]
+    if not event_ids:
+        return items
+    rows = db.execute(
+        select(ForeignEventOpinion.foreign_event_id, ForeignOpinion)
+        .join(ForeignOpinion, ForeignOpinion.id == ForeignEventOpinion.foreign_opinion_id)
+        .where(ForeignEventOpinion.foreign_event_id.in_(event_ids))
+    ).all()
+    grouped: dict[int, list[ForeignOpinion]] = {event_id: [] for event_id in event_ids}
+    for event_id, opinion in rows:
+        grouped.setdefault(event_id, []).append(opinion)
+    for item in items:
+        item["linked_opinion_current_risk"] = _foreign_current_risk_summary(
+            db,
+            grouped.get(item["id"], [])
+        )
+    return items
 
 
 class CandidateActionPayload(BaseModel):
@@ -186,8 +261,9 @@ def list_foreign_events(
         .offset((page - 1) * size)
         .limit(size)
     ).all()
+    items = [serialize_event(row) for row in rows]
     return {
-        "items": [serialize_event(row) for row in rows],
+        "items": _attach_foreign_event_current_risk(db, items),
         "total": total,
         "page": page,
         "size": size,
@@ -283,6 +359,9 @@ def list_foreign_event_opinions(
         .offset((page - 1) * size)
         .limit(size)
     ).all()
+    current_by_opinion = {}
+    for _, opinion in rows:
+        current_by_opinion[opinion.id] = _foreign_current_risk_summary(db, [opinion])
     return {
         "items": [
             {
@@ -302,6 +381,7 @@ def list_foreign_event_opinions(
                     "url": opinion.url,
                     "published_at": opinion.published_at.isoformat() if opinion.published_at else None,
                     "collected_at": opinion.collected_at.isoformat() if opinion.collected_at else None,
+                    "current_risk": current_by_opinion.get(opinion.id),
                 },
             }
             for relation, opinion in rows
@@ -336,11 +416,16 @@ def get_foreign_event(
             "url": opinion.url,
             "published_at": opinion.published_at.isoformat() if opinion.published_at else None,
             "collected_at": opinion.collected_at.isoformat() if opinion.collected_at else None,
+            "current_risk": current_risk_payload(opinion),
             "relation_type": relation.relation_type,
             "similarity_score": relation.similarity_score,
         }
         for relation, opinion in links
     ]
+    payload["linked_opinion_current_risk"] = _foreign_current_risk_summary(
+        db,
+        [opinion for _, opinion in links]
+    )
     opinion_ids = [item["id"] for item in payload["opinions"]]
     risk_rows = db.scalars(
         select(ForeignRiskResult).where(

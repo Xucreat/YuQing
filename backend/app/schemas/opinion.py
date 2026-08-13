@@ -58,6 +58,11 @@ class OpinionOut(OpinionBase):
 
     id: int
     risk_score: int
+    current_risk_source: str = "rule"
+    current_risk_score: int = 0
+    current_risk_level: str = "low"
+    current_ai_result_id: Optional[int] = None
+    current_risk_updated_at: Optional[datetime] = None
     sentiment: str
     summary: str
     keywords: str
@@ -100,6 +105,17 @@ class OpinionOut(OpinionBase):
     admission_reason: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DomesticAIAnalysisOut(OpinionOut):
+    """Legacy Opinion payload plus durable domestic AI review metadata."""
+
+    analysis_id: int
+    review_id: int
+    review_status: str
+    event_preview: Dict[str, Any] = {}
+    alert_preview: Dict[str, Any] = {}
+    message: str
 
 
 class OpinionListResponse(BaseModel):

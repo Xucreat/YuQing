@@ -44,6 +44,10 @@ from app.models.foreign_alert_admission_action import ForeignAlertAdmissionActio
 from app.models.foreign_manual_review import ForeignManualReview
 from app.models.foreign_ai_batch_run import ForeignAIBatchRun
 from app.models.foreign_ai_alert_candidate import ForeignAIAlertCandidate
+from app.models.domestic_ai_result import DomesticAIResult
+from app.models.domestic_ai_batch_run import DomesticAIBatchRun
+from app.models.domestic_manual_review import DomesticManualReview
+from app.models.domestic_ai_alert_candidate import DomesticAIAlertCandidate
 
 __all__ = [
     "Base",
@@ -89,4 +93,8 @@ __all__ = [
     "ForeignManualReview",
     "ForeignAIBatchRun",
     "ForeignAIAlertCandidate",
+    "DomesticAIResult",
+    "DomesticAIBatchRun",
+    "DomesticManualReview",
+    "DomesticAIAlertCandidate",
 ]

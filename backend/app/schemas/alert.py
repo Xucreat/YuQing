@@ -7,6 +7,7 @@ class AlertRuleCreate(BaseModel):
     name: str
     description: str = ""
     risk_threshold: int = 70
+    rule_type: str = "risk_score"
     keywords: str = ""
     sources: str = ""
     risk_level: str = "high"
@@ -16,6 +17,7 @@ class AlertRuleUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     risk_threshold: Optional[int] = None
+    rule_type: Optional[str] = None
     keywords: Optional[str] = None
     sources: Optional[str] = None
     risk_level: Optional[str] = None
@@ -26,6 +28,7 @@ class AlertRuleOut(BaseModel):
     name: str
     description: str
     risk_threshold: int
+    rule_type: str = "risk_score"
     keywords: str
     sources: str
     risk_level: str
@@ -45,6 +48,9 @@ class AlertRecordOut(BaseModel):
     rule_id: int
     rule_name: str
     risk_level: str
+    formal_risk_score: Optional[int] = None
+    formal_risk_level: Optional[str] = None
+    linked_opinion_current_risk: Optional[dict] = None
     opinion_id: Optional[int] = None
     opinion_title: str
     event_id: Optional[int] = None
@@ -58,6 +64,17 @@ class AlertRecordOut(BaseModel):
     handled_by_name: Optional[str] = None
     handled_at: Optional[datetime] = None
     handle_note: Optional[str] = None
+    confirmation_source: Optional[str] = None
+    evaluation_source: str = "rule"
+    confirmation_version: Optional[str] = None
+    rule_risk_snapshot: Optional[dict] = None
+    ai_risk_snapshot: Optional[dict] = None
+    review_reason: Optional[str] = None
+    confirmed_by: Optional[int] = None
+    confirmed_at: Optional[datetime] = None
+    origin_review_id: Optional[int] = None
+    origin_ai_result_id: Optional[int] = None
+    deduplication_key: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 

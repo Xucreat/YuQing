@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
-from app.core.permissions import require_admin
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.region import Region
 from app.models.user import User
@@ -16,7 +16,7 @@ admin_regions_router = APIRouter(prefix="/admin/regions", tags=["admin-regions"]
 @admin_regions_router.get("", response_model=list[RegionOptionOut])
 def list_admin_regions(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("sources:read")),
 ) -> list[RegionOptionOut]:
     level_order = case(
         (Region.level == "province", 1),

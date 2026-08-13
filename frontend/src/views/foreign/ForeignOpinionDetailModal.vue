@@ -23,6 +23,7 @@
           <template v-if="detail">
             <div class="risk-view-switch" role="group" aria-label="risk view source">
               <span class="muted">当前查看口径</span>
+              <button type="button" class="btn btn-secondary btn-sm" :class="{ active: viewSource === 'current' }" @click="setViewSource('current')">当前风险</button>
               <button type="button" class="btn btn-secondary btn-sm" :class="{ active: viewSource === 'rule' }" @click="setViewSource('rule')">系统规则</button>
               <button type="button" class="btn btn-secondary btn-sm" :class="{ active: viewSource === 'ai' }" @click="setViewSource('ai')">AI 研判</button>
             </div>
@@ -219,12 +220,12 @@ import { riskColor, sentimentText, statusPill, statusText, formatTime } from '@/
 const props = withDefaults(defineProps<{
   modelValue: boolean
   opinionId?: number | null
-  riskSource?: 'rule' | 'ai'
-}>(), { opinionId: null, riskSource: 'rule' })
+  riskSource?: 'current' | 'rule' | 'ai'
+}>(), { opinionId: null, riskSource: 'current' })
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  'update:riskSource': [value: 'rule' | 'ai']
+  'update:riskSource': [value: 'current' | 'rule' | 'ai']
 }>()
 
 const { hasPermission } = usePermission()
@@ -265,7 +266,7 @@ type ForeignOpinionDetail = {
   current_batch_run_id?: string | null
   // 统一「当前有效风险」视图（由后端 foreign_effective_risk.resolve_one 注入）
   effective_risk?: {
-    source: 'ai' | 'rule'
+    source: 'current' | 'ai' | 'rule'
     risk_score: number | null
     risk_level: string
     sentiment?: string
@@ -274,10 +275,12 @@ type ForeignOpinionDetail = {
     evaluated_at?: string | null
     alert_id?: number | null
     alert_status?: string | null
-    reason: 'rule_baseline' | 'not_analyzed'
+    fallback?: boolean
+    fallback_reason?: string
+    reason: 'rule_baseline' | 'human_adopted' | 'not_analyzed'
   } | null
   display_risk?: {
-    source: 'ai' | 'rule'
+    source: 'current' | 'ai' | 'rule'
     risk_score: number | null
     risk_level: string
     sentiment?: string
@@ -335,8 +338,8 @@ const translating = ref(false)
 const translatedText = ref('')
 const translatedTitle = ref('')
 const showTranslation = ref(false)
-const viewSource = ref<'rule' | 'ai'>(props.riskSource)
-function setViewSource(value: 'rule' | 'ai') {
+const viewSource = ref<'current' | 'rule' | 'ai'>(props.riskSource)
+function setViewSource(value: 'current' | 'rule' | 'ai') {
   viewSource.value = value
   window.localStorage.setItem('foreign-risk-source', value)
   emit('update:riskSource', value)
@@ -351,11 +354,12 @@ const ruleTermHits = computed(() =>
 const effectiveRisk = computed(() => detail.value?.effective_risk || null)
 const effectiveRiskScore = computed(() => effectiveRisk.value?.risk_score ?? null)
 const effectiveRiskLevel = computed(() => effectiveRisk.value?.risk_level || 'unknown')
-const effectiveRiskSource = computed<'ai' | 'rule'>(() => 'rule')
-const effectiveRiskSourceLabel = computed(() => '系统规则')
+const effectiveRiskSource = computed<'ai' | 'rule'>(() => effectiveRisk.value?.source === 'ai' ? 'ai' : 'rule')
+const effectiveRiskSourceLabel = computed(() => effectiveRiskSource.value === 'ai' ? 'AI 研判' : '系统规则')
 const effectiveRiskReason = computed(() => effectiveRisk.value?.reason || 'rule_baseline')
 const effectiveRiskReasonText = computed(() => {
   switch (effectiveRiskReason.value) {
+    case 'human_adopted': return '人工采用结果'
     case 'not_analyzed': return '未评估'
     default: return '规则基线'
   }
@@ -364,7 +368,9 @@ const effectiveRiskDesc = computed(() => {
   if (effectiveRiskReason.value === 'not_analyzed') {
     return '该外网舆情尚未完成任何风险评估。'
   }
-  return '当前有效风险始终取系统规则研判结果，AI 研判结果仅作为历史记录保留。'
+  return effectiveRiskSource.value === 'ai'
+    ? '当前风险由人工复核采用的 AI 研判结果提供；系统规则风险仍作为正式记录依据和规则对照保留。'
+    : '当前风险采用系统规则研判结果；如人工复核采用 AI，普通视图将切换为 AI 当前风险。'
 })
 const displayRisk = computed(() => detail.value?.display_risk || effectiveRisk.value || null)
 const displayRiskScore = computed(() => displayRisk.value?.risk_score ?? null)
@@ -374,8 +380,8 @@ const displayRiskSourceLabel = computed(() => displayRiskSource.value === 'ai' ?
 const displayRiskDesc = computed(() => {
   if (displayRisk.value?.fallback) return '暂无已完成的 AI 研判，当前回退显示系统规则风险。'
   return displayRiskSource.value === 'ai'
-    ? 'AI 研判结果仅用于辅助分析，不改变系统正式风险和告警。'
-    : '系统规则研判是正式风险和告警的依据。'
+    ? '当前查看口径为 AI 研判；正式预警和事件记录风险仍保持创建时的正式风险快照。'
+    : '当前查看口径为系统规则；正式预警和事件记录风险仍保持创建时的正式风险快照。'
 })
 function alertStatusText(status?: string | null): string {
   switch (status) {
@@ -407,8 +413,8 @@ function decodeHtml(input?: string | null): string | null | undefined {
 }
 function sanitizeDetail(d: ForeignOpinionDetail): ForeignOpinionDetail {
   if (d.title) d.title = decodeHtml(d.title) as string
-  if (d.summary) d.summary = decodeHtml(d.summary)
-  if (d.content) d.content = decodeHtml(d.content)
+  if (d.summary) d.summary = decodeHtml(d.summary) ?? ''
+  if (d.content) d.content = decodeHtml(d.content) ?? ''
   if (d.rule_result?.explanation) d.rule_result.explanation = decodeHtml(d.rule_result.explanation)
   if (d.ai_result?.summary) d.ai_result.summary = decodeHtml(d.ai_result.summary)
   if (d.ai_result?.suggestion) d.ai_result.suggestion = decodeHtml(d.ai_result.suggestion)

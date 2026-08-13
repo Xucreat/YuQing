@@ -96,6 +96,26 @@ def _resolve_perms(db: Session, codes: list[str]) -> list[Permission]:
     )
 
 
+def _assert_no_privilege_escalation(current_user: User, requested_codes: list[str], db: Session) -> None:
+    """D2-17：防止角色创建/修改者授予自身不具备的权限（权限提升防护）。
+
+    超级管理员（is_superuser 或 role=='admin'）的 get_user_permissions 返回 ['*']，
+    可授予任意权限；普通角色管理者（如 system_admin）只能授予自己已持有的权限，
+    从而无法通过角色管理接口自助制造一个比自身更高权限的角色。
+    """
+    if is_superuser_user(current_user):
+        return
+    effective = set(get_user_permissions(current_user, db))
+    if effective == {"*"}:
+        return
+    forbidden = [c for c in (requested_codes or []) if c not in effective]
+    if forbidden:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"无权授予以下权限：{', '.join(forbidden)}",
+        )
+
+
 # ---------- SEC2-05：权限变更审计快照 ----------
 _USER_AUDIT_FIELDS = ("display_name", "email", "role", "is_superuser", "is_active")
 _ROLE_AUDIT_FIELDS = ("display_name", "description", "is_enabled")
@@ -466,6 +486,7 @@ def create_role(
         is_system=False,
         is_enabled=body.is_enabled,
     )
+    _assert_no_privilege_escalation(current_user, body.permissions, db)
     role.permissions = _resolve_perms(db, body.permissions)
     db.add(role)
     db.flush()
@@ -499,6 +520,7 @@ def update_role(
             raise HTTPException(status_code=403, detail="Cannot disable a system role")
         role.is_enabled = body.is_enabled
     if body.permissions is not None:
+        _assert_no_privilege_escalation(current_user, body.permissions, db)
         role.permissions = _resolve_perms(db, body.permissions)
     role.updated_at = datetime.now(timezone.utc)
     after_snapshot = _role_audit_snapshot(role)

@@ -13,8 +13,6 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -23,8 +21,12 @@ from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.opinion import Opinion
 from app.models.user import User
-from app.schemas.opinion import OpinionOut
+from app.schemas.opinion import DomesticAIAnalysisOut, OpinionOut
+from app.services.ai.fallback import RuleFallbackProvider
 from app.services.ai.providers.deepseek import DeepSeekProvider
+from app.services.domestic_ai_service import DomesticAIService
+from app.services.domestic_manual_review_service import ensure_domestic_manual_review
+from app.services.current_risk import sync_domestic_rule_if_not_ai_adopted
 
 analysis_router = APIRouter(
     tags=["analysis"],
@@ -35,7 +37,7 @@ analysis_router = APIRouter(
 
 @analysis_router.post(
     "/analyze/{opinion_id}",
-    response_model=OpinionOut,
+    response_model=DomesticAIAnalysisOut,
     status_code=status.HTTP_200_OK,
 )
 def analyze_opinion(
@@ -56,41 +58,44 @@ def analyze_opinion(
             detail="Opinion not found",
         )
 
-    # 1) 开始：置 AI 分析 processing（不影响系统研判报告字段）
-    opinion.ai_analysis_status = "processing"
-    db.commit()
-
-    # 2) 直接调用 DeepSeek（不走 AIService 兜底规则）：本接口即「触发 AI 分析」
-    provider = DeepSeekProvider()
-    if not provider.is_configured:
-        opinion.ai_analysis_status = "failed"
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="DeepSeek 未配置，无法生成 AI 研判报告",
-        )
-
-    text = f"标题：{opinion.title}\n正文：{opinion.content}"
     try:
-        result = provider.analyze(text)
-    except Exception:
-        # 3) 失败：保留 failed 状态，返回 500（系统报告不受影响）
-        db.rollback()
-        opinion.ai_analysis_status = "failed"
-        db.commit()
+        # Keep the historical endpoint patch point used by existing callers
+        # and tests, while the batch worker uses the service default provider.
+        result, _ = DomesticAIService(provider_factory=DeepSeekProvider).analyze_opinion_manual(
+            db, opinion_id, force=False
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if result.status != "completed":
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="DeepSeek 调用失败，请检查 API 余额或网络后重试",
+            detail=result.error_message or "DeepSeek 调用失败，请检查 API 余额或网络后重试",
         )
-
-    # 4) 成功：仅写 AI 研判报告字段（ai_*），不覆盖系统研判报告
-    opinion.ai_summary = result.summary
-    opinion.ai_sentiment = result.sentiment
-    opinion.ai_risk_score = result.risk_score
-    opinion.ai_keywords = ",".join(result.keywords)
-    opinion.ai_analysis_suggestion = result.suggestion
-    opinion.ai_analysis_status = "completed"
-    opinion.ai_analysis_time = datetime.now(timezone.utc)
+    # Newly-created opinions historically received their rule projection from
+    # this endpoint. Initialize only an untouched zero-score projection; never
+    # overwrite an existing rule score with the AI score.
+    if opinion.analysis_status == "pending" and opinion.risk_score == 0:
+        rule = RuleFallbackProvider().analyze("\n".join(part for part in (opinion.title, opinion.summary, opinion.content) if part))
+        opinion.summary = rule.summary
+        opinion.sentiment = rule.sentiment
+        opinion.risk_score = rule.risk_score
+        opinion.keywords = ",".join(rule.keywords)
+        opinion.analysis_status = "completed"
+        opinion.analysis_time = result.analyzed_at
+        opinion.analysis_suggestion = rule.suggestion
+        sync_domestic_rule_if_not_ai_adopted(opinion)
+    review, _ = ensure_domestic_manual_review(db, opinion_id, result.id, force=False)
     db.commit()
     db.refresh(opinion)
-    return opinion
+    payload = OpinionOut.model_validate(opinion).model_dump()
+    payload.update(
+        {
+            "analysis_id": result.id,
+            "review_id": review.id,
+            "review_status": review.review_status,
+            "event_preview": review.event_preview or {},
+            "alert_preview": review.alert_preview or {},
+            "message": "AI 研判完成，已进入人工复核",
+        }
+    )
+    return payload

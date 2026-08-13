@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -38,6 +39,15 @@ class Event(Base):
     opinion_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     first_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    confirmation_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    confirmation_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    rule_risk_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    ai_risk_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    review_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    confirmed_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    origin_review_id: Mapped[Optional[int]] = mapped_column(ForeignKey("domestic_manual_reviews.id", ondelete="SET NULL"), nullable=True)
+    origin_ai_result_id: Mapped[Optional[int]] = mapped_column(ForeignKey("domestic_ai_results.id", ondelete="SET NULL"), nullable=True)
 
     # 事件 <-> 舆情（多对多，经 event_opinions 关联表）
     __table_args__ = (
@@ -64,6 +74,10 @@ class Event(Base):
         CheckConstraint(
             "trend IN ('rising','stable','falling','unknown')",
             name="ck_events_trend",
+        ),
+        CheckConstraint(
+            "confirmation_source IS NULL OR confirmation_source IN ('manual','auto','manual_review_ai')",
+            name="ck_events_confirmation_source",
         ),
     )
 

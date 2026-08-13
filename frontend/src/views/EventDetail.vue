@@ -34,8 +34,12 @@
           <strong>{{ eventStatusLabel(event.status) }}</strong>
         </div>
         <div class="situation-item">
-          <span class="situation-label">当前风险</span>
-          <strong :style="{ color: riskColor(event.risk_score) }">{{ event.risk_score }} 分 · {{ riskText(event.risk_level) }}</strong>
+          <span class="situation-label">正式记录风险</span>
+          <strong :style="{ color: riskColor(event.formal_risk_score ?? event.risk_score) }">{{ event.formal_risk_score ?? event.risk_score }} 分 · {{ riskText(event.formal_risk_level || event.risk_level) }}</strong>
+        </div>
+        <div class="situation-item" v-if="event.linked_opinion_current_risk">
+          <span class="situation-label">关联舆情当前风险</span>
+          <strong :style="{ color: riskColor(event.linked_opinion_current_risk.risk_score ?? 0) }">{{ event.linked_opinion_current_risk.risk_score ?? '-' }} 分 · {{ riskText(event.linked_opinion_current_risk.risk_level) }}</strong>
         </div>
         <div class="situation-item">
           <span class="situation-label">当前热度</span>
@@ -177,7 +181,8 @@
                 <th style="min-width:280px">标题</th>
                 <th style="width:160px">来源</th>
                 <th style="width:90px" class="col-center">情感</th>
-                <th style="width:90px" class="col-center">风险分</th>
+                <th style="width:100px" class="col-center">当前风险</th>
+                <th style="width:100px" class="col-center">规则风险</th>
                 <th style="width:100px" class="col-center">分析状态</th>
                 <th style="width:170px">发布时间</th>
               </tr>
@@ -190,14 +195,15 @@
                 <td class="col-center">
                   <span class="pill" :class="sentimentPill(row.sentiment)"><span class="dot"></span>{{ sentimentText(row.sentiment) }}</span>
                 </td>
-                <td class="col-center risk-num" :style="{ color: riskColor(row.risk_score) }">{{ row.risk_score }}</td>
+                <td class="col-center risk-num" :style="{ color: riskColor(row.current_risk_score ?? row.risk_score) }">{{ row.current_risk_score ?? row.risk_score }}</td>
+                <td class="col-center risk-num">{{ row.risk_score ?? '-' }}</td>
                 <td class="col-center">
                   <span class="pill" :class="row.analysis_status==='completed'?'pill-green':'pill-gray'">{{ row.analysis_status==='completed'?'已完成':row.analysis_status }}</span>
                 </td>
                 <td>{{ formatTime(row.publish_time) }}</td>
               </tr>
               <tr v-if="event.opinions.length===0 && !loading">
-                <td colspan="7" class="empty-row">暂无关联舆情</td>
+                <td colspan="8" class="empty-row">暂无关联舆情</td>
               </tr>
             </tbody>
           </table>
@@ -208,7 +214,8 @@
             <thead>
               <tr>
                 <th style="min-width:240px">标题</th>
-                <th style="width:110px" class="col-center">风险等级</th>
+                <th style="width:150px" class="col-center">正式记录风险</th>
+                <th style="width:160px" class="col-center">关联舆情当前风险</th>
                 <th style="width:110px" class="col-center">状态</th>
                 <th style="width:170px">时间</th>
               </tr>
@@ -216,12 +223,13 @@
             <tbody>
               <tr v-for="a in (event.alerts || [])" :key="a.id">
                 <td><span class="t-title">{{ a.title }}</span></td>
-                <td class="col-center"><span class="pill" :class="riskPill(a.risk_level)"><span class="dot"></span>{{ riskText(a.risk_level) }}</span></td>
+                <td class="col-center"><span class="pill" :class="riskPill(a.formal_risk_level || a.risk_level)"><span class="dot"></span>{{ a.formal_risk_score ?? '-' }} · {{ riskText(a.formal_risk_level || a.risk_level) }}</span></td>
+                <td class="col-center">{{ a.linked_opinion_current_risk ? `${a.linked_opinion_current_risk.risk_score ?? '-'} · ${riskText(a.linked_opinion_current_risk.risk_level)}` : '-' }}</td>
                 <td class="col-center">{{ alertStatusText(a.status) }}</td>
                 <td>{{ formatTime(a.created_at) }}</td>
               </tr>
               <tr v-if="(event.alerts?.length || 0)===0 && !loading">
-                <td colspan="4" class="empty-row">暂无关联预警</td>
+                <td colspan="5" class="empty-row">暂无关联预警</td>
               </tr>
             </tbody>
           </table>
@@ -277,7 +285,11 @@ function openOpinion(id: number) {
 
 interface EventDetail {
   id: number; title: string; risk_level: string; opinion_count: number
-  region_id: number | null; region_name: string | null; risk_score: number; topic_category: string | null
+  region_id: number | null; region_name: string | null; risk_score: number
+  formal_risk_score?: number | null
+  formal_risk_level?: string | null
+  linked_opinion_current_risk?: { risk_score: number | null; risk_level: string } | null
+  topic_category: string | null
   heat_score: number; trend: string
   status: string; first_time: string | null; last_time: string | null
   description: string; keyword: string; opinions: any[]; total_opinions: number
@@ -292,7 +304,8 @@ function sufficiencyText(value: string | undefined): string {
 }
 
 const event = ref<EventDetail>({
-  id: 0, title: '', region_id: null, region_name: null, risk_level: '', risk_score: 0, topic_category: null,
+  id: 0, title: '', region_id: null, region_name: null, risk_level: '', risk_score: 0,
+  formal_risk_score: 0, formal_risk_level: 'low', linked_opinion_current_risk: null, topic_category: null,
   heat_score: 0, trend: 'unknown', opinion_count: 0, status: '',
   first_time: null, last_time: null, description: '', keyword: '',
   opinions: [], total_opinions: 0, actions: [],
@@ -325,7 +338,7 @@ function riskColor(score: number): string {
 function trendText(value: string): string {
   return ({ rising: '↑ 升温', stable: '→ 平稳', falling: '↓ 下降', unknown: '未知' } as const)[value] || value
 }
-const isKeyEvent = computed(() => event.value.risk_score >= 70 && event.value.heat_score >= 60)
+const isKeyEvent = computed(() => (event.value.formal_risk_score ?? event.value.risk_score) >= 70 && event.value.heat_score >= 60)
 function formatTime(t: string | null): string {
   if (!t) return '-'; return t.replace('T', ' ').slice(0, 19)
 }

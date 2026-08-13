@@ -45,6 +45,7 @@ from app.services.event.risk_service import EventRiskService
 from app.services.event.risk_shadow import EventRiskShadowService
 from app.services.event.situation import EventSituationService
 from app.services.audit_service import audit_write
+from app.services.current_risk import current_risk_payload
 
 events_router = APIRouter(
     tags=["events"],
@@ -52,6 +53,25 @@ events_router = APIRouter(
 )
 
 MAX_SIZE = 100
+
+
+def _current_risk_summary(opinions: list[Opinion]) -> dict | None:
+    if not opinions:
+        return None
+    def score(item: Opinion) -> int:
+        if (item.current_risk_source or "rule") == "rule" and item.current_risk_updated_at is None:
+            return int(item.risk_score or 0)
+        return int(item.current_risk_score or 0)
+
+    row = max(opinions, key=score)
+    current = current_risk_payload(row) or {}
+    return {
+        "source": current.get("source", "rule"),
+        "risk_score": current.get("risk_score"),
+        "risk_level": current.get("risk_level") or "low",
+        "opinion_id": row.id,
+        "opinion_count": len(opinions),
+    }
 
 EVENT_STATUS_LABELS = {
     "active": "关注中",
@@ -83,6 +103,9 @@ def _event_out(db: Session, event: Event) -> EventOut:
         region_name=region.name if region else None,
         risk_level=EventRiskService.level_from_score(risk_score),
         risk_score=risk_score,
+        formal_risk_score=risk_score,
+        formal_risk_level=EventRiskService.level_from_score(risk_score),
+        linked_opinion_current_risk=_current_risk_summary(list(event.opinions or [])),
         topic_category=event.topic_category,
         heat_score=event.heat_score,
         trend=event.trend,
@@ -286,7 +309,12 @@ def get_event(
     latest_time: Optional[object] = None
     for o in opinions:
         sources.add(o.source)
-        risk_dist[EventRiskService.level_from_score(o.risk_score)] += 1
+        score = (
+            o.risk_score
+            if (o.current_risk_source or "rule") == "rule" and o.current_risk_updated_at is None
+            else o.current_risk_score
+        )
+        risk_dist[EventRiskService.level_from_score(score)] += 1
         if latest_time is None or (o.created_at is not None and o.created_at > latest_time):
             latest_time = o.created_at
     statistics = EventStatistics(
@@ -307,6 +335,17 @@ def get_event(
             id=a.id,
             title=a.opinion_title,
             risk_level=a.risk_level,
+            formal_risk_score=(
+                (a.rule_risk_snapshot or {}).get("risk_score")
+                if "risk_score" in (a.rule_risk_snapshot or {})
+                else (a.ai_risk_snapshot or {}).get("risk_score")
+            ),
+            formal_risk_level=(
+                (a.rule_risk_snapshot or {}).get("risk_level")
+                if "risk_level" in (a.rule_risk_snapshot or {})
+                else (a.ai_risk_snapshot or {}).get("risk_level")
+            ),
+            linked_opinion_current_risk=current_risk_payload(a.opinion),
             status=a.status,
             created_at=a.created_at,
         )
@@ -319,6 +358,9 @@ def get_event(
         region_name=region.name if region else None,
         risk_level=EventRiskService.level_from_score(risk_score),
         risk_score=risk_score,
+        formal_risk_score=risk_score,
+        formal_risk_level=EventRiskService.level_from_score(risk_score),
+        linked_opinion_current_risk=_current_risk_summary(opinions),
         topic_category=event.topic_category,
         heat_score=event.heat_score,
         trend=event.trend,
@@ -446,7 +488,7 @@ def create_event_action(
 def delete_event(
     event_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("events:write")),
+    _: User = Depends(require_permission("events:delete")),
 ) -> dict:
     """Delete an event and all its related records."""
     event = db.get(Event, event_id)
@@ -623,6 +665,9 @@ def list_events(
             region_name=region_names.get(e.region_id),
             risk_level=EventRiskService.level_from_score(computed_score),
             risk_score=EventRiskService.clamp_score(computed_score),
+            formal_risk_score=EventRiskService.clamp_score(computed_score),
+            formal_risk_level=EventRiskService.level_from_score(computed_score),
+            linked_opinion_current_risk=_current_risk_summary(event_opinions[e.id]),
             risk_shadow_score=shadow_by_event[e.id]["score"],
             risk_shadow_level=shadow_by_event[e.id]["level"],
             risk_shadow_version=shadow_by_event[e.id]["score_version"],

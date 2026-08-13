@@ -618,6 +618,8 @@ def serialize_alert(alert: ForeignAlert) -> dict[str, Any]:
         "event_title_snapshot": alert.event_title_snapshot,
         "risk_score": alert.risk_score,
         "risk_level": alert.risk_level,
+        "formal_risk_score": alert.risk_score,
+        "formal_risk_level": alert.risk_level,
         "deduplication_key": alert.deduplication_key,
         "expires_at": alert.expires_at.isoformat() if alert.expires_at else None,
         "is_active": alert_is_active(alert),
@@ -628,6 +630,7 @@ def serialize_alert(alert: ForeignAlert) -> dict[str, Any]:
         "failure_reason": _safe_error_summary(alert.failure_reason),
         "created_at": alert.created_at.isoformat() if alert.created_at else None,
         "updated_at": alert.updated_at.isoformat() if alert.updated_at else None,
+        "linked_opinion_current_risk": None,
     }
 
 

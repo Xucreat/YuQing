@@ -32,6 +32,11 @@ def is_superuser_user(user: User) -> bool:
 # 注意：每个组合只展开到「当前后端实际 require_permission 检查且属于该业务范围的
 #      foreign:* 细粒度码」，避免把事件写入等不相关能力授予数据管理角色。
 COMPOSITE_PERMISSIONS: dict[str, list[str]] = {
+    "ai:analyze": [
+        "domestic:ai:analyze",
+        "domestic:ai:batch:read",
+        "domestic:ai:review:read",
+    ],
     "foreign:read": [
         "foreign:opinions:read",
         "foreign:risk:read",

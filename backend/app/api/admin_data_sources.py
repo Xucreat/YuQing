@@ -46,7 +46,7 @@ from app.collectors.source_config import (
 from app.collectors.common import is_safe_rss_url, summarize_rss_probe
 from app.core.config import settings
 from app.core.dependencies import get_current_user
-from app.core.permissions import require_admin, require_permission
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
@@ -971,7 +971,7 @@ def list_data_sources(
 @admin_ds_router.get("/regions", response_model=list[RegionCatalogItemOut])
 def list_data_source_regions(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("sources:read")),
 ):
     """Return the full province -> city -> county -> township directory."""
     return region_catalog_items(db)
@@ -1066,7 +1066,7 @@ def data_source_quality(
 def test_data_source(
     body: dict,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("sources:write")),
 ):
     """仅校验：构建采集器并真实抓取一次，不落库。返回 {ok, error, test}。"""
     err = _validate_create(body)
@@ -1092,7 +1092,7 @@ def create_data_source(
     body: dict,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("sources:write")),
 ):
     """新增数据源：保存前进行真实抓取校验，校验失败不落库（返回 422 + 可读错误）。"""
     err = _validate_create(body)
@@ -1168,9 +1168,9 @@ def batch_update_schedule(
     body: dict,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("sources:write")),
 ):
-    """批量设置采集频率（仅 admin）。
+    """批量设置采集频率（sources:write）。
 
     scope: "all" | "enabled_only"
     统一设置 schedule_enabled / schedule_interval_minutes，并按 PG now() 错峰重算
@@ -1263,7 +1263,7 @@ def update_data_source(
     body: dict,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("sources:write")),
 ):
     ds = db.get(DataSource, ds_id)
     if not ds:

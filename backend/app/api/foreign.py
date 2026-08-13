@@ -61,6 +61,7 @@ from app.services.foreign_collection_service import (
 )
 from app.services.foreign_content_sanitizer import sanitize_foreign_html
 from app.services.foreign_effective_risk import (
+    CURRENT_SOURCE,
     RULE_SOURCE,
     RiskSource,
     attach_effective_risk,
@@ -78,7 +79,9 @@ from app.services.foreign_manual_review_service import (
     confirm_event_for_review,
     ensure_foreign_manual_review,
 )
+from app.services.current_risk import apply_review_decision
 from app.models.foreign_ai_alert_candidate import ForeignAIAlertCandidate
+from app.models.foreign_event_candidate import ForeignEventCandidate
 
 
 foreign_router = APIRouter(
@@ -143,7 +146,7 @@ class ForeignAIBatchPayload(BaseModel):
 class ForeignAIReviewDecisionPayload(BaseModel):
     decision: Literal[
         "keep_rule", "use_ai_display", "confirm_event_change",
-        "confirm_alert_change", "reject_change"
+        "confirm_alert_change", "reject_change", "complete_review"
     ]
     reason: str = Field(default="", max_length=4000)
     request_id: str | None = Field(default=None, max_length=128)
@@ -933,11 +936,16 @@ def _foreign_opinion_item(row: ForeignOpinion) -> dict[str, Any]:
         "content_hash": row.content_hash,
         "duplicate_of_id": row.duplicate_of_id,
         "created_at": row.created_at.isoformat() if row.created_at else None,
+        "current_risk_source": row.current_risk_source or "rule",
+        "current_risk_score": row.current_risk_score,
+        "current_risk_level": row.current_risk_level or "low",
+        "current_ai_result_id": row.current_ai_result_id,
+        "current_risk_updated_at": row.current_risk_updated_at.isoformat() if row.current_risk_updated_at else None,
     }
 
 
 def _foreign_opinion_detail(
-    db: Session, row: ForeignOpinion, *, risk_source: RiskSource = RULE_SOURCE
+    db: Session, row: ForeignOpinion, *, risk_source: RiskSource = CURRENT_SOURCE
 ) -> dict[str, Any]:
     payload = _foreign_opinion_item(row)
     payload.update(resolve_one(db, row.id, risk_source=risk_source))
@@ -1008,7 +1016,7 @@ def list_foreign_opinions(
     language: str | None = None,
     risk_level: str | None = None,
     analysis_status: str | None = None,
-    risk_source: RiskSource = Query(RULE_SOURCE),
+    risk_source: RiskSource = Query(CURRENT_SOURCE),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:opinions:read")),
 ):
@@ -1039,7 +1047,7 @@ def list_foreign_opinions(
         stmt = stmt.where(ForeignOpinion.id.in_(sub))
     if risk_level:
         # The filter must use the same selected source as the serialized
-        # display_risk column. Formal alert and dashboard queries remain rule-only.
+        # display_risk column. Formal alert/event snapshots remain separate.
         query_source = risk_source
         if risk_source == "ai" and not inspect(db.get_bind()).has_table("foreign_ai_results"):
             # During a rolling deployment the AI table may not exist yet; the
@@ -1099,7 +1107,7 @@ def list_foreign_opinion_sources(
 @foreign_router.get("/opinions/{opinion_id}")
 def get_foreign_opinion(
     opinion_id: int,
-    risk_source: RiskSource = Query(RULE_SOURCE),
+    risk_source: RiskSource = Query(CURRENT_SOURCE),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:opinions:read")),
 ):
@@ -1132,7 +1140,7 @@ def get_foreign_opinion_original(
 @foreign_router.get("/opinions/{opinion_id}/detail")
 def get_foreign_opinion_detail(
     opinion_id: int,
-    risk_source: RiskSource = Query(RULE_SOURCE),
+    risk_source: RiskSource = Query(CURRENT_SOURCE),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("foreign:opinions:read")),
 ):
@@ -1236,7 +1244,11 @@ def _foreign_ai_batch_selection(db: Session, payload: ForeignAIBatchPayload) -> 
             sub = sub.where(ForeignRiskResult.analysis_status == str(analysis_status))
         stmt = stmt.where(ForeignOpinion.id.in_(sub))
     if risk_level:
-        stmt = stmt.where(effective_risk_level_expression(risk_source=risk_source if risk_source in {RULE_SOURCE, "ai"} else RULE_SOURCE) == str(risk_level))
+        stmt = stmt.where(
+            effective_risk_level_expression(
+                risk_source=risk_source if risk_source in {CURRENT_SOURCE, RULE_SOURCE, "ai"} else CURRENT_SOURCE
+            ) == str(risk_level)
+        )
     if date_from:
         try:
             stmt = stmt.where(ForeignOpinion.published_at >= datetime.strptime(str(date_from), "%Y-%m-%d"))
@@ -1562,11 +1574,20 @@ def list_foreign_manual_reviews(page: int = Query(1, ge=1), size: int = Query(50
 
 def _foreign_manual_review_item(row: ForeignManualReview, opinion: ForeignOpinion | None = None, operator: User | None = None, db: Session | None = None) -> dict[str, Any]:
     alert_candidate_count = 0
+    event_candidate_count = 0
     if db is not None:
         alert_candidate_count = int(
             db.scalar(
                 select(func.count()).select_from(ForeignAIAlertCandidate).where(
                     ForeignAIAlertCandidate.review_id == row.id
+                )
+            ) or 0
+        )
+        event_candidate_count = int(
+            db.scalar(
+                select(func.count()).select_from(ForeignEventCandidate).where(
+                    ForeignEventCandidate.review_id == row.id,
+                    ForeignEventCandidate.candidate_status == "candidate",
                 )
             ) or 0
         )
@@ -1576,7 +1597,8 @@ def _foreign_manual_review_item(row: ForeignManualReview, opinion: ForeignOpinio
         "confirm_event_change": "rule",
         "confirm_alert_change": "ai",
         "reject_change": "rule",
-    }.get(row.review_decision or "", "")
+        "complete_review": "rule",
+    }.get(row.review_decision or "", "rule" if row.display_decision is None else ("ai" if row.display_decision == "use_ai_display" else "rule"))
     return {"id": row.id, "foreign_opinion_id": row.foreign_opinion_id,
             "opinion_title": opinion.title if opinion else "",
             "opinion_source": opinion.source_name_snapshot if opinion else "",
@@ -1589,7 +1611,14 @@ def _foreign_manual_review_item(row: ForeignManualReview, opinion: ForeignOpinio
             "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
             "batch_run_id": row.batch_run_id, "event_preview_id": row.event_preview_id, "alert_preview_id": row.alert_preview_id,
             "confirmation_version": row.confirmation_version,
-            "event_candidate_count": (row.event_preview or {}).get("candidate_count", 0),
+            "display_decision": row.display_decision,
+            "event_review_status": row.event_review_status,
+            "alert_review_status": row.alert_review_status,
+            "review_closed_at": row.review_closed_at.isoformat() if row.review_closed_at else None,
+            "completed_by": row.completed_by,
+            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+            "completion_reason": row.completion_reason,
+            "event_candidate_count": event_candidate_count or (row.event_preview or {}).get("candidate_count", 0),
             "alert_candidate_count": alert_candidate_count,
             "event_preview": row.event_preview or {}, "alert_preview": row.alert_preview or {}, "created_at": row.created_at.isoformat() if row.created_at else None}
 
@@ -1637,9 +1666,9 @@ def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisio
     row = db.get(ForeignManualReview, review_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Foreign manual review not found")
-    idempotent = False
+    now = datetime.now(timezone.utc)
+    # 已关闭的复核（confirmed/rejected/superseded）不可再操作：直接幂等返回，不重复建记录。
     if row.review_status != "pending_review":
-        idempotent = True
         return {
             "review": _foreign_manual_review_item(row, db.get(ForeignOpinion, row.foreign_opinion_id), db.get(User, row.reviewed_by) if row.reviewed_by else None, db=db),
             "decision": row.review_decision,
@@ -1649,55 +1678,117 @@ def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisio
             "idempotent": True,
             "message": "该复核记录已处理，本次调用未产生新的正式事件或预警。",
         }
-    # Already-decided reviews fall through to the unified return above.
-    required = "foreign:ai:review:reject" if payload.decision == "reject_change" else (
-        "foreign:events:review:confirm" if payload.decision == "confirm_event_change" else
-        "foreign:alerts:review:confirm" if payload.decision == "confirm_alert_change" else
-        "foreign:ai:review:read"
-    )
+
+    action = payload.decision
+    if action == "confirm_event_change" and row.event_review_status == "confirmed":
+        return {
+            "review": _foreign_manual_review_item(
+                row,
+                db.get(ForeignOpinion, row.foreign_opinion_id),
+                db.get(User, row.reviewed_by) if row.reviewed_by else None,
+                db=db,
+            ),
+            "decision": row.review_decision,
+            "review_status": row.review_status,
+            "event_result": {"candidate_count": 0, "created_count": 0, "existing_count": 1},
+            "alert_result": {},
+            "idempotent": True,
+            "message": "事件复核已确认，本次未重复生成正式事件。",
+        }
+    if action == "confirm_alert_change" and row.alert_review_status == "confirmed":
+        return {
+            "review": _foreign_manual_review_item(
+                row,
+                db.get(ForeignOpinion, row.foreign_opinion_id),
+                db.get(User, row.reviewed_by) if row.reviewed_by else None,
+                db=db,
+            ),
+            "decision": row.review_decision,
+            "review_status": row.review_status,
+            "event_result": {},
+            "alert_result": {"matched": False, "created_count": 0, "deduplicated_count": 1},
+            "idempotent": True,
+            "message": "预警复核已确认，本次未重复生成正式预警。",
+        }
+    # 按动作判定所需权限：四个蓝色操作只更新子状态（沿用既有细粒度权限），
+    # 「完成复核」需要独立的 review:complete 写权限，「驳回全部 AI 变更」沿用 reject。
+    if action == "reject_change":
+        required = "foreign:ai:review:reject"
+    elif action == "confirm_event_change":
+        required = "foreign:events:review:confirm"
+    elif action == "confirm_alert_change":
+        required = "foreign:alerts:review:confirm"
+    elif action == "complete_review":
+        required = "foreign:ai:review:complete"
+    else:  # keep_rule / use_ai_display
+        required = "foreign:ai:review:read"
     if not is_superuser_user(current_user) and required not in get_user_permissions(current_user, db):
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    # Audit timestamp is computed once, up front, so the confirmation_version
-    # derived from it is stable and available before any formal record is minted.
-    row.reviewed_at = datetime.now(timezone.utc)
-
-    if payload.decision in ("keep_rule", "use_ai_display"):
-        # Display-choice decisions: never create formal events/alerts and never
-        # mutate effective_risk. They only record which risk view the operator
-        # prefers for this opinion.
-        row.review_status = "confirmed"
-        row.review_decision = payload.decision
-        event_result: dict[str, Any] = {}
-        alert_result: dict[str, Any] = {}
-        message = "已采用" + ("AI 风险展示" if payload.decision == "use_ai_display" else "系统规则风险展示") + "，未生成正式事件或预警。"
-    elif payload.decision == "confirm_event_change":
-        row.review_status = "confirmed"
-        row.review_decision = payload.decision
-        row.confirmation_version = f"manual-review-{row.id}-{int(row.reviewed_at.timestamp())}"
+    row.reviewed_at = now
+    event_result: dict[str, Any] = {}
+    alert_result: dict[str, Any] = {}
+    if action in ("keep_rule", "use_ai_display"):
+        opinion = db.get(ForeignOpinion, row.foreign_opinion_id)
+        if opinion is None:
+            raise HTTPException(status_code=404, detail="Foreign opinion not found")
+        apply_review_decision(
+            db,
+            opinion=opinion,
+            decision=action,
+            rule_snapshot=row.rule_risk_snapshot,
+            ai_snapshot=row.ai_risk_snapshot,
+        )
+        row.display_decision = action
+        row.review_decision = action
+        message = ("已采用 AI 作为当前风险，普通列表、驾驶舱及关联展示将读取 AI 风险。"
+                   if action == "use_ai_display"
+                   else "已保留系统规则作为当前风险，普通列表、驾驶舱及关联展示将读取规则风险。")
+    elif action == "confirm_event_change":
+        row.event_review_status = "confirmed"
+        row.review_decision = action
+        row.confirmation_version = f"manual-review-{row.id}-{int(now.timestamp())}"
         event_result = confirm_event_for_review(
             db, row, user_id=current_user.id, reason=payload.reason,
             request_id=payload.request_id, commit=False,
         )
         alert_result = {}
-        message = "已确认复核关联的事件候选为正式外网事件。" if event_result.get("candidate_count") else event_result.get("reason") or "未找到可确认的事件候选。"
-    elif payload.decision == "confirm_alert_change":
-        row.review_status = "confirmed"
-        row.review_decision = payload.decision
-        row.confirmation_version = f"manual-review-{row.id}-{int(row.reviewed_at.timestamp())}"
+        message = ("已确认复核关联的事件候选为正式外网事件（仍留在待复核）。" if event_result.get("candidate_count") else (event_result.get("reason") or "未找到可确认的事件候选。"))
+    elif action == "confirm_alert_change":
+        row.alert_review_status = "confirmed"
+        row.review_decision = action
+        row.confirmation_version = f"manual-review-{row.id}-{int(now.timestamp())}"
         alert_result = confirm_alert_for_review(
             db, row, user_id=current_user.id, reason=payload.reason,
             request_id=payload.request_id, commit=False,
         )
         event_result = {}
-        message = ("已依据 AI 预警候选生成正式外网预警。" if alert_result.get("matched")
-                   else alert_result.get("reason") or "未命中 AI 预警规则候选。")
-    else:  # reject_change
+        message = ("已依据 AI 预警候选生成正式外网预警（仍留在待复核）。" if alert_result.get("matched") else (alert_result.get("reason") or "未命中 AI 预警规则候选。"))
+    elif action == "reject_change":
+        # 驳回全部 AI 变更：行离开待复核进入已驳回，不建正式记录。
         row.review_status = "rejected"
-        row.review_decision = payload.decision
-        event_result = {}
-        alert_result = {}
-        message = "已驳回该条外网人工复核，未生成正式事件或预警。"
+        row.review_decision = action
+        opinion = db.get(ForeignOpinion, row.foreign_opinion_id)
+        if opinion is not None:
+            apply_review_decision(
+                db,
+                opinion=opinion,
+                decision=action,
+                rule_snapshot=row.rule_risk_snapshot,
+                ai_snapshot=row.ai_risk_snapshot,
+            )
+        message = "已驳回该条外网人工复核（驳回全部 AI 变更），未生成正式事件或预警。"
+    elif action == "complete_review":
+        # 唯一进入「已确认」的入口：仅关闭复核，不创建任何正式事件/预警，天然幂等。
+        row.review_status = "confirmed"
+        row.review_decision = action
+        row.review_closed_at = now
+        row.completed_by = current_user.id
+        row.completed_at = now
+        row.completion_reason = payload.reason.strip() or None
+        message = "已完成复核，进入「已确认」。"
+    else:
+        raise HTTPException(status_code=422, detail="未知的复核决策")
 
     # Common audit fields (display/reject branches do not mint a
     # confirmation_version, since no formal record is produced).

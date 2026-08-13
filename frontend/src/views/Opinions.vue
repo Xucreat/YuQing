@@ -1,5 +1,24 @@
 ﻿<template>
   <div class="opinions" v-loading="loading">
+    <div class="opinions-head">
+      <div class="view-tabs">
+        <template v-if="scope === 'domestic'">
+          <button class="view-tab" :class="{ active: activeView === 'opinions' }" @click="activeView = 'opinions'">国内舆情</button>
+          <button v-if="canReviewRead" class="view-tab" :class="{ active: activeView === 'reviews' }" @click="openReviewView">AI 人工复核</button>
+        </template>
+        <template v-else>
+          <button class="view-tab" :class="{ active: foreignView === 'list' }" @click="foreignView = 'list'">国外舆情</button>
+          <button class="view-tab" :class="{ active: foreignView === 'review' }" @click="foreignView = 'review'">AI 人工复核</button>
+        </template>
+      </div>
+      <div class="top-scope-switch">
+        <el-radio-group v-model="scope" @change="onScopeChange">
+          <el-radio-button label="domestic">国内</el-radio-button>
+          <el-radio-button label="foreign">外网</el-radio-button>
+        </el-radio-group>
+      </div>
+    </div>
+    <template v-if="scope === 'domestic' && activeView === 'opinions'">
     <!-- Filter bar -->
     <div class="toolbar">
       <div class="filters">
@@ -57,6 +76,8 @@
         </div>
         <button class="btn btn-ghost" @click="handleSearch">搜索</button>
         <button class="btn btn-ghost" @click="handleRefresh">刷新</button>
+        <button v-if="canAnalyze" class="btn btn-primary" @click="batchDialog = true">批量 AI 研判</button>
+        <button v-if="canBatchRead" class="btn btn-ghost" @click="openBatchHistory">运行记录</button>
         <label v-if="isSuperuser" class="low-value-toggle" title="默认列表隐藏 irrelevant / advertising 等低价值内容；勾选后可查看完整数据（含历史重算标定的低价值条目）">
           <input type="checkbox" v-model="includeLowValue" @change="handleSearch" />
           显示低价值内容
@@ -90,6 +111,15 @@
       </el-popover>
       <button v-if="canDelete" class="btn btn-danger" @click="batchDelete">删除</button>
       <button class="btn btn-ghost" @click="clearSelection">取消选择</button>
+    </div>
+    <div v-if="activeRun && !['succeeded', 'partial_failed', 'failed', 'cancelled'].includes(activeRun.status)" class="run-progress">
+      <div class="run-progress-head"><b>国内 AI 研判进行中</b><span>{{ activeRun.processed_count }}/{{ activeRun.total_count }}</span><button class="link-btn danger" @click="cancelActiveRun">取消任务</button></div>
+      <div class="progress-track"><span :style="{ width: `${Math.min(100, Math.round((activeRun.processed_count / Math.max(1, activeRun.total_count)) * 100))}%` }"></span></div>
+      <div class="run-progress-meta"><span>成功 {{ activeRun.success_count }}</span><span>失败 {{ activeRun.failed_count }}</span><span>跳过 {{ activeRun.skipped_count }}</span><span>{{ activeRun.current_step }}</span></div>
+    </div>
+    <div v-if="activeRun && activeRun.status === 'partial_failed' && activeRun.failed_count" class="run-progress run-failed">
+      <div class="run-progress-head"><b>批量研判存在失败记录</b><button class="link-btn" @click="retryActiveRun">重试失败记录</button></div>
+      <div class="run-progress-meta"><span>失败 {{ activeRun.failed_count }} 条</span><span>{{ activeRun.current_step }}</span></div>
     </div>
 
     <!-- Table -->
@@ -190,7 +220,120 @@
       </div>
     </div>
 
-    <!-- Centered floating preview modal (shared component) -->
+    </template>
+
+    <section v-else-if="scope === 'domestic'" class="review-view">
+      <div class="review-head">
+        <h2>AI 人工复核</h2>
+        <p>AI 研判只生成候选，确认后才会进入正式事件或预警。</p>
+      </div>
+      <div class="review-filter">
+        <button class="seg" :class="{ active: reviewStatusFilter === 'pending_review' }" @click="reviewStatusFilter = 'pending_review'; loadReviews()">待复核</button>
+        <button class="seg" :class="{ active: reviewStatusFilter === 'confirmed' }" @click="reviewStatusFilter = 'confirmed'; loadReviews()">已确认</button>
+        <button class="seg" :class="{ active: reviewStatusFilter === 'rejected' }" @click="reviewStatusFilter = 'rejected'; loadReviews()">已驳回</button>
+        <button class="seg" :class="{ active: reviewStatusFilter === 'all' }" @click="reviewStatusFilter = 'all'; loadReviews()">全部</button>
+        <span class="muted review-filter-tip">操作后不会丢失：已处理的舆情可在「已确认 / 已驳回 / 全部」中回看与追溯</span>
+        <div v-if="reviewStatusFilter === 'pending_review'" class="review-batch">
+          <el-dropdown trigger="click" :disabled="selectedReviewIds.size === 0" @command="onBatchCommand">
+            <button class="btn btn-primary" :disabled="selectedReviewIds.size === 0">批量操作 ▾</button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="use_ai_display" :disabled="selectedReviewIds.size === 0">采用 AI 展示</el-dropdown-item>
+                <el-dropdown-item command="confirm_event_change" :disabled="selectedReviewIds.size === 0">确认事件影响</el-dropdown-item>
+                <el-dropdown-item command="confirm_alert_change" :disabled="selectedReviewIds.size === 0">确认预警影响</el-dropdown-item>
+                <el-dropdown-item command="reject_change" :disabled="selectedReviewIds.size === 0">驳回选中（全部 AI 变更）</el-dropdown-item>
+                <el-dropdown-item command="confirm_event_all" divided :disabled="reviews.length === 0">全量确认事件</el-dropdown-item>
+                <el-dropdown-item command="reject_all" :disabled="reviews.length === 0">全量驳回</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <span class="muted review-toolbar-hint">先勾选左侧复选框，再从「批量操作」中选择动作</span>
+        </div>
+      </div>
+      <div v-if="reviewsLoading" class="review-empty">加载复核记录中…</div>
+      <div v-else class="card table-card review-table-card">
+        <div class="tbl-scroll">
+          <table class="tbl review-table">
+            <thead>
+              <tr>
+                <th style="width:44px"><input type="checkbox" class="row-check" :checked="allReviewsSelected" @click.stop="toggleAllReviews" /></th>
+                <th>舆情标题</th><th>来源</th><th>发布时间</th><th>规则风险</th><th>AI 风险</th>
+                <th>展示口径</th><th>事件候选</th><th>预警候选</th><th>状态</th><th class="review-op-th">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="review in reviews" :key="review.review_id">
+                <td><input type="checkbox" class="row-check" :checked="selectedReviewIds.has(review.review_id)" @click.stop="toggleReview(review)" /></td>
+                <td class="review-title-cell"><button class="link-button" @click="openReviewDetail(review)">{{ review.opinion_title || `舆情 #${review.opinion_id}` }}</button></td>
+                <td>{{ review.source || '-' }}</td>
+                <td>{{ formatTime(review.publish_time) }}</td>
+                <td><span class="risk-num">{{ review.rule_risk_snapshot?.risk_score ?? '-' }}</span></td>
+                <td><span class="risk-num" :style="{ color: riskColor(review.ai_risk_snapshot?.risk_score) }">{{ review.ai_risk_snapshot?.risk_score ?? '-' }}</span></td>
+                <td>{{ review.display_source === 'ai' ? 'AI 展示' : '规则展示' }}</td>
+                <td class="col-center">
+                  <span v-if="review.event_review_status === 'confirmed'" class="pill pill-green">已确认</span>
+                  <span v-else>{{ review.event_candidate_count }}</span>
+                </td>
+                <td class="col-center">
+                  <span v-if="review.alert_review_status === 'confirmed'" class="pill pill-green">已确认</span>
+                  <span v-else>{{ review.alert_candidate_count }}</span>
+                </td>
+                <td><span class="pill" :class="reviewStatusPill(review.review_status)">{{ reviewStatusText(review.review_status) }}</span></td>
+                <td class="review-op-cell">
+                  <button class="review-op-btn" @click="decideReview(review, 'confirm_event_change')">确认事件影响</button>
+                  <button class="review-op-btn" @click="decideReview(review, 'confirm_alert_change')">确认预警影响</button>
+                  <el-dropdown trigger="click" @command="(cmd: string) => decideReview(review, cmd as ReviewDecision)">
+                    <button class="review-op-btn" type="button">更多 ▾</button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="use_ai_display">采用 AI 展示</el-dropdown-item>
+                        <el-dropdown-item command="keep_rule">保留规则风险</el-dropdown-item>
+                        <el-dropdown-item command="complete_review" divided>完成复核</el-dropdown-item>
+                        <el-dropdown-item command="reject_change">驳回全部 AI 变更</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </td>
+              </tr>
+              <tr v-if="!reviews.length"><td colspan="11" class="empty-row">暂无待复核记录</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="pager" v-if="reviewsTotal > 0">
+        <Pager :total="reviewsTotal" v-model:current-page="reviewsPage" :page-size="reviewsSize" @current-change="loadReviews" />
+      </div>
+    </section>
+
+    <template v-if="scope === 'domestic'">
+      <BatchAIModal
+        :visible="batchDialog"
+        kicker="国内 AI 研判"
+        title="创建批量研判任务"
+        preview-endpoint="/domestic/ai-analysis/batch/preview"
+        submit-endpoint="/domestic/ai-analysis/batch"
+        :scope-options="domesticBatchScopeOptions"
+        full-scope-value="filters"
+        :selected-count="selectedIds.size"
+        :build-payload="buildDomesticBatchPayload"
+        @update:visible="batchDialog = $event"
+        @submitted="onDomesticBatchSubmitted"
+      />
+      <div v-if="batchHistoryDialog" class="modal-mask" @click.self="batchHistoryDialog = false">
+        <div class="modal-card compact-modal">
+          <div class="modal-header"><div class="modal-title-wrap"><span class="modal-kicker">AI 研判运行记录</span><h3 class="modal-title">历史批次</h3></div><button class="modal-close" @click="batchHistoryDialog = false">✕</button></div>
+          <div class="modal-body">
+            <div v-for="run in batchRuns" :key="run.run_id" class="run-row"><div><b>{{ run.status }}</b><span>{{ run.processed_count }}/{{ run.total_count }}，成功 {{ run.success_count }}，失败 {{ run.failed_count }}，跳过 {{ run.skipped_count }}</span></div><code>{{ run.run_id }}</code></div>
+            <p v-if="!batchRuns.length" class="review-empty">暂无运行记录</p>
+          </div>
+        </div>
+      </div>
+    </template>
+    <template v-else>
+      <ForeignOpinionListView v-if="foreignView === 'list'" />
+      <ForeignAIReviewView v-else-if="foreignView === 'review'" />
+    </template>
+
     <OpinionDetailModal v-model="detailVisible" :opinion-id="detailId" />
   </div>
 </template>
@@ -200,8 +343,11 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
-import type { Opinion, OpinionListResponse } from '@/types'
+import type { Opinion, OpinionListResponse, DomesticAIReview, DomesticAIBatchRun } from '@/types'
 import OpinionDetailModal from '@/components/OpinionDetailModal.vue'
+import BatchAIModal from '@/components/BatchAIModal.vue'
+import ForeignOpinionListView from '@/views/foreign/ForeignOpinionListView.vue'
+import ForeignAIReviewView from '@/views/foreign/ForeignAIReviewView.vue'
 import { usePermission } from '@/composables/usePermission'
 import { riskColor, levelPill, levelText, sentimentPill, sentimentText, statusPill, statusText, formatTime } from '@/utils/opinion'
 import { formatAdmissionHits } from '@/utils/admission'
@@ -252,6 +398,45 @@ const filters = reactive({
 
 const detailVisible = ref(false)
 const detailId = ref<number | null>(null)
+
+type ReviewDecision = 'keep_rule' | 'use_ai_display' | 'confirm_event_change' | 'confirm_alert_change' | 'reject_change' | 'complete_review'
+const activeView = ref<'opinions' | 'reviews'>('opinions')
+const scope = ref<'domestic' | 'foreign'>('domestic')
+const foreignView = ref<'list' | 'review'>('list')
+const reviewStatusFilter = ref<string>('pending_review')
+function onScopeChange() {
+  if (scope.value === 'domestic') activeView.value = 'opinions'
+  else foreignView.value = 'list'
+}
+// 支持从左侧菜单 deep-link（/opinions?scope=foreign）直接进入国外舆情视图
+watch(() => route.query.scope, (val) => {
+  if (val === 'foreign') scope.value = 'foreign'
+  else if (val === 'domestic') scope.value = 'domestic'
+}, { immediate: true })
+const canAnalyze = computed(() => hasPermission('ai:analyze') || hasPermission('domestic:ai:analyze'))
+const canBatchRead = computed(() => hasPermission('domestic:ai:batch:read') || isSuperuser.value)
+const canCompleteReview = computed(() => hasPermission('domestic:ai:review:complete') || isSuperuser.value)
+const canReviewRead = computed(() =>
+  hasPermission('domestic:ai:review:read') ||
+  hasPermission('domestic:events:review:read') ||
+  hasPermission('domestic:alerts:review:read') ||
+  isSuperuser.value,
+)
+
+const batchDialog = ref(false)
+const batchHistoryDialog = ref(false)
+const batchRuns = ref<DomesticAIBatchRun[]>([])
+const activeRunId = ref(localStorage.getItem('domestic-ai-active-run') || '')
+const activeRun = ref<DomesticAIBatchRun | null>(null)
+let runPollTimer: number | null = null
+
+const reviews = ref<DomesticAIReview[]>([])
+const reviewsTotal = ref(0)
+const reviewsPage = ref(1)
+const reviewsSize = 10
+const reviewsLoading = ref(false)
+const selectedReviewIds = ref<Set<number>>(new Set())
+const allReviewsSelected = computed(() => reviews.value.length > 0 && selectedReviewIds.value.size === reviews.value.length)
 
 // ===== 情感人工校正（仅 opinions:write 角色可见编辑入口）=====
 const { hasPermission, isSuperuser } = usePermission()
@@ -545,15 +730,246 @@ function openDetail(id: number) {
   detailVisible.value = true
 }
 
+function domesticFiltersSnapshot() {
+  const [riskMin, riskMax] = levelRange(filters.level)
+  const [relevanceMin, relevanceMax] = relevanceRange(filters.relevance)
+  return {
+    source: filters.source || undefined,
+    risk_level: filters.risk_level || undefined,
+    level: filters.level || undefined,
+    risk_min: riskMin ?? undefined,
+    risk_max: riskMax ?? undefined,
+    content_type: filters.content_type || undefined,
+    relevance: filters.relevance || undefined,
+    relevance_min: relevanceMin ?? undefined,
+    relevance_max: relevanceMax ?? undefined,
+    keyword: filters.keyword || undefined,
+    q: filters.keyword || undefined,
+    date_from: filters.date_from || undefined,
+    date_to: filters.date_to || undefined,
+    include_low_value: includeLowValue.value,
+  }
+}
+
+const domesticBatchScopeOptions = [
+  { value: 'recent', label: '最近采集（最近 N 条）' },
+  { value: 'filters', label: '当前筛选（国内列表筛选条件）' },
+  { value: 'time', label: '时间范围' },
+  { value: 'selected', label: '已选中舆情' },
+]
+
+// 由 BatchAIModal 在点击「预览 / 提交」时调用，差异仅在国内承载的 filters / opinion_ids
+function buildDomesticBatchPayload(form: any, fullConfirmation: boolean) {
+  return {
+    scope: form.scope,
+    recent_n: form.recent_n,
+    date_from: form.date_from || undefined,
+    date_to: form.date_to || undefined,
+    filters: domesticFiltersSnapshot(),
+    opinion_ids: form.scope === 'selected' ? [...selectedIds.value] : undefined,
+    only_unanalyzed: form.only_unanalyzed,
+    force: form.force,
+    full_confirmation: fullConfirmation,
+  }
+}
+
+function onDomesticBatchSubmitted(data: any) {
+  activeRunId.value = data.run_id
+  localStorage.setItem('domestic-ai-active-run', data.run_id)
+  batchDialog.value = false
+  ElMessage.success(data.message || '国内 AI 研判任务已提交')
+  startRunPolling()
+}
+
+function clearRunPolling() {
+  if (runPollTimer != null) {
+    window.clearTimeout(runPollTimer)
+    runPollTimer = null
+  }
+}
+
+async function pollRun() {
+  if (!activeRunId.value) return
+  try {
+    const { data } = await api.get<DomesticAIBatchRun>(`/domestic/ai-analysis/batch/${activeRunId.value}`)
+    activeRun.value = data
+    if (['succeeded', 'partial_failed', 'failed', 'cancelled'].includes(data.status)) {
+      clearRunPolling()
+      localStorage.removeItem('domestic-ai-active-run')
+      if (data.status === 'succeeded') ElMessage.success('国内 AI 批量研判已完成')
+      else if (data.status === 'partial_failed') ElMessage.warning(`批量研判完成，失败 ${data.failed_count} 条`)
+      return
+    }
+    runPollTimer = window.setTimeout(pollRun, 1500)
+  } catch {
+    runPollTimer = window.setTimeout(pollRun, 3000)
+  }
+}
+
+function startRunPolling() {
+  clearRunPolling()
+  void pollRun()
+}
+
+async function openBatchHistory() {
+  batchHistoryDialog.value = true
+  try {
+    const { data } = await api.get('/domestic/ai-analysis/batches', { params: { page: 1, size: 20 } })
+    batchRuns.value = data.items || []
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '加载批量运行记录失败')
+  }
+}
+
+async function cancelActiveRun() {
+  if (!activeRunId.value) return
+  try {
+    await ElMessageBox.confirm('取消后尚未处理的记录将被跳过，是否继续？', '二次确认取消任务', { type: 'warning' })
+    await api.post(`/domestic/ai-analysis/batch/${activeRunId.value}/cancel`)
+    ElMessage.info('取消请求已提交')
+    void pollRun()
+  } catch (err: any) {
+    if (err?.response) ElMessage.error(err?.response?.data?.detail || '取消任务失败')
+  }
+}
+
+async function retryActiveRun() {
+  if (!activeRunId.value) return
+  try {
+    const { data } = await api.post(`/domestic/ai-analysis/batch/${activeRunId.value}/retry-failed`)
+    activeRunId.value = data.run_id
+    localStorage.setItem('domestic-ai-active-run', data.run_id)
+    ElMessage.success(data.message || '失败记录已重新提交')
+    startRunPolling()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '重试失败记录失败')
+  }
+}
+
+function openReviewView() {
+  activeView.value = 'reviews'
+  void loadReviews()
+}
+
+async function loadReviews() {
+  reviewsLoading.value = true
+  try {
+    const { data } = await api.get('/domestic/ai-analysis/reviews', {
+      params: { page: reviewsPage.value, size: reviewsSize, status: reviewStatusFilter.value === 'all' ? undefined : reviewStatusFilter.value },
+    })
+    reviews.value = data.items || []
+    reviewsTotal.value = data.total || 0
+    selectedReviewIds.value = new Set()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '加载人工复核列表失败')
+  } finally {
+    reviewsLoading.value = false
+  }
+}
+
+function toggleReview(review: DomesticAIReview) {
+  const next = new Set(selectedReviewIds.value)
+  if (next.has(review.review_id)) next.delete(review.review_id)
+  else next.add(review.review_id)
+  selectedReviewIds.value = next
+}
+
+function toggleAllReviews() {
+  selectedReviewIds.value = allReviewsSelected.value
+    ? new Set()
+    : new Set(reviews.value.map((review) => review.review_id))
+}
+
+const REVIEW_DECISION_HINT: Record<string, string> = {
+  use_ai_display: '将把该舆情展示用的风险分切换为 AI 风险分（不改变正式规则风险，仅影响展示）。此操作可重复，仍在待复核。',
+  keep_rule: '将保留系统规则风险分作为展示用风险。此操作可重复，仍在待复核。',
+  confirm_event_change: '将为该舆情簇创建正式事件并生成正式记录。此操作可重复，仍在待复核。',
+  confirm_alert_change: '将依据 AI 预警候选生成正式预警。此操作可重复，仍在待复核。',
+  reject_change: '将驳回该条复核的全部 AI 变更（状态置为已驳回）。此操作不可撤销。',
+  complete_review: '完成复核后该条舆情将进入「已确认」。仅关闭复核，不会自动创建事件或预警。',
+}
+async function decideReview(review: DomesticAIReview, decision: ReviewDecision) {
+  if (review.review_status !== 'pending_review') return
+  const hint = REVIEW_DECISION_HINT[decision]
+  let reason = ''
+  if (decision === 'complete_review') {
+    try {
+      const p = await ElMessageBox.prompt('可填写完成复核的说明（选填）：', '完成复核', {
+        inputType: 'textarea', confirmButtonText: '确认完成', cancelButtonText: '取消',
+      })
+      reason = (p.value || '').trim() || ''
+    } catch { return }
+  } else if (hint) {
+    try {
+      await ElMessageBox.confirm(hint, '确认复核操作', { type: 'warning' })
+    } catch { return }
+  }
+  try {
+    const { data } = await api.post(`/domestic/ai-analysis/reviews/${review.review_id}/decision`, { decision, reason })
+    const updated = data?.review
+    if (updated && updated.review_status !== 'pending_review') {
+      // 完成复核 / 驳回：行离开待复核
+      reviews.value = reviews.value.filter((r) => r.review_id !== review.review_id)
+    } else if (updated) {
+      // 四个蓝色操作：仅局部刷新该行子状态与候选计数，保留在待复核
+      const idx = reviews.value.findIndex((r) => r.review_id === review.review_id)
+      if (idx >= 0) reviews.value[idx] = { ...reviews.value[idx], ...updated }
+    } else {
+      await loadReviews()
+    }
+    ElMessage.success(data.message || '复核已完成')
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '复核操作失败')
+  }
+}
+
+async function batchReview(decision: ReviewDecision, confirmAll = false) {
+  if (!confirmAll && selectedReviewIds.value.size === 0) return
+  if (reviews.value.length === 0) return
+  const ids = [...selectedReviewIds.value]
+  const scope = confirmAll ? '全部待复核结果' : `选中的 ${ids.length} 条复核记录`
+  try {
+    await ElMessageBox.confirm(`将处理${scope}。`, '确认批量复核', { type: 'warning' })
+  } catch { return }
+  try {
+    const { data } = await api.post('/domestic/ai-analysis/reviews/batch', { review_ids: confirmAll ? undefined : ids, decision, confirm_all: confirmAll })
+    ElMessage.success(`已处理 ${data.total || (confirmAll ? reviews.value.length : ids.length)} 条复核记录`)
+    await loadReviews()
+    window.dispatchEvent(new Event('data-refresh'))
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '批量复核失败')
+  }
+}
+
+function onBatchCommand(cmd: string) {
+  if (cmd === 'confirm_event_all') return batchReview('confirm_event_change', true)
+  if (cmd === 'reject_all') return batchReview('reject_change', true)
+  return batchReview(cmd as ReviewDecision)
+}
+
+function openReviewDetail(review: DomesticAIReview) {
+  openDetail(review.opinion_id)
+}
+
+function reviewStatusText(status: string) {
+  return ({ pending_review: '待复核', confirmed: '已确认', rejected: '已驳回', superseded: '已替代' } as Record<string, string>)[status] || status
+}
+
+function reviewStatusPill(status: string) {
+  return ({ pending_review: 'pill-orange', confirmed: 'pill-green', rejected: 'pill-red', superseded: 'pill-gray' } as Record<string, string>)[status] || 'pill-gray'
+}
+
 onMounted(() => {
   restoreFromQuery()
   loadData()
   loadSources()
+  if (activeRunId.value) startRunPolling()
   window.addEventListener('data-refresh', loadData)
   document.addEventListener('click', onDocClick)
 })
 
 onUnmounted(() => {
+  clearRunPolling()
   window.removeEventListener('data-refresh', loadData)
   document.removeEventListener('click', onDocClick)
 })
@@ -772,7 +1188,7 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 
 @media (max-width: 1100px) { .detail-grid { grid-template-columns: 1fr; } }
 @media (max-width: 820px) {
-  .opinions { max-width: 100%; min-width: 0; overflow-x: hidden; }
+  .opinions { max-width: 100%; min-width: 0; overflow-x: hidden; position: relative; }
   .toolbar, .batch-bar { max-width: 100%; }
 }
 
@@ -827,6 +1243,53 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
   margin-bottom: 14px; padding: 12px 16px;
   background: #f5f8ff; border: 1px solid #d6e4ff; border-radius: 14px;
 }
+.view-tabs { display: flex; gap: 4px; }
+.view-tab { border: 1px solid #d2d2d7; background: #fff; color: #515154; border-radius: 10px; padding: 9px 15px; cursor: pointer; font-size: 14px; }
+.view-tab.active { color: #0071e3; border-color: #9bc5f2; background: #eef6ff; font-weight: 600; }
+.opinions-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.top-scope-switch { flex-shrink: 0; }
+@media (max-width: 700px) {
+  .opinions-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+}
+.run-progress { margin-bottom: 14px; padding: 12px 16px; border: 1px solid #cfe1fb; background: #f5f9ff; border-radius: 12px; }
+.run-failed { border-color: #ffd6d2; background: #fff8f7; }
+.run-progress-head, .run-progress-meta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.run-progress-head { justify-content: space-between; }
+.run-progress-meta { margin-top: 8px; color: #6e6e73; font-size: 13px; }
+.progress-track { height: 7px; margin-top: 10px; overflow: hidden; background: #dbe9fb; border-radius: 8px; }
+.progress-track span { display: block; height: 100%; background: #0071e3; border-radius: inherit; transition: width .25s ease; }
+.review-view { min-width: 0; }
+.review-head { margin-bottom: 14px; }
+.review-head h2 { margin: 0; font-size: 22px; color: #1d1d1f; }
+.review-head p { margin: 6px 0 0; color: #6e6e73; font-size: 13px; }
+.review-filter { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.seg { border: 1px solid #d8d8de; background: #fff; color: #515154; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+.seg.active { border-color: #0071e3; color: #0071e3; background: #e8f1fd; font-weight: 600; }
+.review-filter-tip { color: #86868b; font-size: 12px; margin-left: 4px; }
+.review-batch { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.review-toolbar-hint { color: #86868b; font-size: 12px; }
+.review-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.review-table { min-width: 1280px !important; }
+.review-title-cell { max-width: 280px; }
+.link-button { border: 0; padding: 0; background: transparent; color: #0071e3; cursor: pointer; text-align: left; font: inherit; }
+.review-title-cell .link-button { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; white-space: normal; text-align: left; }
+.review-op-cell { display: flex; gap: 6px; flex-wrap: nowrap; white-space: nowrap; min-width: 520px; }
+.review-op-th { min-width: 400px; text-align: left; }
+.link-btn { border: 0; padding: 3px 0; background: transparent; color: #0071e3; cursor: pointer; font-size: 12px; }
+.link-btn.danger { color: #ff3b30; }
+.review-empty { color: #86868b; padding: 30px 0; text-align: center; }
+.compact-modal { width: min(620px, 100%); }
+.batch-form { display: grid; gap: 14px; }
+.batch-form label { display: grid; gap: 7px; color: #515154; font-size: 13px; }
+.batch-form .select { width: 100%; }
+.check-line { display: flex !important; grid-template-columns: none !important; align-items: center; gap: 8px !important; }
+.form-note { margin: 0; color: #6e6e73; font-size: 13px; }
+.preview-box { display: grid; gap: 5px; padding: 12px 14px; border: 1px solid #dbe9fb; background: #f5f9ff; border-radius: 10px; color: #515154; font-size: 13px; }
+.warning-text { color: #c77700; font-size: 13px; margin: 0; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+.run-row { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e8e8ed; font-size: 13px; }
+.run-row span { margin-left: 12px; color: #6e6e73; }
+.run-row code { color: #86868b; font-size: 11px; }
 .batch-count { font-size: 14px; color: #1d1d1f; }
 .batch-count b { color: #0071e3; }
 .btn-danger { background: #ff3b30; color: #fff; }
@@ -838,4 +1301,10 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
   transition: background 0.15s ease;
 }
 .op-del:hover { background: #fff0ef; }
+
+.review-op-btn { display: inline-flex; align-items: center; border: 1px solid #d8d8de; background: #fff; color: #1d1d1f; border-radius: 7px; padding: 5px 11px; font-size: 12.5px; line-height: 1.2; cursor: pointer; white-space: nowrap; transition: border-color .15s ease, color .15s ease, background .15s ease; }
+.review-op-btn:hover:not(:disabled) { border-color: #0071e3; color: #0071e3; }
+.review-op-btn:disabled { opacity: .5; cursor: default; }
+.review-op-btn.danger { color: #ff3b30; border-color: #f3c7c2; }
+.review-op-btn.danger:hover:not(:disabled) { background: #fff8f7; border-color: #ff3b30; }
 </style>

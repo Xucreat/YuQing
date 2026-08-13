@@ -1,6 +1,13 @@
 ﻿<template>
   <div class="events" v-loading="loading">
-    <div class="toolbar">
+  <div class="top-scope-switch">
+    <el-radio-group v-model="scope" @change="loadScope">
+      <el-radio-button label="domestic">国内</el-radio-button>
+      <el-radio-button label="foreign">外网</el-radio-button>
+    </el-radio-group>
+  </div>
+    <template v-if="scope === 'domestic'">
+  <div class="toolbar">
       <!-- 搜索框（苹果风：内嵌图标 + 毛玻璃 + 蓝色聚焦环） -->
       <div class="search-box" :class="{ 'is-focused': searchFocused }">
         <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -140,8 +147,9 @@
             <th style="width:70px">ID</th>
             <th style="width:280px">事件标题</th>
             <th style="width:110px">主题</th>
-            <th style="width:130px" class="col-center">研判风险（影子）</th>
-            <th style="width:110px" class="col-center">研判分</th>
+            <th style="width:140px" class="col-center">正式记录风险</th>
+            <th style="width:160px" class="col-center">关联舆情当前风险</th>
+            <th style="width:130px" class="col-center">影子风险</th>
             <th style="width:80px" class="col-center">热度</th>
             <th style="width:90px" class="col-center">趋势</th>
             <th style="width:100px" class="col-center">关联舆情</th>
@@ -158,13 +166,23 @@
             <td><span class="t-title">{{ row.title }}</span></td>
             <td class="nowrap">{{ topicText(row.topic_category) }}</td>
             <td class="col-center">
-              <span class="pill" :class="riskPill(row.risk_shadow_level || 'low')"><span class="dot"></span>{{ riskText(row.risk_shadow_level || 'low') }}</span>
-              <span class="risk-source" :title="row.risk_shadow_version || 'event-risk-shadow-v1'">只读参考</span>
+              <span class="pill" :class="riskPill(row.formal_risk_level || row.risk_level)"><span class="dot"></span>{{ riskText(row.formal_risk_level || row.risk_level) }}</span>
+              <span class="risk-source">正式快照</span>
               <span v-if="isKeyEvent(row)" class="focus-mark">重点关注</span>
+            </td>
+            <td class="col-center risk-num" :style="{ color: riskColor(row.formal_risk_score ?? row.risk_score) }">
+              {{ row.formal_risk_score ?? row.risk_score }}
+            </td>
+            <td class="col-center risk-num">
+              <template v-if="row.linked_opinion_current_risk">
+                <span :style="{ color: riskColor(row.linked_opinion_current_risk.risk_score ?? 0) }">{{ row.linked_opinion_current_risk.risk_score ?? '-' }}</span>
+                <small class="legacy-risk">{{ riskText(row.linked_opinion_current_risk.risk_level) }}</small>
+              </template>
+              <span v-else>-</span>
             </td>
             <td class="col-center risk-num" :style="{ color: riskColor(row.risk_shadow_score ?? 0) }">
               {{ row.risk_shadow_score ?? '-' }}
-              <small class="legacy-risk" :title="'现行风险分：' + row.risk_score">现行 {{ row.risk_score }}</small>
+              <small class="legacy-risk">参考</small>
             </td>
             <td class="col-center risk-num">{{ row.heat_score }}</td>
             <td class="col-center">
@@ -185,7 +203,7 @@
             </td>
           </tr>
           <tr v-if="displayedRows.length===0 && !loading">
-            <td colspan="13" class="empty-row">暂无事件数据</td>
+            <td colspan="14" class="empty-row">暂无事件数据</td>
           </tr>
         </tbody>
       </table>
@@ -194,6 +212,51 @@
         <Pager :total="total" v-model:current-page="page" :page-size="size" @current-change="loadData" />
       </div>
     </div>
+    </template>
+
+    <template v-else>
+      <div class="card table-card">
+        <div class="foreign-events-head">
+          <span class="muted">外网事件（候选需人工确认后形成正式事件）</span>
+        </div>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th style="width:70px">ID</th>
+              <th style="width:280px">事件标题</th>
+              <th style="width:90px">语言</th>
+              <th style="width:110px">确认来源</th>
+              <th style="width:120px" class="col-center">状态</th>
+              <th style="width:120px" class="col-center">正式风险</th>
+              <th style="width:80px" class="col-center">热度</th>
+              <th style="width:90px" class="col-center">文章数</th>
+              <th style="width:90px" class="col-center">来源数</th>
+              <th style="width:100px" class="col-center">置信度</th>
+              <th style="width:180px">首次出现</th>
+              <th style="width:180px">最后出现</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, idx) in foreignRows" :key="row.id">
+              <td>{{ idx + 1 }}</td>
+              <td><span class="t-title">{{ row.title || '无标题' }}</span></td>
+              <td class="nowrap">{{ langText(row.language) }}</td>
+              <td class="nowrap">{{ srcText(row.confirmation_source || 'manual') }}</td>
+              <td class="col-center"><span class="pill" :class="foreignStatusPill(row.event_status)">{{ foreignStatusText(row.event_status) }}</span></td>
+              <td class="col-center"><span class="pill" :class="riskPill(row.formal_risk_level || row.risk_level)">{{ riskText(row.formal_risk_level || row.risk_level) }}</span></td>
+              <td class="col-center risk-num">{{ row.heat_score ?? '-' }}</td>
+              <td class="col-center risk-num">{{ row.opinion_count ?? '-' }}</td>
+              <td class="col-center risk-num">{{ row.source_count ?? '-' }}</td>
+              <td class="col-center risk-num">{{ Math.round((row.confidence || 0) * 100) }}%</td>
+              <td class="nowrap">{{ formatTime(row.first_seen_at) }}</td>
+              <td class="nowrap">{{ formatTime(row.last_seen_at) }}</td>
+            </tr>
+            <tr v-if="foreignRows.length === 0 && !foreignLoading"><td colspan="12" class="empty-row">暂无外网事件</td></tr>
+          </tbody>
+        </table>
+        <div v-if="foreignLoading" class="state">加载外网事件中…</div>
+      </div>
+    </template>
 
     <el-dialog
       v-model="handleDialogVisible"
@@ -313,6 +376,9 @@ const searchFocused = ref(false) // 搜索框聚焦态（驱动苹果蓝聚焦�
 const riskOpen = ref(false)      // 风险下拉浮层开合
 const shadowRiskOpen = ref(false)
 const moreOpen = ref(false)
+const scope = ref<'domestic' | 'foreign'>('domestic')
+const foreignRows = ref<any[]>([])
+const foreignLoading = ref(false)
 
 // 运营状态快捷筛选（纯前端过滤当前页，不改 API；选项与“全部处置状态”下拉一一对应，每个胶囊对应单一状态）
 const statusGroups = [
@@ -377,7 +443,7 @@ function topicText(value: string | null | undefined): string {
   return topicOptions.find((option) => option.value === value)?.label || '未分类'
 }
 function isKeyEvent(row: EventItem): boolean {
-  return row.risk_score >= 70 && row.heat_score >= 60
+  return (row.formal_risk_score ?? row.risk_score) >= 70 && row.heat_score >= 60
 }
 function riskColor(score: number): string {
   if (score >= 70) return '#ff3b30'
@@ -391,6 +457,20 @@ function trendPill(value: string): string {
   return ({ rising: 'pill-red', stable: 'pill-gray', falling: 'pill-green', unknown: 'pill-gray' } as const)[value] || 'pill-gray'
 }
 function formatTime(t: string | null): string { if (!t) return '-'; return t.replace('T', ' ').slice(0, 19) }
+function langText(l: string | null | undefined): string {
+  return ({ en: '英文', zh: '中文', mixed: '中英混合' } as Record<string, string>)[l || ''] || l || '-'
+}
+function srcText(s: string | null | undefined): string {
+  return ({ manual: '人工', auto: '自动' } as Record<string, string>)[s || ''] || s || '-'
+}
+function foreignStatusPill(s: string | null | undefined): string {
+  if (s === 'monitoring') return 'pill-green'
+  if (s === 'failed') return 'pill-red'
+  return 'pill-gray'
+}
+function foreignStatusText(s: string | null | undefined): string {
+  return ({ monitoring: '监测中', closed: '已关闭', archived: '已归档', failed: '失败', pending: '待处理', converted: '已转正' } as Record<string, string>)[s || ''] || s || '-'
+}
 
 async function loadData() {
   loading.value = true
@@ -413,6 +493,22 @@ async function loadData() {
     const { data } = await api.get<EventListResponse>('/events', { params })
     rows.value = data.items; total.value = data.total
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '加载事件列表失败') } finally { loading.value = false }
+}
+
+async function loadForeignEvents() {
+  foreignLoading.value = true
+  try {
+    const { data } = await api.get('/foreign/events', { params: { size: 100 } })
+    foreignRows.value = data.items || []
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '加载外网事件失败')
+  } finally {
+    foreignLoading.value = false
+  }
+}
+function loadScope() {
+  if (scope.value === 'foreign') loadForeignEvents()
+  else loadData()
 }
 
 // 标题搜索：输入防抖 350ms，避免每次按键都打接口；变化时回到第 1 页。
@@ -802,6 +898,8 @@ table.tbl tbody tr:hover .operation-col { background: #fafafc; }
 }
 @media (max-width: 820px) {
   .events { max-width: 100%; min-width: 0; overflow-x: hidden; }
+.top-scope-switch { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+.foreign-events-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
   .toolbar { max-width: 100%; }
 }
 </style>

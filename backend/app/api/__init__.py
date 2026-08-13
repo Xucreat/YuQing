@@ -30,6 +30,7 @@ from app.api.foreign import foreign_router
 from app.api.foreign_events import foreign_events_router, foreign_event_meta_router
 from app.api.foreign_alerts import foreign_alerts_router, foreign_alert_meta_router
 from app.api.foreign_visualization import foreign_visualization_router
+from app.api.domestic_ai_analysis import domestic_ai_router
 from app.api.translate import translate_router
 
 api_router = APIRouter()
@@ -69,4 +70,5 @@ api_router.include_router(foreign_event_meta_router)
 api_router.include_router(foreign_alerts_router)
 api_router.include_router(foreign_alert_meta_router)
 api_router.include_router(foreign_visualization_router)
+api_router.include_router(domestic_ai_router)
 api_router.include_router(translate_router)

@@ -1,6 +1,7 @@
 ﻿from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.user import User
@@ -11,6 +12,7 @@ class AlertRule(Base):
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     risk_threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=70)
+    rule_type: Mapped[str] = mapped_column(String(32), nullable=False, default="risk_score", server_default="risk_score")
     keywords: Mapped[str] = mapped_column(Text, nullable=False, default="")
     sources: Mapped[str] = mapped_column(Text, nullable=False, default="")
     risk_level: Mapped[str] = mapped_column(String(32), nullable=False, default="high")
@@ -22,6 +24,10 @@ class AlertRule(Base):
         CheckConstraint(
             "risk_level IN ('low','medium','high','critical')",
             name="ck_alert_rules_risk_level",
+        ),
+        CheckConstraint(
+            "rule_type IN ('risk_score','ai_risk_score')",
+            name="ck_alert_rules_rule_type",
         ),
     )
 
@@ -52,8 +58,20 @@ class AlertRecord(Base):
     handler: Mapped[Optional["User"]] = relationship(
         "User", foreign_keys=[handled_by], lazy="joined"
     )
+    opinion: Mapped[Optional["Opinion"]] = relationship("Opinion", foreign_keys=[opinion_id], lazy="joined")
     handled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     handle_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    confirmation_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    evaluation_source: Mapped[str] = mapped_column(String(32), nullable=False, default="rule", server_default="rule")
+    confirmation_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    rule_risk_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    ai_risk_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    review_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    confirmed_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    origin_review_id: Mapped[Optional[int]] = mapped_column(ForeignKey("domestic_manual_reviews.id", ondelete="SET NULL"), nullable=True)
+    origin_ai_result_id: Mapped[Optional[int]] = mapped_column(ForeignKey("domestic_ai_results.id", ondelete="SET NULL"), nullable=True)
+    deduplication_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     @property
@@ -71,5 +89,9 @@ class AlertRecord(Base):
         CheckConstraint(
             "status IN ('pending','processing','resolved','ignored','false_positive')",
             name="ck_alert_records_status",
+        ),
+        CheckConstraint(
+            "evaluation_source IN ('rule','manual_review_ai')",
+            name="ck_alert_records_evaluation_source",
         ),
     )

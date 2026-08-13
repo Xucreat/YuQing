@@ -44,3 +44,21 @@ class ForeignOpinion(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
+
+    # Current risk is the human-adopted display risk. Rule/AI evaluations stay
+    # separately queryable and formal events/alerts keep their own snapshots.
+    current_risk_source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="rule", server_default="rule"
+    )
+    current_risk_score: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    current_risk_level: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="low", server_default="low"
+    )
+    current_ai_result_id: Mapped[int | None] = mapped_column(
+        ForeignKey("foreign_ai_results.id", ondelete="SET NULL"), nullable=True
+    )
+    current_risk_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
