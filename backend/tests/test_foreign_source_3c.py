@@ -136,7 +136,7 @@ def test_confirmed_event_triggers_but_unconfirmed_event_does_not():
         title=f"Phase 3C event {suffix} confirmed",
         summary="fixture event",
         language="en",
-        event_status="confirmed",
+        event_status="active",
         risk_level="high",
         heat_score=85,
         opinion_count=1,
@@ -146,6 +146,22 @@ def test_confirmed_event_triggers_but_unconfirmed_event_does_not():
     db.add(event)
     db.flush()
     db.add(ForeignEventOpinion(foreign_event_id=event.id, foreign_opinion_id=opinion.id))
+    # Negative case: an event in a non-target status (here "archived") must NOT
+    # satisfy the confirmed_event rule even with a higher heat score.
+    inactive = ForeignEvent(
+        title=f"Phase 3C event {suffix} archived",
+        summary="fixture inactive event",
+        language="en",
+        event_status="archived",
+        risk_level="high",
+        heat_score=99,
+        opinion_count=8,
+        source_count=3,
+        confidence=0.8,
+    )
+    db.add(inactive)
+    db.flush()
+    db.add(ForeignEventOpinion(foreign_event_id=inactive.id, foreign_opinion_id=opinion.id))
     rule = ForeignAlertRule(
         name=f"Phase 3C {suffix} event",
         rule_type="confirmed_event",
@@ -161,6 +177,11 @@ def test_confirmed_event_triggers_but_unconfirmed_event_does_not():
         assert run.triggered_count == 1
         assert alert.foreign_event_id == event.id
         assert alert.foreign_opinion_id is None
+        # The archived (non-target) event must not have produced an alert.
+        assert db.query(ForeignAlert).filter(
+            ForeignAlert.rule_id == rule.id,
+            ForeignAlert.foreign_event_id == inactive.id,
+        ).count() == 0
         assert db.query(AlertRecord).count() >= 0
     finally:
         _cleanup(db, suffix)

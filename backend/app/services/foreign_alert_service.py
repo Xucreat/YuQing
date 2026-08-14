@@ -158,7 +158,11 @@ def _keyword_combo_matches(rule: ForeignAlertRule, opinion: ForeignOpinion, resu
 
 
 def _event_matches(rule: ForeignAlertRule, event: ForeignEvent) -> bool:
-    if event.event_status != "confirmed":
+    # The 7-state ForeignEvent model has no "confirmed" status. "confirmed_event"
+    # rules target live, active events (consistent with
+    # foreign_visualization_service.confirmed_event_count, which counts
+    # event_status == "active").
+    if event.event_status != "active":
         return False
     conditions = rule.conditions or {}
     checks: list[bool] = []
@@ -330,7 +334,7 @@ class ForeignAlertService:
                         # auto-create a ForeignAlert here.
                         continue
                     elif rule.rule_type == "confirmed_event":
-                        for event in db.scalars(select(ForeignEvent).where(ForeignEvent.event_status == "confirmed").order_by(ForeignEvent.id.asc())).all():
+                        for event in db.scalars(select(ForeignEvent).where(ForeignEvent.event_status == "active").order_by(ForeignEvent.id.asc())).all():
                             if _event_matches(rule, event):
                                 targets.append((None, None, event, {"event_status": event.event_status, "heat_score": event.heat_score, "opinion_count": event.opinion_count, "evaluation_source": "rule"}))
                     else:
