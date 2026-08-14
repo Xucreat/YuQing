@@ -1275,9 +1275,13 @@ async function testCreate() {
     testOk.value = ok
     if (ok) {
       const t = data.test
-      testMsg.value =
-        `测试通过：列表页获取到 ${t?.fetched_links ?? 0} 个链接` +
-        (t?.sample_content_len ? `，示例详情页正文 ${t.sample_content_len} 字` : '')
+      if (form.type === 'rss') {
+        testMsg.value = `测试通过：RSS 实时抓取命中 ${t?.count ?? 0} 条（${t?.feeds ?? 0} 个 feed 可用）`
+      } else {
+        testMsg.value =
+          `测试通过：列表页获取到 ${t?.fetched_links ?? 0} 个链接` +
+          (t?.sample_content_len ? `，示例详情页正文 ${t.sample_content_len} 字` : '')
+      }
     } else {
       testMsg.value = '测试未通过：' + (data.error || '未知原因')
     }
