@@ -255,101 +255,31 @@
           </tbody>
         </table>
         <div v-if="foreignLoading" class="state">加载外网事件中…</div>
+        <div class="pager-wrap" v-if="foreignTotal > 0">
+          <Pager :total="foreignTotal" v-model:current-page="foreignPage" :page-size="foreignSize" @current-change="loadForeignEvents" />
+        </div>
       </div>
     </template>
 
-    <el-dialog
+    <EventDispositionDialog
       v-model="handleDialogVisible"
-      title="事件处置"
-      width="820px"
-      top="6vh"
-      :close-on-click-modal="true"
-      class="op-dialog"
-    >
-      <div v-if="handleEvent" class="op-modal-body">
-        <div class="op-left">
-          <div class="operation-header">
-            <div>
-              <div class="operation-current">
-                当前处置状态
-                <span class="pill" :class="eventStatusPill(handleEvent.status)">{{ eventStatusLabel(handleEvent.status) }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="canUpdateEvent" class="status-actions" aria-label="变更事件处置状态">
-            <button
-              v-for="option in EVENT_STATUS_OPTIONS"
-              :key="option.value"
-              class="status-button"
-              :class="{ current: handleEvent.status === option.value }"
-              :disabled="savingStatus || !canChangeStatus(option.value)"
-              @click="changeStatus(option.value)"
-            >
-              {{ option.value === 'deprecated' ? '忽略事件' : option.label }}
-            </button>
-          </div>
-
-          <div v-if="canUpdateEvent" class="note-editor">
-            <textarea
-              v-model="noteContent"
-              maxlength="5000"
-              rows="3"
-              placeholder="填写核查、联络或处置进展"
-              :disabled="savingNote"
-            ></textarea>
-            <div class="note-submit-row">
-              <span>{{ noteContent.length }}/5000</span>
-              <button class="btn btn-primary" :disabled="savingNote || !noteContent.trim()" @click="addNote">
-                {{ savingNote ? '提交中' : '添加备注' }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="op-right">
-          <div class="op-right-title">
-            处置记录<span class="op-count">{{ handleEvent.actions.length }}</span>
-          </div>
-          <div class="op-right-scroll">
-            <div class="action-timeline">
-              <div v-for="action in handleEvent.actions" :key="action.id" class="timeline-item">
-                <span class="timeline-dot"></span>
-                <div class="timeline-body">
-                  <div class="timeline-meta">
-                    <time>{{ formatTime(action.created_at) }}</time>
-                    <strong>{{ action.username || (action.user_id ? `用户 ${action.user_id}` : '系统') }}</strong>
-                    <span>{{ actionTypeText(action.action_type) }}</span>
-                  </div>
-                  <div class="timeline-content">
-                    <template v-if="action.action_type === 'status_change' && action.old_status && action.new_status">
-                      {{ eventStatusLabel(action.old_status) }} → {{ eventStatusLabel(action.new_status) }}
-                    </template>
-                    <template v-else>{{ action.content }}</template>
-                  </div>
-                </div>
-              </div>
-              <div v-if="handleEvent.actions.length === 0" class="timeline-empty">暂无处置记录</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div v-else class="op-loading">加载中…</div>
-      <template #footer>
-        <button class="btn btn-ghost" @click="handleDialogVisible = false">关闭</button>
-      </template>
-    </el-dialog>
+      :event-id="handleEventId"
+      scope="domestic"
+      @updated="loadByScope"
+    />
 
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api, { isPermissionDenied, pollTask } from '@/api'
 import type { EventItem, EventListResponse, EventCreateResponse, EventActionItem } from '@/types'
 import { EVENT_STATUS_OPTIONS, eventStatusLabel, eventStatusPill } from '@/utils/event'
 import { usePermission } from '@/composables/usePermission'
+import EventDispositionDialog from '@/components/EventDispositionDialog.vue'
 
 const loading = ref(false)
 const aggregating = ref(false)
@@ -376,9 +306,14 @@ const searchFocused = ref(false) // 搜索框聚焦态（驱动苹果蓝聚焦�
 const riskOpen = ref(false)      // 风险下拉浮层开合
 const shadowRiskOpen = ref(false)
 const moreOpen = ref(false)
-const scope = ref<'domestic' | 'foreign'>('domestic')
+const route = useRoute()
+const router = useRouter()
+const scope = ref<'domestic' | 'foreign'>(route.query.section === 'foreign' ? 'foreign' : 'domestic')
 const foreignRows = ref<any[]>([])
 const foreignLoading = ref(false)
+const foreignPage = ref(1)
+const foreignSize = ref(20)
+const foreignTotal = ref(0)
 
 // 运营状态快捷筛选（纯前端过滤当前页，不改 API；选项与“全部处置状态”下拉一一对应，每个胶囊对应单一状态）
 const statusGroups = [
@@ -396,14 +331,9 @@ const displayedRows = computed(() => {
   return rows.value.filter((r) => r.status === statusGroup.value)
 })
 
-// 事件处置弹窗（点击列表“处置”按钮唤起）
-interface HandleEvent { id: number; status: string; actions: EventActionItem[] }
+// 事件处置弹窗（点击列表“处置”按钮唤起，统一复用 EventDispositionDialog）
 const handleDialogVisible = ref(false)
 const handleEventId = ref<number | null>(null)
-const handleEvent = ref<HandleEvent | null>(null)
-const savingStatus = ref(false)
-const savingNote = ref(false)
-const noteContent = ref('')
 const { hasPermission } = usePermission()
 const canUpdateEvent = computed(() => hasPermission('events:write'))
 const riskOptions = [
@@ -498,18 +428,34 @@ async function loadData() {
 async function loadForeignEvents() {
   foreignLoading.value = true
   try {
-    const { data } = await api.get('/foreign/events', { params: { size: 100 } })
+    const { data } = await api.get('/foreign/events', { params: { page: foreignPage.value, size: foreignSize.value } })
     foreignRows.value = data.items || []
+    foreignTotal.value = data.total ?? 0
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || '加载外网事件失败')
   } finally {
     foreignLoading.value = false
   }
 }
-function loadScope() {
-  if (scope.value === 'foreign') loadForeignEvents()
-  else loadData()
+function loadByScope() {
+  if (scope.value === 'foreign') {
+    foreignPage.value = 1
+    loadForeignEvents()
+  } else {
+    loadData()
+  }
 }
+function loadScope() {
+  router.replace({ path: '/events', query: scope.value === 'foreign' ? { section: 'foreign' } : {} })
+}
+watch(
+  () => route.query.section,
+  (sec) => {
+    const foreign = sec === 'foreign'
+    scope.value = foreign ? 'foreign' : 'domestic'
+    loadByScope()
+  },
+)
 
 // 标题搜索：输入防抖 350ms，避免每次按键都打接口；变化时回到第 1 页。
 function onSearchInput() {
@@ -599,58 +545,12 @@ async function handleDelete(row: EventItem) {
   }
 }
 
-onMounted(loadData)
+onMounted(loadByScope)
 
-// ── 事件处置弹窗逻辑（与详情页一致） ──
-const nextStatus: Partial<Record<string, string>> = {
-  active: 'verifying', verifying: 'processing', processing: 'resolved', resolved: 'closed',
-}
-// Phase 2-E-2/3：允许各活跃态直接「忽略」(deprecated)，与后端 DEPRECATE_ALLOWED_FROM 对齐
-const DEPRECATE_ALLOWED_FROM = ['active', 'verifying', 'processing']
-function actionTypeText(value: string): string {
-  return ({ status_change: '状态变更', note: '备注', assign: '指派', resolve: '解决' } as Record<string, string>)[value] || value
-}
-function canChangeStatus(target: string): boolean {
-  const current = handleEvent.value?.status
-  if (!current || target === current) return false
-  if (target === 'active') return true
-  if (target === 'deprecated') return DEPRECATE_ALLOWED_FROM.includes(current)
-  return nextStatus[current] === target
-}
+// ── 事件处置弹窗逻辑：统一复用 EventDispositionDialog，组件内部自取详情 ──
 function openHandle(row: EventItem) {
   handleEventId.value = row.id
-  handleEvent.value = null
   handleDialogVisible.value = true
-  loadHandleEvent()
-}
-async function loadHandleEvent() {
-  if (!handleEventId.value) return
-  try {
-    const { data } = await api.get('/events/' + handleEventId.value)
-    handleEvent.value = data
-  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '加载事件详情失败') }
-}
-async function changeStatus(target: string) {
-  if (!canChangeStatus(target) || !handleEvent.value) return
-  savingStatus.value = true
-  try {
-    await api.patch(`/events/${handleEvent.value.id}/status`, { status: target })
-    ElMessage.success(`处置状态已更新为${eventStatusLabel(target)}`)
-    await loadHandleEvent()
-    const r = rows.value.find((x) => x.id === handleEvent.value!.id)
-    if (r) r.status = target
-  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '更新处置状态失败') } finally { savingStatus.value = false }
-}
-async function addNote() {
-  const content = noteContent.value.trim()
-  if (!content || !handleEvent.value) return
-  savingNote.value = true
-  try {
-    await api.post(`/events/${handleEvent.value.id}/actions`, { action_type: 'note', content })
-    noteContent.value = ''
-    ElMessage.success('事件备注已添加')
-    await loadHandleEvent()
-  } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '添加事件备注失败') } finally { savingNote.value = false }
 }
 </script>
 

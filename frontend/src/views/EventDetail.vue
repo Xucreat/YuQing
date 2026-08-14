@@ -10,7 +10,7 @@
         <h2 class="detail-title">{{ event.title }}</h2>
         <span class="pill" :class="riskPill(event.risk_level)"><span class="dot"></span>{{ riskText(event.risk_level) }}</span>
         <span v-if="isKeyEvent" class="focus-mark">重点关注</span>
-        <button class="btn btn-primary handle-open-btn" @click="handleDialogVisible = true">处置</button>
+        <button class="btn btn-primary handle-open-btn" v-if="canUpdateEvent" @click="handleDialogVisible = true">处置</button>
       </div>
       <div v-if="event.description" class="event-desc">{{ event.description }}</div>
       <div class="event-meta">
@@ -88,87 +88,13 @@
       </div>
     </section>
 
-    <!-- ③ 事件处置弹窗：内容/字段保持不变，仅改为页面垂直居中 -->
-    <el-dialog
+    <!-- ③ 事件处置：统一复用 EventDispositionDialog，含状态流转/归档/合并/拆分/备注/处置记录 -->
+    <EventDispositionDialog
       v-model="handleDialogVisible"
-      title="事件处置"
-      width="820px"
-      align-center
-      :close-on-click-modal="true"
-      class="op-dialog"
-    >
-      <div class="op-modal-body">
-        <div class="op-left">
-          <div class="operation-header">
-            <div>
-              <div class="operation-current">
-                当前处置状态
-                <span class="pill" :class="eventStatusPill(event.status)">{{ eventStatusLabel(event.status) }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="canUpdateEvent" class="status-actions" aria-label="变更事件处置状态">
-            <button
-              v-for="option in EVENT_STATUS_OPTIONS"
-              :key="option.value"
-              class="status-button"
-              :class="{ current: event.status === option.value }"
-              :disabled="savingStatus || !canChangeStatus(option.value)"
-              @click="changeStatus(option.value)"
-            >
-              {{ option.value === 'deprecated' ? '忽略事件' : option.label }}
-            </button>
-          </div>
-
-          <div v-if="canUpdateEvent" class="note-editor">
-            <textarea
-              v-model="noteContent"
-              maxlength="5000"
-              rows="3"
-              placeholder="填写核查、联络或处置进展"
-              :disabled="savingNote"
-            ></textarea>
-            <div class="note-submit-row">
-              <span>{{ noteContent.length }}/5000</span>
-              <button class="btn btn-primary" :disabled="savingNote || !noteContent.trim()" @click="addNote">
-                {{ savingNote ? '提交中' : '添加备注' }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="op-right">
-          <div class="op-right-title">
-            处置记录<span class="op-count">{{ event.actions.length }}</span>
-          </div>
-          <div class="op-right-scroll">
-            <div class="action-timeline">
-              <div v-for="action in event.actions" :key="action.id" class="timeline-item">
-                <span class="timeline-dot"></span>
-                <div class="timeline-body">
-                  <div class="timeline-meta">
-                    <time>{{ formatTime(action.created_at) }}</time>
-                    <strong>{{ action.username || (action.user_id ? `用户 ${action.user_id}` : '系统') }}</strong>
-                    <span>{{ actionTypeText(action.action_type) }}</span>
-                  </div>
-                  <div class="timeline-content">
-                    <template v-if="action.action_type === 'status_change' && action.old_status && action.new_status">
-                      {{ eventStatusLabel(action.old_status) }} → {{ eventStatusLabel(action.new_status) }}
-                    </template>
-                    <template v-else>{{ action.content }}</template>
-                  </div>
-                </div>
-              </div>
-              <div v-if="event.actions.length === 0" class="timeline-empty">暂无处置记录</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <button class="btn btn-ghost" @click="handleDialogVisible = false">关闭</button>
-      </template>
-    </el-dialog>
+      :event-id="event.id"
+      scope="domestic"
+      @updated="loadData"
+    />
 
     <!-- ④ 关联内容：关联舆情 / 关联预警 用 Tab 切换 -->
     <div class="card table-card">
@@ -247,33 +173,21 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 import OpinionDetailModal from '@/components/OpinionDetailModal.vue'
+import EventDispositionDialog from '@/components/EventDispositionDialog.vue'
 import { usePermission } from '@/composables/usePermission'
-import { EVENT_STATUS_OPTIONS, eventStatusLabel, eventStatusPill } from '@/utils/event'
+import { eventStatusLabel } from '@/utils/event'
 import type { EventActionItem, EventStatistics, EventAlert } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const situation = ref<any | null>(null)
-const savingStatus = ref(false)
-const savingNote = ref(false)
-const noteContent = ref('')
 const handleDialogVisible = ref(false)
 const { hasPermission } = usePermission()
 const canUpdateEvent = computed(() => hasPermission('events:write'))
 
 // ④ 关联内容 Tab 当前选中项
 const activeRelatedTab = ref<'opinions' | 'alerts'>('opinions')
-
-type EventStatus = 'active' | 'verifying' | 'processing' | 'resolved' | 'closed' | 'deprecated'
-const nextStatus: Partial<Record<EventStatus, EventStatus>> = {
-  active: 'verifying',
-  verifying: 'processing',
-  processing: 'resolved',
-  resolved: 'closed',
-}
-// Phase 2-E-2/3：允许各活跃态直接「忽略」(deprecated)，与后端 DEPRECATE_ALLOWED_FROM 对齐
-const DEPRECATE_ALLOWED_FROM: EventStatus[] = ['active', 'verifying', 'processing']
 
 // 关联舆情跳转：打开舆情详情弹窗（与「舆情列表」一致）
 const detailVisible = ref(false)
@@ -342,16 +256,6 @@ const isKeyEvent = computed(() => (event.value.formal_risk_score ?? event.value.
 function formatTime(t: string | null): string {
   if (!t) return '-'; return t.replace('T', ' ').slice(0, 19)
 }
-function actionTypeText(value: string): string {
-  return ({ status_change: '状态变更', note: '备注', assign: '指派', resolve: '解决' } as Record<string, string>)[value] || value
-}
-function canChangeStatus(target: EventStatus): boolean {
-  const current = event.value.status as EventStatus
-  if (target === current) return false
-  if (target === 'active') return true
-  if (target === 'deprecated') return DEPRECATE_ALLOWED_FROM.includes(current)
-  return nextStatus[current] === target
-}
 function alertStatusText(value: string): string {
   return ({
     pending: '待处理', processing: '处理中', resolved: '已解决',
@@ -376,36 +280,6 @@ async function loadData() {
       situation.value = null
     }
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '加载事件详情失败') } finally { loading.value = false }
-}
-
-async function changeStatus(target: EventStatus) {
-  if (!canChangeStatus(target)) return
-  savingStatus.value = true
-  try {
-    await api.patch(`/events/${event.value.id}/status`, { status: target })
-    ElMessage.success(`处置状态已更新为${eventStatusLabel(target)}`)
-    await loadData()
-  } catch (err: any) {
-    ElMessage.error(errorMessage(err, '更新处置状态失败'))
-  } finally {
-    savingStatus.value = false
-  }
-}
-
-async function addNote() {
-  const content = noteContent.value.trim()
-  if (!content) return
-  savingNote.value = true
-  try {
-    await api.post(`/events/${event.value.id}/actions`, { action_type: 'note', content })
-    noteContent.value = ''
-    ElMessage.success('事件备注已添加')
-    await loadData()
-  } catch (err: any) {
-    ElMessage.error(errorMessage(err, '添加事件备注失败'))
-  } finally {
-    savingNote.value = false
-  }
 }
 
 async function handleDelete() {
