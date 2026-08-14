@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -34,6 +34,7 @@ from app.services.foreign_event_auto_aggregation_service import (
     ForeignEventAutoAggregationService,
     serialize_auto_result,
 )
+from app.services.foreign_event_situation import ForeignEventSituationService
 
 
 foreign_events_router = APIRouter(
@@ -470,6 +471,24 @@ def get_foreign_event(
     ).all()
     payload["actions"] = [serialize_action(row) for row in action_rows]
     return payload
+
+
+@foreign_events_router.get("/{event_id}/situation")
+def get_foreign_event_situation(
+    event_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:events:read")),
+) -> dict:
+    """Return a read-only foreign-event situation snapshot and risk explanation.
+
+    与国内 ``GET /events/{id}/situation`` 对齐：直接复用已有
+    ``ForeignEventSituationService.build``，不重复实现统计/影子风险逻辑。
+    事件不存在时返回 404（而非 500）；不吞异常。
+    """
+    situation = ForeignEventSituationService().build(db, event_id)
+    if situation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Foreign event not found")
+    return situation
 
 
 def _confirm_candidate(
