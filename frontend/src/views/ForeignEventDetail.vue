@@ -47,8 +47,8 @@
       </div>
     </section>
 
-    <!-- ② 研判与统计卡：复用 EventAnalysisStats（外网 situation 接口由阶段 3 补齐，当前为空则自动隐藏） -->
-    <EventAnalysisStats v-if="event.id" :situation="situation" />
+    <!-- ② 研判与统计卡：复用 EventAnalysisStats；阶段 3 的 situation 接口返回 { statistics, situation }，需分别拆包传入 -->
+    <EventAnalysisStats v-if="event.id && situation" :statistics="situation?.statistics" :situation="situation?.situation" />
 
     <!-- ③ 事件处置：统一复用 EventDispositionDialog，scope=foreign（状态流转/归档/合并/拆分/备注/处置记录） -->
     <EventDispositionDialog

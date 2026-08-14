@@ -162,16 +162,14 @@
         </thead>
         <tbody>
           <tr v-for="(row, idx) in displayedRows" :key="row.id" @click="$router.push('/event/' + row.id)" style="cursor:pointer">
-            <td>{{ (page - 1) * size + idx + 1 }}</td>
+            <td>{{ row.id }}</td>
             <td><span class="t-title">{{ row.title }}</span></td>
             <td class="nowrap">{{ topicText(row.topic_category) }}</td>
             <td class="col-center">
               <span class="pill" :class="riskPill(row.formal_risk_level || row.risk_level)"><span class="dot"></span>{{ riskText(row.formal_risk_level || row.risk_level) }}</span>
+              <span class="risk-num" :style="{ color: riskColor(row.formal_risk_score ?? row.risk_score) }">{{ row.formal_risk_score ?? row.risk_score }}</span>
               <span class="risk-source">正式快照</span>
               <span v-if="isKeyEvent(row)" class="focus-mark">重点关注</span>
-            </td>
-            <td class="col-center risk-num" :style="{ color: riskColor(row.formal_risk_score ?? row.risk_score) }">
-              {{ row.formal_risk_score ?? row.risk_score }}
             </td>
             <td class="col-center risk-num">
               <template v-if="row.linked_opinion_current_risk">
@@ -237,8 +235,8 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(row, idx) in foreignRows" :key="row.id">
-              <td>{{ idx + 1 }}</td>
+            <tr v-for="(row, idx) in foreignRows" :key="row.id" @click="$router.push('/foreign/event/' + row.id)" style="cursor:pointer">
+              <td>{{ row.id }}</td>
               <td><span class="t-title">{{ row.title || '无标题' }}</span></td>
               <td class="nowrap">{{ langText(row.language) }}</td>
               <td class="nowrap">{{ srcText(row.confirmation_source || 'manual') }}</td>
@@ -556,6 +554,9 @@ function openHandle(row: EventItem) {
 
 <style scoped>
 .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; position: relative; z-index: 30; }
+/* 国内/外网切换：右上角绝对定位，容器预留顶部空间避免遮挡工具栏（采集按钮在其下方） */
+.events { position: relative; padding-top: 40px; }
+.top-scope-switch { position: absolute; top: 0; right: 0; z-index: 2; }
 .compact-select, .compact-input { height: 40px; padding: 0 11px; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; background: rgba(245,245,247,0.8); color: #1d1d1f; font: inherit; font-size: 13px; }
 .compact-select { min-width: 112px; }
 .compact-input { width: 92px; }
@@ -679,7 +680,7 @@ table.tbl tbody tr:hover { background: #fafafc; }
 table.tbl tbody tr:last-child td { border-bottom: none; }
 .col-center { text-align: center; }
 .nowrap { white-space: nowrap; }
-.t-title { font-weight: 500; color: #1d1d1f; }
+.t-title { font-weight: 500; color: #1d1d1f; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .risk-num { font-weight: 600; font-variant-numeric: tabular-nums; }
 .more-toggle.active { background: #e8f1fd; color: #0071e3; }
 .more-filters { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; flex-wrap: wrap; }
@@ -797,8 +798,8 @@ table.tbl tbody tr:hover .operation-col { background: #fafafc; }
   .op-right-scroll { position: static; flex: 1 1 auto; min-height: 0; }
 }
 @media (max-width: 820px) {
-  .events { max-width: 100%; min-width: 0; overflow-x: hidden; }
-.top-scope-switch { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  .events { max-width: 100%; min-width: 0; overflow-x: hidden; padding-top: 0; }
+.top-scope-switch { position: static; display: flex; justify-content: flex-end; margin-bottom: 14px; }
 .foreign-events-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
   .toolbar { max-width: 100%; }
 }
