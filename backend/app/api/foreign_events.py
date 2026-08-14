@@ -158,7 +158,8 @@ class SplitPayload(BaseModel):
 
 
 class StatusPayload(BaseModel):
-    status: str = Field(pattern="^(confirmed|monitoring|resolved|archived)$")
+    # 与国内事件中心、ForeignEventService.update_status 及迁移 p34_foreign_event_status_unify 统一为 7 状态枚举
+    status: str = Field(pattern="^(active|verifying|processing|resolved|closed|deprecated|archived)$")
     reason: str = Field(default="", max_length=2000)
     request_id: str | None = Field(default=None, max_length=128)
 
@@ -207,6 +208,8 @@ def list_foreign_events(
     source: str | None = None,
     risk_level: str | None = None,
     q: str | None = None,
+    # 兼容统一处置弹窗（foreign scope）按标题搜索目标事件：与 q 同义，便于复用 /events 列表契约
+    title: str | None = None,
     min_confidence: float | None = Query(None, ge=0, le=1),
     min_opinion_count: int | None = Query(None, ge=0),
     first_seen_from: str | None = None,
@@ -225,6 +228,14 @@ def list_foreign_events(
         stmt = stmt.where(ForeignEvent.risk_level == risk_level)
     if q:
         like = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                ForeignEvent.title.ilike(like),
+                ForeignEvent.summary.ilike(like),
+            )
+        )
+    if title:
+        like = f"%{title}%"
         stmt = stmt.where(
             or_(
                 ForeignEvent.title.ilike(like),
@@ -627,6 +638,9 @@ def split_foreign_event(
     return serialize_event(event)
 
 
+# 同时接受 POST 与 PATCH：POST 兼容 ForeignWorkspace 既有归档调用；
+# PATCH 与国内事件中心 /events/{id}/status 及统一处置弹窗（EventDispositionDialog, scope=foreign）保持一致。
+@foreign_events_router.patch("/{event_id}/status")
 @foreign_events_router.post("/{event_id}/status")
 def update_foreign_event_status(
     event_id: int,

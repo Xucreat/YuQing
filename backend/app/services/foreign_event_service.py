@@ -720,7 +720,7 @@ class ForeignEventService:
             title=candidate.title,
             summary=candidate.summary,
             language=candidate.language,
-            event_status="confirmed",
+            event_status="active",
             confirmation_source=confirmation_source,
             event_type=candidate.event_type,
             risk_level=candidate.risk_level_snapshot,
@@ -774,7 +774,7 @@ class ForeignEventService:
                 candidate_id=candidate.id,
                 foreign_event_id=event.id,
                 actor_user_id=user_id,
-                new_status="confirmed",
+                new_status="active",
                 reason=reason,
                 request_id=request_id,
                 payload_json={"opinion_ids": member_ids},
@@ -849,16 +849,21 @@ class ForeignEventService:
         event = db.get(ForeignEvent, event_id)
         if event is None:
             raise LookupError("Foreign event not found")
-        allowed = {
-            # A confirmed event can be manually closed without first entering
-            # monitoring; close is represented by the resolved state.
-            "confirmed": {"monitoring", "resolved", "archived"},
-            "monitoring": {"resolved", "archived"},
-            "resolved": {"monitoring", "archived"},
-            "archived": {"monitoring"},
-        }
-        if status != event.event_status and status not in allowed.get(event.event_status, set()):
-            raise ValueError(f"Invalid foreign event status transition: {event.event_status} -> {status}")
+        # 与外网「事件处置」弹窗（和国内事件中心一致）采用同一套线性流转规则：
+        # active -> verifying -> processing -> resolved -> closed；
+        # 任意态可直接回 active（重新关注）；active/verifying/processing 可置 deprecated（已忽略）；
+        # 非 archived 态均可归档（archived 由「归档事件」按钮触发）。
+        _next = {"active": "verifying", "verifying": "processing", "processing": "resolved", "resolved": "closed"}
+        if status != event.event_status:
+            if status == "archived":
+                pass
+            elif status == "active":
+                pass
+            elif status == "deprecated":
+                if event.event_status not in ("active", "verifying", "processing"):
+                    raise ValueError(f"Invalid foreign event status transition: {event.event_status} -> {status}")
+            elif _next.get(event.event_status) != status:
+                raise ValueError(f"Invalid foreign event status transition: {event.event_status} -> {status}")
         old = event.event_status
         event.event_status = status
         if status == "resolved":
@@ -933,7 +938,7 @@ class ForeignEventService:
                 foreign_event_id=source.id,
                 target_event_id=target.id,
                 actor_user_id=user_id,
-                old_status="confirmed",
+                old_status="active",
                 new_status="archived",
                 reason=reason,
                 request_id=request_id,
@@ -993,7 +998,7 @@ class ForeignEventService:
             title=opinions[0].title if opinions else event.title,
             summary=opinions[0].summary if opinions else event.summary,
             language=event.language,
-            event_status="confirmed",
+            event_status="active",
             event_type=event.event_type,
             risk_level=event.risk_level,
             heat_score=event.heat_score,
@@ -1069,6 +1074,9 @@ def serialize_event(event: ForeignEvent) -> dict:
         "summary": event.summary,
         "language": event.language,
         "event_status": event.event_status,
+        # 兼容字段：统一事件处置弹窗（EventDispositionDialog）读取 data.status；
+        # status 与 event_status 始终来自同一值，不引入第二状态来源。
+        "status": event.event_status,
         "confirmation_source": event.confirmation_source,
         "event_type": event.event_type,
         "risk_level": event.risk_level,

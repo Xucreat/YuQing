@@ -17,7 +17,7 @@ class ForeignEvent(Base):
     __tablename__ = "foreign_events"
     __table_args__ = (
         CheckConstraint(
-            "event_status IN ('confirmed','monitoring','resolved','archived')",
+            "event_status IN ('active','verifying','processing','resolved','closed','deprecated','archived')",
             name="ck_foreign_events_status",
         ),
         CheckConstraint(
@@ -35,7 +35,7 @@ class ForeignEvent(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     language: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
     event_status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="confirmed", server_default="confirmed"
+        String(16), nullable=False, default="active", server_default="active"
     )
     confirmation_source: Mapped[str] = mapped_column(
         String(16), nullable=False, default="manual", server_default="manual"
