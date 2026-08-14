@@ -232,6 +232,7 @@
               <th style="width:100px" class="col-center">置信度</th>
               <th style="width:180px">首次出现</th>
               <th style="width:180px">最后出现</th>
+              <th class="col-center operation-col">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -248,8 +249,15 @@
               <td class="col-center risk-num">{{ Math.round((row.confidence || 0) * 100) }}%</td>
               <td class="nowrap">{{ formatTime(row.first_seen_at) }}</td>
               <td class="nowrap">{{ formatTime(row.last_seen_at) }}</td>
+              <td class="col-center operation-col" @click.stop>
+                <div class="row-actions">
+                  <button class="btn-operate" title="查看外网事件详情" @click.stop="$router.push('/foreign/event/' + row.id)">查看</button>
+                  <button v-if="canUpdateForeign" class="btn-operate" title="打开外网事件处置弹窗" @click.stop="openForeignHandle(row)">处置</button>
+                  <button v-if="canUpdateForeign" class="btn-icon btn-delete" title="删除外网事件" @click.stop="handleForeignDelete(row)">🗑</button>
+                </div>
+              </td>
             </tr>
-            <tr v-if="foreignRows.length === 0 && !foreignLoading"><td colspan="12" class="empty-row">暂无外网事件</td></tr>
+            <tr v-if="foreignRows.length === 0 && !foreignLoading"><td colspan="13" class="empty-row">暂无外网事件</td></tr>
           </tbody>
         </table>
         <div v-if="foreignLoading" class="state">加载外网事件中…</div>
@@ -262,7 +270,7 @@
     <EventDispositionDialog
       v-model="handleDialogVisible"
       :event-id="handleEventId"
-      scope="domestic"
+      :scope="handleScope"
       @updated="loadByScope"
     />
 
@@ -334,6 +342,9 @@ const handleDialogVisible = ref(false)
 const handleEventId = ref<number | null>(null)
 const { hasPermission } = usePermission()
 const canUpdateEvent = computed(() => hasPermission('events:write'))
+// 外网处置弹窗 scope：与国内共用同一 EventDispositionDialog，打开前切换语义。
+const handleScope = ref<'domestic' | 'foreign'>('domestic')
+const canUpdateForeign = computed(() => hasPermission('foreign:events:write'))
 const riskOptions = [
   { value: '', label: '全部现行风险' },
   { value: 'low', label: '现行低风险' },
@@ -543,10 +554,48 @@ async function handleDelete(row: EventItem) {
   }
 }
 
+async function handleForeignDelete(row: any) {
+  // 二次防线：即使按钮被绕过（如控制台调用），也先做一次本地权限判断。
+  if (!canUpdateForeign.value) {
+    ElMessage.error('权限不足，无法删除外网事件')
+    return
+  }
+  const { ElMessageBox } = await import('element-plus')
+  // 步骤 1：确认框。用户取消时 ElMessageBox 会 reject，需与「接口失败」区分开，
+  // 否则会像收口前那样被同一个空 catch 吞掉，删除失败也毫无提示。
+  try {
+    await ElMessageBox.confirm(
+      `确认删除外网事件「${row.title || '无标题'}」？关联的舆情不会被删除。`,
+      '删除确认',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return // 用户主动取消，静默返回
+  }
+  // 步骤 2：真正调用删除接口，失败必须明确反馈
+  try {
+    await api.delete('/foreign/events/' + row.id)
+    ElMessage.success('外网事件已删除')
+    await loadForeignEvents()
+  } catch (err: any) {
+    // 403 已由 api 全局拦截器统一提示「权限不足，请联系管理员」，此处不再重复弹窗；
+    // 其余失败（网络/500/业务错误）必须明确反馈，禁止空 catch。
+    if (!isPermissionDenied(err)) {
+      ElMessage.error(err?.response?.data?.detail || '删除外网事件失败，请稍后重试')
+    }
+  }
+}
+
 onMounted(loadByScope)
 
 // ── 事件处置弹窗逻辑：统一复用 EventDispositionDialog，组件内部自取详情 ──
 function openHandle(row: EventItem) {
+  handleScope.value = 'domestic'
+  handleEventId.value = row.id
+  handleDialogVisible.value = true
+}
+function openForeignHandle(row: any) {
+  handleScope.value = 'foreign'
   handleEventId.value = row.id
   handleDialogVisible.value = true
 }
