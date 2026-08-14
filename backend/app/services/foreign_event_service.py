@@ -1033,6 +1033,35 @@ class ForeignEventService:
         return new_event
 
 
+    def delete_event(
+        self,
+        db: Session,
+        event_id: int,
+        *,
+        user_id: int | None = None,
+        commit: bool = True,
+    ) -> None:
+        """硬删除外网事件及其依赖行。
+
+        依赖数据库既有外键语义（迁移 foreign_source_3b 已定义，模型 ForeignKey
+        同步声明），不在 ORM 层手动删除子表行，也不引入 cascade/delete-orphan：
+
+          - foreign_event_opinions.foreign_event_id  ON DELETE CASCADE
+              → 关联舆情链接随事件级联删除；
+          - foreign_event_actions.foreign_event_id    ON DELETE SET NULL
+              → 历史处置/审计动作保留，外键置空；
+          - foreign_alerts.foreign_event_id           ON DELETE SET NULL
+              → 关联预警保留，外键置空。
+
+        不存在的事件抛 LookupError，由 API 层转为 404；不返回假删除。
+        """
+        event = db.get(ForeignEvent, event_id)
+        if event is None:
+            raise LookupError("Foreign event not found")
+        db.delete(event)
+        if commit:
+            db.commit()
+
 def serialize_candidate(candidate: ForeignEventCandidate) -> dict:
     return {
         "id": candidate.id,

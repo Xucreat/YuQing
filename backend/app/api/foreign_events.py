@@ -491,6 +491,43 @@ def get_foreign_event_situation(
     return situation
 
 
+@foreign_events_router.delete("/{event_id}")
+def delete_foreign_event(
+    event_id: int,
+    request: Request,
+    current_user: User = Depends(require_permission("foreign:events:write")),
+    db: Session = Depends(get_db),
+):
+    """硬删除外网事件。
+
+    权限复用现有 ``foreign:events:write``（与处置/合并/拆分等写操作同源），
+    不新增 ``foreign:events:delete``。不存在返回 404，不返回假删除。
+    依赖数据库既有 FK 语义级联清理关联舆情、保留动作与预警（外键置空）。
+    异常（含数据库错误）不吞，按项目既有方式上抛。
+    """
+    # 先校验存在性（404 干净返回，避免把 not-found 记成审计失败）。
+    _foreign_event_or_404(db, event_id)
+    try:
+        with audit_write(
+            db,
+            action="FOREIGN_EVENT_DELETE",
+            operator=current_user,
+            request=request,
+            resource_type="foreign_event",
+            resource_id=str(event_id),
+        ):
+            ForeignEventService().delete_event(
+                db,
+                event_id,
+                user_id=current_user.id,
+            )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"detail": "Foreign event deleted", "id": event_id}
+
+
 def _confirm_candidate(
     candidate_id: int,
     body: CandidateActionPayload,
