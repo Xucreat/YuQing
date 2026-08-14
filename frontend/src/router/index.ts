@@ -77,6 +77,12 @@ const router = createRouter({
       meta: { requiresAuth: true, permission: 'events:read' },
     },
     {
+      path: '/foreign/event/:id',
+      name: 'foreign-event-detail',
+      component: () => import('@/views/ForeignEventDetail.vue'),
+      meta: { requiresAuth: true, permission: 'foreign:events:read' },
+    },
+    {
       path: '/alerts',
       name: 'alerts',
       component: () => import('@/views/Alerts.vue'),
