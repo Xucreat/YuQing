@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.core.permissions import require_admin
+from app.core.permissions import require_permission
 from app.db.session import get_db
 from app.models.bocha_lead import BochaLead
 from app.models.opinion import Opinion
@@ -86,7 +86,7 @@ def search_bocha(
     payload: BochaSearchRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("ai:search")),
 ) -> BochaSearchResponse:
     try:
         with audit_write(
@@ -143,7 +143,7 @@ def list_bocha_leads(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=MAX_SIZE),
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("bocha:read")),
 ) -> BochaLeadListResponse:
     start = _parse_datetime(created_from, "created_from")
     end = _parse_datetime(created_to, "created_to")
@@ -194,7 +194,7 @@ def confirm_bocha_lead(
     lead_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("bocha:read")),
 ) -> BochaLead:
     lead = _get_lead_or_404(db, lead_id)
     if lead.status != "new":
@@ -227,7 +227,7 @@ def reject_bocha_lead(
     request: Request,
     payload: BochaRejectRequest | None = Body(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("bocha:read")),
 ) -> BochaLead:
     lead = _get_lead_or_404(db, lead_id)
     if lead.status not in {"new", "confirmed"}:
@@ -265,7 +265,7 @@ def promote_bocha_lead(
     payload: BochaPromoteRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_permission("bocha:promote")),
 ) -> BochaPromoteResponse:
     lead = db.scalar(
         select(BochaLead)

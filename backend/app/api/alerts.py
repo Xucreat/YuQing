@@ -65,10 +65,35 @@ def _alert_record_payload(row: AlertRecord) -> dict:
         payload["formal_risk_score"] = rule_snapshot.get("risk_score")
     elif "risk_score" in ai_snapshot:
         payload["formal_risk_score"] = ai_snapshot.get("risk_score")
+    # Phase 1A 展示兜底：两份快照都缺 risk_score 键时，回退展示关联舆情的当前风险分，
+    # 避免预警记录列表出现空白的「- 分」。仅作用于接口响应，不写任何持久化字段；
+    # formal_risk_level 仍沿用 AlertRecord.risk_level，不随兜底分变化。
+    if payload["formal_risk_score"] is None:
+        linked_current = payload.get("linked_opinion_current_risk") or {}
+        fallback_score = linked_current.get("risk_score")
+        if fallback_score is not None:
+            payload["formal_risk_score"] = fallback_score
     return payload
 
 # 处置状态白名单（与 AlertRecord.status CheckConstraint 一致）
 _ALLOWED_ALERT_STATUSES = {"pending", "processing", "resolved", "ignored", "false_positive"}
+# 处置状态中文标签（用于流转约束报错提示）
+_ALERT_STATUS_LABELS = {
+    "pending": "待处理",
+    "processing": "处理中",
+    "resolved": "已解决",
+    "ignored": "已忽略",
+    "false_positive": "误报",
+}
+# 国内预警记录：禁止的处置状态流转（old_status -> new_status），与国外双列模型语义对齐。
+_FORBIDDEN_DOMESTIC_TRANSITIONS = {
+    ("pending", "ignored"),
+    ("pending", "false_positive"),
+    ("resolved", "ignored"),
+    ("resolved", "false_positive"),
+    ("ignored", "resolved"),
+    ("false_positive", "resolved"),
+}
 
 
 def _parse_since(since: str | None) -> datetime | None:
@@ -92,7 +117,7 @@ def list_rules(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=MAX_SIZE),
     db: Session = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: User = Depends(require_permission("alerts:read")),
 ):
     total = db.query(AlertRule).count()
     rows = db.query(AlertRule).order_by(AlertRule.id.desc()).offset((page - 1) * size).limit(size).all()
@@ -145,7 +170,7 @@ def evaluate_alerts(db: Session = Depends(get_db), _u: User = Depends(require_pe
 def unread_alerts(
     since: str | None = Query(None, description="ISO8601 时间戳，仅返回该时间之后创建的预警记录"),
     db: Session = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: User = Depends(require_permission("alerts:read")),
 ):
     """前端轮询用：返回 since 之后产生的新预警（最多 10 条，含 total 总数）。"""
     q = db.query(AlertRecord)
@@ -168,7 +193,7 @@ def list_records(
     date_from: str | None = None,
     date_to: str | None = None,
     db: Session = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: User = Depends(require_permission("alerts:read")),
 ):
     # status 合法性校验：非法值返回 422
     if status is not None and status not in _ALLOWED_ALERT_STATUSES:
@@ -234,6 +259,17 @@ def handle_record(
     req = payload or AlertHandleRequest()
     old_status = rec.status
     new_status = req.status
+
+    # 禁止不合理的处置状态流转（与国外预警对齐）。
+    if (old_status, new_status) in _FORBIDDEN_DOMESTIC_TRANSITIONS:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"非法的处置状态流转：当前状态"
+                f"「{_ALERT_STATUS_LABELS.get(old_status, old_status)}」"
+                f"不允许切换到「{_ALERT_STATUS_LABELS.get(new_status, new_status)}」"
+            ),
+        )
 
     with audit_write(
         db,

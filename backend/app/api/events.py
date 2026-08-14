@@ -34,13 +34,16 @@ from app.schemas.event import (
     EventCreateResponse,
     EventDetailResponse,
     EventListResponse,
+    EventMergeRequest,
     EventOut,
+    EventSplitRequest,
     EventStatistics,
     EventStatusUpdate,
     EventTaskResponse,
 )
 from app.schemas.opinion import OpinionListResponse, OpinionOut
 from app.services.event.aggregator import EventAggregator
+from app.services.event.management import EventManagementService
 from app.services.event.risk_service import EventRiskService
 from app.services.event.risk_shadow import EventRiskShadowService
 from app.services.event.situation import EventSituationService
@@ -80,6 +83,7 @@ EVENT_STATUS_LABELS = {
     "resolved": "已解决",
     "closed": "已关闭",
     "deprecated": "已废弃",
+    "archived": "已归档",
 }
 NEXT_EVENT_STATUS = {
     "active": "verifying",
@@ -172,7 +176,7 @@ def aggregate_events(
 def hot_topic_events(
     keyword: str,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _current_user: User = Depends(require_permission("events:read")),
 ) -> EventListResponse:
     """热点主题 → 相关事件（只读聚合，配合 Phase HotWord-1B 热点主题模式）。
 
@@ -237,7 +241,7 @@ def hot_topic_events(
 def get_event_situation(
     event_id: int,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _current_user: User = Depends(require_permission("events:read")),
 ) -> dict:
     """Return a read-only event situation snapshot and risk explanation."""
     situation = EventSituationService().build(db, event_id)
@@ -256,7 +260,7 @@ def get_event_opinions(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=MAX_SIZE),
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _current_user: User = Depends(require_permission("events:read")),
 ) -> OpinionListResponse:
     """Event 关联舆情列表（分页）。"""
     event = db.get(Event, event_id)
@@ -280,7 +284,7 @@ def get_event_opinions(
 def get_event(
     event_id: int,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _current_user: User = Depends(require_permission("events:read")),
 ) -> EventDetailResponse:
     """Event 详情 + 关联舆情列表。"""
     event = db.get(Event, event_id)
@@ -399,10 +403,20 @@ def update_event_status(
     new_status = body.status
     if new_status == old_status:
         return _event_out(db, event)
+    # archived：任意非 archived 状态均可归档（与外网 archived 语义一致）；
+    # 已归档事件仅可恢复为「关注中」。
+    if new_status == "archived":
+        pass
+    elif old_status == "archived":
+        if new_status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Invalid event status transition: {old_status} -> {new_status}",
+            )
     # Phase 2-E-2：允许各活跃态直接置 deprecated（「忽略事件」）；
     # deprecated→active 恢复沿用既有逻辑（new_status == "active" 直通）。
     # 其余非活跃态 → deprecated、以及任意非法跳转（如 active→resolved）仍 409。
-    if new_status == "deprecated":
+    elif new_status == "deprecated":
         if old_status not in DEPRECATE_ALLOWED_FROM:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -513,6 +527,85 @@ def delete_event(
     db.commit()
     return {"detail": "Event deleted", "id": event_id}
 
+
+@events_router.post(
+    "/{event_id}/merge",
+    response_model=EventOut,
+    status_code=status.HTTP_200_OK,
+)
+def merge_event(
+    event_id: int,
+    body: EventMergeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("events:write")),
+) -> EventOut:
+    """把当前事件的关联舆情合并到 target_event_id，当前事件归档。
+
+    与外网 ``ForeignEventService.merge_events`` 语义对齐：source 置 archived，
+    关联舆情迁移到 target（重复关联去重），双方指标重算。
+    """
+    try:
+        with audit_write(
+            db,
+            action="EVENT_MERGE",
+            operator=current_user,
+            request=request,
+            resource_type="event",
+            resource_id=str(event_id),
+            details={"target_event_id": body.target_event_id, "reason": body.reason},
+        ):
+            event = EventManagementService().merge_events(
+                db,
+                event_id,
+                body.target_event_id,
+                user_id=current_user.id,
+                reason=body.reason,
+            )
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _event_out(db, event)
+
+
+@events_router.post(
+    "/{event_id}/split",
+    response_model=EventOut,
+    status_code=status.HTTP_200_OK,
+)
+def split_event(
+    event_id: int,
+    body: EventSplitRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("events:write")),
+) -> EventOut:
+    """把指定舆情从当前事件拆出，新建一个 active 事件承载。
+
+    与外网 ``ForeignEventService.split_event`` 语义对齐：原事件至少保留一条舆情，
+    迁出舆情进入新事件，双方指标重算。
+    """
+    try:
+        with audit_write(
+            db,
+            action="EVENT_SPLIT",
+            operator=current_user,
+            request=request,
+            resource_type="event",
+            resource_id=str(event_id),
+            details={"opinion_ids": body.opinion_ids, "reason": body.reason},
+        ):
+            event = EventManagementService().split_event(
+                db,
+                event_id,
+                body.opinion_ids,
+                user_id=current_user.id,
+                reason=body.reason,
+            )
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _event_out(db, event)
+
+
 def _parse_event_dt(raw: Optional[str], end_of_day: bool = False) -> Optional[datetime]:
     """将前端传入的时间字符串解析为 datetime。
 
@@ -574,7 +667,7 @@ def list_events(
     last_time_start: Optional[str] = Query(None, alias="last_time_start", description="最后更新时间范围起点（ISO 8601，含）"),
     last_time_end: Optional[str] = Query(None, alias="last_time_end", description="最后更新时间范围终点（ISO 8601，含，缺省时间按当天 23:59:59）"),
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _current_user: User = Depends(require_permission("events:read")),
 ) -> EventListResponse:
     """Event 列表，支持事件属性筛选并按风险、热度、更新时间降序排列。"""
     q = db.query(Event)
