@@ -1,0 +1,361 @@
+{
+  "phase": "Security-RBAC-Redesign-D6",
+  "status": "PASS",
+  "generated_at": "2026-08-14T08:07:29.273638+00:00",
+  "target_db": "postgresql+psycopg://opinion_user:***@127.0.0.1:5432/opinion_db",
+  "checks": {
+    "permission_count": {
+      "before_count": 89,
+      "after_count": 87,
+      "expected_after": 87,
+      "pass": true
+    },
+    "target_presence": {
+      "new_expected": [
+        "ai:review:read",
+        "ai:review:complete"
+      ],
+      "new_present": [
+        "ai:review:complete",
+        "ai:review:read"
+      ],
+      "old_expected_absent": [
+        "domestic:ai:review:read",
+        "domestic:ai:review:complete",
+        "foreign:ai:review:read",
+        "foreign:ai:review:complete"
+      ],
+      "old_present_unexpected": [],
+      "pass": true
+    },
+    "role_permission_diff": {
+      "expected_merge_only": true,
+      "diff": {
+        "admin": {
+          "removed": [
+            "domestic:ai:review:complete",
+            "domestic:ai:review:read",
+            "foreign:ai:review:complete"
+          ],
+          "added": [
+            "ai:review:complete",
+            "ai:review:read"
+          ]
+        },
+        "analyst": {
+          "removed": [
+            "domestic:ai:review:complete",
+            "domestic:ai:review:read",
+            "foreign:ai:review:complete",
+            "foreign:ai:review:read"
+          ],
+          "added": [
+            "ai:review:complete",
+            "ai:review:read"
+          ]
+        },
+        "viewer": {
+          "removed": [
+            "domestic:ai:review:complete",
+            "domestic:ai:review:read",
+            "foreign:ai:review:complete",
+            "foreign:ai:review:read"
+          ],
+          "added": [
+            "ai:review:complete",
+            "ai:review:read"
+          ]
+        }
+      },
+      "pass": true
+    },
+    "effective_role_diff": {
+      "expected_consolidation_only": true,
+      "diff": {
+        "admin": {
+          "before_only": [
+            "domestic:ai:review:complete",
+            "domestic:ai:review:read",
+            "foreign:ai:review:complete"
+          ],
+          "after_only": [
+            "ai:review:complete",
+            "ai:review:read"
+          ]
+        },
+        "analyst": {
+          "before_only": [
+            "domestic:ai:review:complete",
+            "domestic:ai:review:read",
+            "foreign:ai:review:complete",
+            "foreign:ai:review:read"
+          ],
+          "after_only": [
+            "ai:review:complete",
+            "ai:review:read"
+          ]
+        },
+        "viewer": {
+          "before_only": [
+            "domestic:ai:review:complete",
+            "domestic:ai:review:read",
+            "foreign:ai:review:complete",
+            "foreign:ai:review:read"
+          ],
+          "after_only": [
+            "ai:review:complete",
+            "ai:review:read"
+          ]
+        }
+      },
+      "pass": true
+    },
+    "foreign_isolation": {
+      "no_role_gains_foreign": true,
+      "pass": true
+    },
+    "stale_source_references": {
+      "backend_enforcement_hits": [],
+      "frontend_src_hits": [],
+      "corrupted_files_skipped": {},
+      "pass": true
+    },
+    "untouched_groups": {
+      "state": {
+        "foreign:ai:review:reject": {
+          "present": true,
+          "holders": []
+        },
+        "foreign:analysis": {
+          "present": true,
+          "holders": []
+        },
+        "foreign:alerts:manage": {
+          "present": true,
+          "holders": []
+        },
+        "foreign:alerts:false_positive": {
+          "present": true,
+          "holders": [
+            "admin"
+          ]
+        },
+        "sources:write": {
+          "present": true,
+          "holders": [
+            "operator",
+            "system_admin"
+          ]
+        },
+        "foreign:sources:write": {
+          "present": true,
+          "holders": [
+            "admin",
+            "operator",
+            "system_admin"
+          ]
+        }
+      },
+      "pass": true
+    },
+    "rollback_verified": {
+      "verified": true,
+      "detail": "5433 downgrade->p34(89,old restored exact) then upgrade->d6(87,new present,old absent)",
+      "pass": true
+    },
+    "rbac_tests": {
+      "returncode": 0,
+      "summary": "56 passed, 1 warning in 3.92s",
+      "pass": true
+    }
+  },
+  "merged_permissions": [
+    {
+      "new": "ai:review:read",
+      "from": [
+        "domestic:ai:review:read",
+        "foreign:ai:review:read"
+      ],
+      "holders": [
+        "admin",
+        "analyst",
+        "viewer"
+      ]
+    },
+    {
+      "new": "ai:review:complete",
+      "from": [
+        "domestic:ai:review:complete",
+        "foreign:ai:review:complete"
+      ],
+      "holders": [
+        "admin",
+        "analyst",
+        "viewer"
+      ]
+    }
+  ],
+  "before_permission_count": 89,
+  "after_permission_count": 87,
+  "role_permission_diff": {
+    "admin": {
+      "removed": [
+        "domestic:ai:review:complete",
+        "domestic:ai:review:read",
+        "foreign:ai:review:complete"
+      ],
+      "added": [
+        "ai:review:complete",
+        "ai:review:read"
+      ]
+    },
+    "analyst": {
+      "removed": [
+        "domestic:ai:review:complete",
+        "domestic:ai:review:read",
+        "foreign:ai:review:complete",
+        "foreign:ai:review:read"
+      ],
+      "added": [
+        "ai:review:complete",
+        "ai:review:read"
+      ]
+    },
+    "viewer": {
+      "removed": [
+        "domestic:ai:review:complete",
+        "domestic:ai:review:read",
+        "foreign:ai:review:complete",
+        "foreign:ai:review:read"
+      ],
+      "added": [
+        "ai:review:complete",
+        "ai:review:read"
+      ]
+    }
+  },
+  "effective_role_diff": {
+    "admin": {
+      "before_only": [
+        "domestic:ai:review:complete",
+        "domestic:ai:review:read",
+        "foreign:ai:review:complete"
+      ],
+      "after_only": [
+        "ai:review:complete",
+        "ai:review:read"
+      ]
+    },
+    "analyst": {
+      "before_only": [
+        "domestic:ai:review:complete",
+        "domestic:ai:review:read",
+        "foreign:ai:review:complete",
+        "foreign:ai:review:read"
+      ],
+      "after_only": [
+        "ai:review:complete",
+        "ai:review:read"
+      ]
+    },
+    "viewer": {
+      "before_only": [
+        "domestic:ai:review:complete",
+        "domestic:ai:review:read",
+        "foreign:ai:review:complete",
+        "foreign:ai:review:read"
+      ],
+      "after_only": [
+        "ai:review:complete",
+        "ai:review:read"
+      ]
+    }
+  },
+  "api_reference_diff": {
+    "backend_enforcement": []
+  },
+  "frontend_reference_diff": {
+    "frontend_src": [],
+    "corrupted_files_skipped": {}
+  },
+  "foreign_isolation": {
+    "passed": true
+  },
+  "keep_separate_integrity": {
+    "foreign:ai:review:reject": {
+      "present": true,
+      "holders": []
+    },
+    "foreign:analysis": {
+      "present": true,
+      "holders": []
+    },
+    "foreign:alerts:manage": {
+      "present": true,
+      "holders": []
+    },
+    "foreign:alerts:false_positive": {
+      "present": true,
+      "holders": [
+        "admin"
+      ]
+    },
+    "sources:write": {
+      "present": true,
+      "holders": [
+        "operator",
+        "system_admin"
+      ]
+    },
+    "foreign:sources:write": {
+      "present": true,
+      "holders": [
+        "admin",
+        "operator",
+        "system_admin"
+      ]
+    }
+  },
+  "defer_integrity": {
+    "foreign:ai:review:reject": {
+      "present": true,
+      "holders": []
+    },
+    "foreign:analysis": {
+      "present": true,
+      "holders": []
+    },
+    "foreign:alerts:manage": {
+      "present": true,
+      "holders": []
+    },
+    "foreign:alerts:false_positive": {
+      "present": true,
+      "holders": [
+        "admin"
+      ]
+    },
+    "sources:write": {
+      "present": true,
+      "holders": [
+        "operator",
+        "system_admin"
+      ]
+    },
+    "foreign:sources:write": {
+      "present": true,
+      "holders": [
+        "admin",
+        "operator",
+        "system_admin"
+      ]
+    }
+  },
+  "rollback_verified": true,
+  "tests": {
+    "returncode": 0,
+    "summary": "56 passed, 1 warning in 3.92s",
+    "pass": true
+  },
+  "problems": []
+}

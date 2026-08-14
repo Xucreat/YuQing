@@ -1,0 +1,19 @@
+{
+  "round_trip_verified": true,
+  "summary": "5433 downgrade->p34(89,old restored exact) then upgrade->d6(87,new present,old absent)",
+  "downgrade_state": {
+    "version": "p34_foreign_event_status_unify",
+    "perm_count": 89,
+    "old_perms_present": true,
+    "new_perms_absent": true
+  },
+  "upgrade_state": {
+    "version": "d6_ai_review_consolidation",
+    "perm_count": 87,
+    "new_perms_present": [
+      "ai:review:read",
+      "ai:review:complete"
+    ],
+    "old_perms_absent": true
+  }
+}
