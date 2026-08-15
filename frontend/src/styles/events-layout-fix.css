@@ -1,0 +1,66 @@
+/* 事件中心表格布局修复（全局、随入口常驻加载，规避懒加载 CSS chunk 偶发不注入）
+ * 关键列宽已写在 <th> 的 inline style，这里只补「布局/对齐」所需的少量规则。
+ */
+.events { max-width: 100%; min-width: 0; overflow-x: hidden; position: relative; padding-top: 44px; }
+
+/* 国内事件表：fixed 布局 + 不小于列宽之和，避免被压缩导致表头 nowrap 文字溢出错位 */
+.events table.tbl {
+  width: 100%;
+  min-width: 1908px;
+  border-collapse: collapse;
+  font-size: 14px;
+  table-layout: fixed;
+}
+.events table.tbl thead th {
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #86868b;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e8e8ed;
+  white-space: nowrap;
+}
+.events table.tbl tbody td {
+  padding: 15px 18px;
+  border-bottom: 1px solid #e8e8ed;
+  color: #1d1d1f;
+  vertical-align: middle;
+}
+/* 操作列：取消 sticky（border-collapse + sticky 在 Chrome 下会渲染错位），改为普通列随表横向滚动 */
+.events .operation-col {
+  min-width: 168px;
+  width: 168px;
+  background: #fff;
+  position: static;
+}
+.events .table-card { overflow-x: auto; overflow-y: hidden; box-sizing: border-box; max-width: 100%; min-width: 0; }
+.events .row-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; }
+
+/* 外网事件表：表头与内容均横向一排，放不下时整表左右滚动 */
+.foreign-events-root .table-wrap { overflow-x: auto; }
+.foreign-events-root .table-wrap table { min-width: 1480px; border-collapse: collapse; width: 100%; }
+.foreign-events-root .table-wrap th,
+.foreign-events-root .table-wrap td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #f0f0f3;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.foreign-events-root .table-wrap thead th {
+  color: #6e6e73;
+  font-weight: 600;
+  background: #fafafc;
+  white-space: nowrap;
+}
+.foreign-events-root .title-cell { min-width: 280px; max-width: 320px; font-weight: 600; }
+/* 标题列：两行省略号（覆盖上面的 td nowrap） */
+.foreign-events-root .table-wrap td .title-text,
+.foreign-events-root .table-wrap td .link-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  white-space: normal;
+}
