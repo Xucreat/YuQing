@@ -90,6 +90,31 @@
             </tbody>
           </table>
         </el-tab-pane>
+        <el-tab-pane :label="`关联预警 (${event.alerts?.length || 0})`" name="alerts">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th style="min-width:240px">标题</th>
+                <th style="width:150px" class="col-center">正式记录风险</th>
+                <th style="width:160px" class="col-center">关联舆情当前风险</th>
+                <th style="width:110px" class="col-center">状态</th>
+                <th style="width:170px">时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="a in (event.alerts || [])" :key="a.id">
+                <td><span class="t-title">{{ a.title }}</span></td>
+                <td class="col-center"><span class="pill" :class="riskPill(a.formal_risk_level || a.risk_level)"><span class="dot"></span>{{ a.formal_risk_score ?? '-' }} · {{ riskText(a.formal_risk_level || a.risk_level) }}</span></td>
+                <td class="col-center">{{ a.linked_opinion_current_risk ? `${a.linked_opinion_current_risk.risk_score ?? '-'} · ${riskText(a.linked_opinion_current_risk.risk_level)}` : '-' }}</td>
+                <td class="col-center">{{ alertStatusText(a.status) }}</td>
+                <td>{{ formatTime(a.created_at) }}</td>
+              </tr>
+              <tr v-if="(event.alerts?.length || 0) === 0 && !loading">
+                <td colspan="5" class="empty-row">暂无关联预警</td>
+              </tr>
+            </tbody>
+          </table>
+        </el-tab-pane>
       </el-tabs>
     </div>
 
@@ -118,7 +143,7 @@ const { hasPermission } = usePermission()
 const canUpdateEvent = computed(() => hasPermission('foreign:events:write'))
 
 // ④ 关联舆情 Tab 当前选中项
-const activeRelatedTab = ref<'opinions'>('opinions')
+const activeRelatedTab = ref<'opinions' | 'alerts'>('opinions')
 
 // 关联舆情跳转：打开外网舆情详情弹窗
 const detailVisible = ref(false)
@@ -148,6 +173,7 @@ interface ForeignEventDetail {
   source_count: number
   confirmation_source?: string
   opinions: ForeignOpinionItem[]
+  alerts?: any[]
 }
 
 interface ForeignOpinionItem {
@@ -165,7 +191,7 @@ const event = ref<ForeignEventDetail>({
   status: '', event_status: '', risk_level: '', heat_score: 0,
   formal_risk_score: 0, formal_risk_level: 'low', linked_opinion_current_risk: null,
   confidence: 0, first_seen_at: null, last_seen_at: null, opinion_count: 0,
-  source_count: 0, confirmation_source: '', opinions: [],
+  source_count: 0, confirmation_source: '', opinions: [], alerts: [],
 })
 
 // 重点关注：高风险事件标记
@@ -191,8 +217,14 @@ function similarityText(value: number | null | undefined): string {
   if (value == null) return '-'
   return value <= 1 ? `${Math.round(value * 100)}%` : `${value}`
 }
+function alertStatusText(value: string): string {
+  return ({
+    pending: '待处理', processing: '处理中', resolved: '已解决',
+    ignored: '已忽略', false_positive: '误报',
+  } as Record<string, string>)[value] || value
+}
 function goBack() {
-  router.push({ path: '/events', query: { section: 'foreign' } })
+  router.back()
 }
 function errorMessage(err: any, fallback: string): string {
   const detail = err?.response?.data?.detail

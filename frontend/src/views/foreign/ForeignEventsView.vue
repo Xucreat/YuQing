@@ -49,7 +49,7 @@
       <table>
         <thead><tr><th>标题</th><th>语言</th><th>确认来源</th><th>状态</th><th>正式记录风险</th><th>关联舆情当前风险</th><th>热度</th><th>文章数</th><th>来源数</th><th>置信度</th><th>首次出现</th><th>最近出现</th><th>操作</th></tr></thead>
         <tbody>
-          <tr v-for="row in foreignEvents" :key="row.id" @click="loadEventDetail(row.id)">
+          <tr v-for="row in foreignEvents" :key="row.id" @click="goDetail(row)">
             <td class="title-cell">{{ row.title || '无标题' }}</td>
              <td>{{ zh(row.language) }}</td>
              <td>{{ zh(row.confirmation_source || 'manual') }}</td>
@@ -69,47 +69,19 @@
             <td>{{ Math.round(row.confidence * 100) }}%</td>
             <td>{{ formatTime(row.first_seen_at) }}</td>
             <td>{{ formatTime(row.last_seen_at) }}</td>
-            <td>
-              <button class="link-btn" :disabled="!canChangeEventStatus || eventActionKey === `event-close-${row.id}`" @click.stop="closeEvent(row)">关闭</button><button class="link-btn" :disabled="!canChangeEventStatus || eventActionKey === `event-archive-${row.id}`" @click.stop="archiveEvent(row)">归档</button>
-              <template v-if="showDispositionActions">
-                <button class="link-btn" :disabled="!canDisposition" @click.stop="openHandle(row)">处置</button>
-                <button class="link-btn danger" :disabled="!canDisposition" @click.stop="handleDelete(row)">删除</button>
-              </template>
+            <td class="col-center operation-col" @click.stop>
+              <div class="row-actions">
+                <button class="btn-operate" title="查看事件详情" @click.stop="goDetail(row)">查看</button>
+                <button class="btn-operate" title="打开事件处置弹窗" @click.stop="openHandle(row)">处置</button>
+                <button class="btn-icon btn-delete" title="删除事件" @click.stop="handleDelete(row)">🗑</button>
+              </div>
             </td>
           </tr>
           <tr v-if="!foreignEvents.length"><td colspan="13" class="empty">暂无已确认外网事件</td></tr>
         </tbody>
       </table>
     </div>
-    <article v-if="selectedForeignEvent" class="event-detail">
-      <div class="event-provenance">
-        <strong>事件溯源</strong>
-        <span>确认来源：{{ zh(selectedForeignEvent.confirmation_source || 'manual') }}</span>
-        <span>审核来源：{{ zh(selectedForeignEvent.auto_aggregation?.review_source) }}</span>
-        <span>置信度：{{ Math.round((selectedForeignEvent.confidence || 0) * 100) }}%</span>
-        <span>文章数：{{ selectedForeignEvent.opinion_count }} · 来源数：{{ selectedForeignEvent.source_count }}</span>
-        <span>正式记录风险：{{ selectedForeignEvent.formal_risk_score ?? selectedForeignEvent.risk_score ?? '-' }} · {{ zh(selectedForeignEvent.formal_risk_level || selectedForeignEvent.risk_level) }}</span>
-        <span v-if="selectedForeignEvent.linked_opinion_current_risk">关联舆情当前风险：{{ selectedForeignEvent.linked_opinion_current_risk.risk_score ?? '-' }} · {{ zh(selectedForeignEvent.linked_opinion_current_risk.risk_level) }}</span>
-        <details v-if="selectedForeignEvent.auto_aggregation?.evidence"><summary>聚合证据</summary><pre>{{ JSON.stringify(selectedForeignEvent.auto_aggregation.evidence, null, 2) }}</pre></details>
-      </div>
-      <div class="event-detail-head">
-        <h3>{{ selectedForeignEvent.title }}</h3>
-        <div class="actions"><button class="link-btn" :disabled="!canChangeEventStatus || Boolean(eventActionKey)" @click="closeEvent(selectedForeignEvent)">关闭事件</button><button class="link-btn" :disabled="!canMergeEvents || Boolean(eventActionKey)" @click="mergeEvent(selectedForeignEvent)">合并</button><button class="link-btn" :disabled="!canSplitEvents || Boolean(eventActionKey)" @click="splitEvent(selectedForeignEvent)">拆分</button><button class="link-btn" @click="selectedForeignEvent = null">关闭详情</button></div>
-      </div>
-      <p class="muted">{{ zh(selectedForeignEvent.language) }} · {{ zh(selectedForeignEvent.event_status) }} · {{ selectedForeignEvent.opinion_count }} 篇文章</p>
-      <div class="event-metrics">
-        <span>热度：{{ selectedForeignEvent.heat_score ?? '-' }}</span>
-        <span>首次出现：{{ formatTime(selectedForeignEvent.first_seen_at) }}</span>
-        <span>最近出现：{{ formatTime(selectedForeignEvent.last_seen_at) }}</span>
-      </div>
-      <p>{{ selectedForeignEvent.summary || '暂无摘要' }}</p>
-      <div v-for="opinion in selectedForeignEvent.opinions" :key="opinion.id" class="event-opinion">
-        <strong>{{ opinion.title }}</strong>
-        <span class="muted">{{ opinion.source_name_snapshot }} · {{ formatTime(opinion.published_at) }}</span>
-        <span v-if="opinion.current_risk" class="muted">当前风险：{{ opinion.current_risk.risk_score ?? '-' }} · {{ zh(opinion.current_risk.risk_level) }}</span>
-        <a :href="opinion.url" target="_blank" rel="noreferrer" class="original">原文</a>
-      </div>
-    </article>
+
     <EventDispositionDialog
       v-model="dispositionVisible"
       :event-id="dispositionEventId"
@@ -121,6 +93,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { usePermission } from '@/composables/usePermission'
@@ -200,13 +173,10 @@ function operationRequestId(prefix: string) {
 }
 
 const { hasPermission } = usePermission()
+const router = useRouter()
 const canConfirmEvents = hasPermission('foreign:events:confirm')
-const canChangeEventStatus = hasPermission('foreign:events:status')
-const canMergeEvents = hasPermission('foreign:events:merge')
-const canSplitEvents = hasPermission('foreign:events:split')
-
-// 事件中心（外网视图）下额外保留「对话框式处置」与「硬删除」入口。
-// 外网舆情页（ForeignWorkspace）不传该 prop，保持原行为不变。
+// 外网事件表格操作列（查看/处置/删除）在「外网舆情页」与「事件中心」两处统一；
+// 处置复用 EventDispositionDialog(scope=foreign)，删除走 DELETE /foreign/events/{id}。
 const props = defineProps<{ showDispositionActions?: boolean }>()
 const canDisposition = hasPermission('foreign:events:write')
 const dispositionVisible = ref(false)
@@ -238,16 +208,18 @@ async function handleDelete(row: ForeignEvent) {
   }
 }
 
+function goDetail(row: ForeignEvent) {
+  router.push('/foreign/event/' + row.id)
+}
+
 const eventCandidates = ref<EventCandidate[]>([])
 const foreignEvents = ref<ForeignEvent[]>([])
 const eventRunFailures = ref<ForeignEventRun[]>([])
 const eventAutoStatus = ref<{ enabled: boolean; confidence_threshold: number; time_window_hours: number; scheduler_registered: boolean } | null>(null)
 const eventLoadError = ref<string | null>(null)
-const selectedForeignEvent = ref<ForeignEvent | null>(null)
 const eventSection = ref<'candidates' | 'confirmed'>('candidates')
 const rebuildingEvents = ref(false)
 const eventActionKey = ref<string | null>(null)
-const eventDetailLoadingId = ref<number | null>(null)
 
 async function loadEvents() {
   eventLoadError.value = null
@@ -303,63 +275,6 @@ async function rejectCandidate(row: EventCandidate) {
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || '拒绝外网事件候选失败')
   } finally { eventActionKey.value = null }
-}
-async function loadEventDetail(id: number) {
-  if (selectedForeignEvent.value?.id === id && selectedForeignEvent.value.opinions) return
-  if (eventDetailLoadingId.value) return
-  eventDetailLoadingId.value = id
-  try {
-    selectedForeignEvent.value = (await api.get(`/foreign/events/${id}`)).data
-  } catch (err: any) {
-    ElMessage.error(err?.response?.data?.detail || '外网事件详情加载失败')
-  } finally { eventDetailLoadingId.value = null }
-}
-async function archiveEvent(row: ForeignEvent) {
-  if (eventActionKey.value) return
-  eventActionKey.value = `event-archive-${row.id}`
-  try {
-    await api.post(`/foreign/events/${row.id}/status`, { status: 'archived', reason: 'Foreign workspace archive', request_id: operationRequestId(`event-archive-${row.id}`) })
-    ElMessage.success('外网事件已归档')
-    await loadEvents()
-  } catch (err: any) {
-    ElMessage.error(err?.response?.data?.detail || '外网事件归档失败')
-  } finally { eventActionKey.value = null }
-}
-async function closeEvent(row: ForeignEvent) {
-  if (!canChangeEventStatus || eventActionKey.value) return
-  eventActionKey.value = `event-close-${row.id}`
-  try {
-    const prompt = await ElMessageBox.prompt('请输入关闭原因', '关闭外网事件', { inputType: 'textarea', inputValidator: (value: string) => value.trim() ? true : '原因不能为空' })
-    await api.post(`/foreign/events/${row.id}/close`, { reason: prompt.value, request_id: operationRequestId(`event-close-${row.id}`) })
-    ElMessage.success('外网事件已关闭')
-    await loadEvents()
-  } catch (err: any) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(err?.response?.data?.detail || '关闭外网事件失败')
-  } finally { eventActionKey.value = null }
-}
-async function mergeEvent(row: ForeignEvent) {
-  if (!canMergeEvents || eventActionKey.value) return
-  eventActionKey.value = `event-merge-${row.id}`
-  try {
-    const prompt = await ElMessageBox.prompt('请输入目标外网事件 ID', '合并外网事件', { inputType: 'number', inputValidator: (value: string) => /^\d+$/.test(value) && Number(value) !== row.id ? true : '请输入不同的有效事件 ID' })
-    await api.post(`/foreign/events/${row.id}/merge`, { target_event_id: Number(prompt.value), reason: 'Foreign workspace manual merge', request_id: operationRequestId(`event-merge-${row.id}`) })
-    ElMessage.success('外网事件已合并')
-    selectedForeignEvent.value = null
-    await loadEvents()
-  } catch (err: any) { if (err === 'cancel' || err === 'close') return; ElMessage.error(err?.response?.data?.detail || '外网事件合并失败') } finally { eventActionKey.value = null }
-}
-async function splitEvent(row: ForeignEvent) {
-  if (!canSplitEvents || !row.opinions?.length || eventActionKey.value) return
-  eventActionKey.value = `event-split-${row.id}`
-  try {
-    const prompt = await ElMessageBox.prompt('请输入要拆出的文章 ID，多个 ID 用逗号分隔', '拆分外网事件', { inputValidator: (value: string) => value.split(',').every(item => /^\s*\d+\s*$/.test(item)) ? true : '请输入逗号分隔的文章 ID' })
-    const opinion_ids = prompt.value.split(',').map(item => Number(item.trim())).filter(Boolean)
-    await api.post(`/foreign/events/${row.id}/split`, { opinion_ids, reason: 'Foreign workspace manual split', request_id: operationRequestId(`event-split-${row.id}`) })
-    ElMessage.success('外网事件已拆分')
-    selectedForeignEvent.value = null
-    await loadEvents()
-  } catch (err: any) { if (err === 'cancel' || err === 'close') return; ElMessage.error(err?.response?.data?.detail || '外网事件拆分失败') } finally { eventActionKey.value = null }
 }
 
 onMounted(loadEvents)

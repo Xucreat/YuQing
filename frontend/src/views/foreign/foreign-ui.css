@@ -107,3 +107,23 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .field .checkbox { display: inline-flex; align-items: center; gap: 8px; font-weight: 400; color: #424245; }
 .field .checkbox input { width: auto; height: auto; }
 @media (max-width: 700px) { .fw-viz-cards { grid-template-columns: 1fr; } .field-row { grid-template-columns: 1fr; } }
+/* 外网事件表格操作列：与国内事件中心操作列视觉一致（查看 / 处置 / 删除 垃圾桶图标） */
+.operation-col {
+  position: sticky; right: 0; z-index: 2; min-width: 168px; width: 168px;
+  background: #fff; box-shadow: -10px 0 14px -14px rgba(0,0,0,0.38);
+}
+table tbody tr:hover .operation-col { background: #fafafc; }
+.row-actions { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.btn-operate {
+  height: 32px; padding: 0 12px; border: 1px solid #b9d5f2; border-radius: 6px;
+  background: #f2f7fd; color: #0066cc; cursor: pointer; font-size: 13px; font-weight: 500;
+  white-space: nowrap; transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-operate:hover { background: #e8f1fd; border-color: #7eb4e6; }
+.btn-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: none; border-radius: 8px;
+  background: transparent; cursor: pointer; font-size: 16px;
+  transition: background 0.15s ease;
+}
+.btn-delete:hover { background: rgba(255,59,48,0.1); }

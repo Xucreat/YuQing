@@ -1,0 +1,267 @@
+/* 外网管理相关组件共用的基础 UI 类（原 ForeignWorkspace.vue 的 style 抽取） */
+.foreign-page[data-v-5a270a56] { min-width: 0;
+}
+.workspace-head[data-v-5a270a56] { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 20px;
+}
+.collection-actions[data-v-5a270a56] { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+}
+.source-scope-label[data-v-5a270a56] { color: #6e6e73; font-size: 12px; align-self: center;
+}
+.workspace-head h2[data-v-5a270a56] { margin: 0 0 6px; font-size: 24px; color: #1d1d1f;
+}
+.workspace-head p[data-v-5a270a56], .source-note[data-v-5a270a56], .muted[data-v-5a270a56] { margin: 0; color: #86868b; font-size: 13px;
+}
+.tabs[data-v-5a270a56] { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid #e8e8ed;
+}
+.tab[data-v-5a270a56] { border: 0; background: transparent; padding: 10px 16px; color: #6e6e73; cursor: pointer; border-bottom: 2px solid transparent;
+}
+.tab.active[data-v-5a270a56] { color: #0071e3; border-bottom-color: #0071e3;
+}
+.subtabs[data-v-5a270a56] { display: flex; gap: 8px; margin: -4px 0 14px; border-bottom: 1px solid #e8e8ed;
+}
+.subtabs .tab[data-v-5a270a56] { padding: 8px 12px;
+}
+.panel[data-v-5a270a56] { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.05);
+}
+.toolbar[data-v-5a270a56] { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; align-items: center;
+}
+.visualization-panel[data-v-5a270a56] { min-height: 280px;
+}
+.visualization-content[data-v-5a270a56] { display: grid; gap: 18px;
+}
+.metric-grid[data-v-5a270a56] { display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); gap: 12px;
+}
+.metric-card[data-v-5a270a56], .data-section[data-v-5a270a56] { border: 1px solid #e8e8ed; border-radius: 14px; padding: 16px; background: #fff;
+}
+.metric-card[data-v-5a270a56] { display: grid; gap: 6px; min-height: 92px;
+}
+.metric-card span[data-v-5a270a56], .metric-card small[data-v-5a270a56] { color: #6e6e73; font-size: 12px;
+}
+.metric-card strong[data-v-5a270a56] { color: #1d1d1f; font-size: 24px;
+}
+.visualization-columns[data-v-5a270a56] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+}
+.data-section h3[data-v-5a270a56] { margin: 0 0 10px; font-size: 14px; color: #1d1d1f;
+}
+.distribution-row[data-v-5a270a56] { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid #eeeeef; font-size: 13px;
+}
+.distribution-row[data-v-5a270a56]:last-child { border-bottom: 0;
+}
+.distribution-row small[data-v-5a270a56] { display: block; color: #86868b; font-size: 11px;
+}
+.visualization-meta[data-v-5a270a56], .scope-badge[data-v-5a270a56], .source-management-note[data-v-5a270a56] { color: #6e6e73; font-size: 12px;
+}
+.scope-badge[data-v-5a270a56] { padding: 4px 8px; border: 1px solid #d8e8f8; border-radius: 999px; color: #1769aa; background: #f3f9ff;
+}
+.stale-badge[data-v-5a270a56] { padding: 4px 8px; border: 1px solid #f0c36d; border-radius: 999px; color: #8a5a00; background: #fff8e6;
+}
+.source-management-note[data-v-5a270a56] { border-top: 1px solid #e8e8ed; margin-top: 18px; padding-top: 14px;
+}
+@media (max-width: 900px) {
+.metric-grid[data-v-5a270a56] { grid-template-columns: repeat(2, minmax(130px, 1fr));
+}
+.visualization-columns[data-v-5a270a56] { grid-template-columns: 1fr;
+}
+}
+.input[data-v-5a270a56] { height: 38px; border: 1px solid #d2d2d7; border-radius: 8px; padding: 0 11px; min-width: 190px; color: #1d1d1f; background: #fff;
+}
+.btn[data-v-5a270a56] { border: 0; border-radius: 8px; padding: 9px 15px; cursor: pointer; font-size: 13px;
+}
+.btn-primary[data-v-5a270a56] { color: #fff; background: #0071e3;
+}.btn-secondary[data-v-5a270a56] { color: #1d1d1f; background: #f0f0f3;
+}
+.btn[data-v-5a270a56]:disabled { opacity: .5; cursor: default;
+}
+.table-wrap[data-v-5a270a56] { background: #fff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.05); overflow-x: auto; padding: 4px 4px 8px;
+}
+table[data-v-5a270a56] { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 13px;
+}
+/* 外网数据源管理：14 列表头需保持单行，页面放不下时由 .table-wrap 提供横向滑动（对齐国内舆情列表 .tbl-scroll） */
+.fw-src-table table[data-v-5a270a56] { min-width: 1320px; white-space: nowrap;
+}
+th[data-v-5a270a56], td[data-v-5a270a56] { padding: 12px 10px; text-align: left; border-bottom: 1px solid #e8e8ed; vertical-align: top;
+}
+th[data-v-5a270a56] { color: #86868b; font-weight: 600;
+}
+tbody tr[data-v-5a270a56]:hover { background: #fafafc; cursor: pointer;
+}.title-cell[data-v-5a270a56] { min-width: 280px; font-weight: 600;
+}
+.tag[data-v-5a270a56] { display: inline-block; color: #0071e3; background: #e8f1fd; border-radius: 999px; padding: 3px 7px; margin: 0 4px 3px 0;
+}
+.status[data-v-5a270a56], .status-toggle[data-v-5a270a56] { display: inline-block; border: 0; border-radius: 999px; padding: 4px 9px; color: #86868b; background: #f0f0f3;
+}.status.on[data-v-5a270a56], .status-toggle.on[data-v-5a270a56] { color: #1a8e3c; background: #eafaf0;
+}.status.failed[data-v-5a270a56] { color: #b42318; background: #fef3f2;
+}
+.status-toggle[data-v-5a270a56] { cursor: pointer;
+}.link-btn[data-v-5a270a56] { border: 0; background: transparent; color: #0071e3; cursor: pointer; margin-right: 10px;
+}.link-btn.danger[data-v-5a270a56] { color: #ff3b30;
+}
+.feed[data-v-5a270a56] { max-width: 420px; overflow-wrap: anywhere; color: #515154;
+}.proxy-mark[data-v-5a270a56] { color: #1a8e3c; margin-left: 8px;
+}.error-cell[data-v-5a270a56] { color: #ff3b30; max-width: 240px;
+}.date-input[data-v-5a270a56] { min-width: 145px;
+}
+.empty[data-v-5a270a56] { text-align: center; color: #86868b; padding: 30px;
+}.pager[data-v-5a270a56] { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 14px; color: #6e6e73; font-size: 13px;
+}
+.detail-mask[data-v-5a270a56] { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: grid; place-items: center; padding: 20px; z-index: 20;
+}.detail[data-v-5a270a56] { position: relative; width: min(760px, 100%); max-height: 80vh; overflow: auto; background: #fff; border-radius: 12px; padding: 24px;
+}.detail h3[data-v-5a270a56] { margin: 0 34px 10px 0; color: #1d1d1f;
+}.detail-meta[data-v-5a270a56] { color: #86868b; font-size: 13px;
+}.detail-text[data-v-5a270a56] { white-space: pre-wrap; line-height: 1.8; color: #2b2b2e;
+}.close[data-v-5a270a56] { position: absolute; right: 14px; top: 12px; border: 0; background: #f0f0f3; border-radius: 50%; width: 28px; height: 28px; cursor: pointer;
+}.original[data-v-5a270a56] { color: #0071e3;
+}
+.title-link[data-v-5a270a56] { padding: 0; font-weight: 600; text-align: left;
+}
+.alert-dialog[data-v-5a270a56], .history-dialog[data-v-5a270a56], .rule-dialog[data-v-5a270a56] { width: min(820px, 100%); max-height: 86vh;
+}
+.rule-dialog label[data-v-5a270a56] { display: grid; gap: 6px; margin: 12px 0; color: #424245; font-size: 13px;
+}
+.rule-preview[data-v-5a270a56] { margin-top: 14px; padding: 12px; background: #f5f5f7; border-radius: 8px;
+}
+.rule-preview pre[data-v-5a270a56] { margin: 8px 0 0; white-space: pre-wrap; font-size: 12px;
+}
+.event-detail[data-v-5a270a56] { margin-top: 18px; border-top: 1px solid #e8e8ed; padding-top: 16px;
+}
+.event-detail-head[data-v-5a270a56] { display: flex; justify-content: space-between; gap: 12px; align-items: center;
+}
+.event-detail h3[data-v-5a270a56] { margin: 0; color: #1d1d1f;
+}
+.event-metrics[data-v-5a270a56] { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 12px 0; color: #424245; font-size: 13px;
+}
+.event-failures[data-v-5a270a56] { margin: 12px 0; padding: 12px; border: 1px solid #f3c7c2; background: #fff8f7; color: #5c1b16;
+}
+.event-failure-row[data-v-5a270a56] { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; font-size: 13px;
+}
+.error-state[data-v-5a270a56] { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 12px 0; padding: 12px; border: 1px solid #f3c7c2; background: #fff8f7; color: #5c1b16;
+}
+.alert-scope-note[data-v-5a270a56] { margin: 10px 0 14px; padding: 10px 12px; border: 1px solid #d9e7f7; background: #f5f9ff; color: #36536f; font-size: 13px;
+}
+.alert-failures[data-v-5a270a56] { margin: 12px 0; padding: 12px; border: 1px solid #f3c7c2; background: #fff8f7; color: #5c1b16;
+}
+.alert-failure-row[data-v-5a270a56] { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; font-size: 13px;
+}
+.alert-detail[data-v-5a270a56] { margin-top: 18px; border-top: 1px solid #e8e8ed; padding-top: 16px;
+}
+.alert-action-history[data-v-5a270a56] { display: grid; gap: 8px; margin-top: 12px;
+}
+.alert-action-row[data-v-5a270a56] { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f3;
+}
+.event-opinion[data-v-5a270a56] { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid #f0f0f3;
+}
+.source-editor-form[data-v-5a270a56] { display: grid; gap: 14px; margin: 6px 0 12px; padding: 4px 2px;
+}
+.source-editor-form .input[data-v-5a270a56] { width: 100%;
+}
+.source-editor-form .el-select[data-v-5a270a56] { width: 100%;
+}
+.checkbox-inline[data-v-5a270a56] { display: inline-flex; align-items: center; gap: 8px; color: #424245; font-size: 13px;
+}
+.checkbox-inline input[data-v-5a270a56] { width: auto; height: auto;
+}
+.source-feed-input[data-v-5a270a56] { min-width: 320px;
+}
+.source-editor-toolbar[data-v-5a270a56] { margin-top: 6px;
+}
+/* 外网数据源管理：新增按钮右置，对齐国内数据源管理「新建采集源」位置 */
+.toolbar-right[data-v-5a270a56] { margin-left: auto; display: flex; align-items: center; gap: 12px;
+}
+.source-test-result[data-v-5a270a56] { display: grid; gap: 6px; margin: 10px 0; padding: 12px; border: 1px solid #d9ead9; border-radius: 8px; background: #f4faf4; font-size: 13px;
+}
+.source-test-result strong.ok[data-v-5a270a56] { color: #1a8e3c;
+}
+.source-test-result strong.fail[data-v-5a270a56] { color: #c0352b;
+}
+.source-test-result strong.neutral[data-v-5a270a56] { color: #6e6e73;
+}
+.source-test-result strong.warn[data-v-5a270a56] { color: #9a6200;
+}
+.source-test-result .result-field[data-v-5a270a56] { color: #424245;
+}
+.source-test-result .txt-ok[data-v-5a270a56] { color: #1a8e3c; font-weight: 600;
+}
+.source-test-result .txt-fail[data-v-5a270a56] { color: #c0352b; font-weight: 600;
+}
+.source-test-result .proxy-health[data-v-5a270a56] { color: #36536f;
+}
+.source-test-result .feed-status[data-v-5a270a56] { padding: 3px 8px; border-radius: 6px; border: 1px solid transparent; line-height: 1.6;
+}
+.source-test-result .feed-status.fs-ok[data-v-5a270a56] { color: #1a8e3c; background: #eafaf0; border-color: #c6ecd2;
+}
+.source-test-result .feed-status.fs-empty[data-v-5a270a56] { color: #6e6e73; background: #f2f2f5; border-color: #e3e3e8;
+}
+.source-test-result .feed-status.fs-warn[data-v-5a270a56] { color: #9a6200; background: #fff6e6; border-color: #f3dca5;
+}
+.source-test-result .feed-status.fs-fail[data-v-5a270a56] { color: #c0352b; background: #fff5f4; border-color: #f3c7c2;
+}
+.verify-sub[data-v-5a270a56] { font-size: 12px; color: #86868b; margin-top: 2px;
+}
+.source-runs[data-v-5a270a56] { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e8e8ed;
+}
+.history-row[data-v-5a270a56] { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f3; font-size: 13px; color: #424245;
+}
+.number-input[data-v-5a270a56] { min-width: 90px; width: 110px;
+}
+.analysis-block[data-v-5a270a56] { margin-top: 16px;
+}
+.analysis-block h4[data-v-5a270a56] { margin: 0 0 8px; color: #1d1d1f;
+}
+.analysis-grid[data-v-5a270a56] { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 8px 0; font-size: 13px; color: #424245;
+}
+@media (max-width: 700px) {
+.workspace-head[data-v-5a270a56] { flex-direction: column;
+}.input[data-v-5a270a56] { width: 100%; min-width: 0;
+}
+}
+
+
+/* 苹果风可视化卡片 + 表单字段（外网管理页） */
+.fw-viz-cards[data-v-5a270a56] { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;
+}
+.fw-viz-card[data-v-5a270a56] { background: #fff; border: 1px solid #e8e8ed; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.05); padding: 18px 20px;
+}
+.fw-viz-card h3[data-v-5a270a56] { margin: 0 0 10px; font-size: 14px; color: #1d1d1f; font-weight: 600;
+}
+.field[data-v-5a270a56] { display: grid; gap: 6px; margin: 12px 0;
+}
+.field > label[data-v-5a270a56] { font-size: 13px; color: #424245; font-weight: 500;
+}
+.field-row[data-v-5a270a56] { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0;
+}
+.field-row .field[data-v-5a270a56] { margin: 0;
+}
+.field .checkbox[data-v-5a270a56] { display: inline-flex; align-items: center; gap: 8px; font-weight: 400; color: #424245;
+}
+.field .checkbox input[data-v-5a270a56] { width: auto; height: auto;
+}
+@media (max-width: 700px) {
+.fw-viz-cards[data-v-5a270a56] { grid-template-columns: 1fr;
+}
+.field-row[data-v-5a270a56] { grid-template-columns: 1fr;
+}
+}
+/* 外网事件表格操作列：与国内事件中心操作列视觉一致（查看 / 处置 / 删除 垃圾桶图标） */
+.operation-col[data-v-5a270a56] {
+  position: sticky; right: 0; z-index: 2; min-width: 168px; width: 168px;
+  background: #fff; box-shadow: -10px 0 14px -14px rgba(0,0,0,0.38);
+}
+table tbody tr:hover .operation-col[data-v-5a270a56] { background: #fafafc;
+}
+.row-actions[data-v-5a270a56] { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;
+}
+.btn-operate[data-v-5a270a56] {
+  height: 32px; padding: 0 12px; border: 1px solid #b9d5f2; border-radius: 6px;
+  background: #f2f7fd; color: #0066cc; cursor: pointer; font-size: 13px; font-weight: 500;
+  white-space: nowrap; transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-operate[data-v-5a270a56]:hover { background: #e8f1fd; border-color: #7eb4e6;
+}
+.btn-icon[data-v-5a270a56] {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: none; border-radius: 8px;
+  background: transparent; cursor: pointer; font-size: 16px;
+  transition: background 0.15s ease;
+}
+.btn-delete[data-v-5a270a56]:hover { background: rgba(255,59,48,0.1);
+}
