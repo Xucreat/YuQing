@@ -1,0 +1,136 @@
+
+.stat-panel[data-v-5119133f] { margin-bottom: 20px; padding: 18px 20px; background: #fff; border: 1px solid #e8e8ed; border-radius: 12px;
+}
+.section-title[data-v-5119133f] { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: #1d1d1f;
+}
+.stat-grid[data-v-5119133f] { display: flex; flex-wrap: wrap; gap: 1px; margin-top: 14px; background: #e8e8ed; border-radius: 10px; overflow: hidden;
+}
+.stat-item[data-v-5119133f] { flex: 1 1 180px; display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; background: #fff;
+}
+.stat-label[data-v-5119133f] { font-size: 12px; color: #86868b;
+}
+.stat-item strong[data-v-5119133f] { font-size: 16px; color: #1d1d1f;
+}
+.dist-pills[data-v-5119133f] { display: inline-flex; flex-wrap: wrap; gap: 6px;
+}
+.pill[data-v-5119133f] { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 980px; font-size: 13px; font-weight: 500; line-height: 1.4; white-space: nowrap;
+}
+.pill .dot[data-v-5119133f] { width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+}
+.pill-red[data-v-5119133f] { background: rgba(255,59,48,0.1); color: #ff3b30;
+}
+.pill-orange[data-v-5119133f] { background: rgba(255,159,10,0.12); color: #c77700;
+}
+.pill-green[data-v-5119133f] { background: rgba(52,199,89,0.12); color: #1a8e3c;
+}
+.risk-factor-list[data-v-5119133f] { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px;
+}
+.risk-factor[data-v-5119133f] { padding: 5px 9px; border-radius: 6px; background: #f5f7fb; color: #3a3a3c; font-size: 12px;
+}
+
+.event-detail[data-v-899b2ee8] { background: #fff; min-height: 100vh; padding: 24px 28px; box-sizing: border-box;
+}
+.detail-back[data-v-899b2ee8] { margin-bottom: 18px;
+}
+.event-title-row[data-v-899b2ee8] { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
+}
+.detail-title[data-v-899b2ee8] { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: #1d1d1f; line-height: 1.35;
+}
+.event-meta[data-v-899b2ee8] { display: flex; gap: 24px; font-size: 13px; color: #6e6e73; margin-bottom: 10px; flex-wrap: wrap;
+}
+.event-meta b[data-v-899b2ee8] { font-weight: 600; color: #1d1d1f;
+}
+.event-desc[data-v-899b2ee8] { font-size: 14px; color: #6e6e73; background: #fafafc; padding: 14px 18px; border-radius: 12px; line-height: 1.65; margin-bottom: 14px; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.situation-strip[data-v-899b2ee8] { display: flex; flex-wrap: wrap; gap: 1px; margin-top: 4px; background: #e8e8ed; border-radius: 12px; overflow: hidden;
+}
+.situation-item[data-v-899b2ee8] { flex: 1 1 150px; display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; background: #fff;
+}
+.situation-label[data-v-899b2ee8] { font-size: 12px; color: #86868b;
+}
+.situation-item strong[data-v-899b2ee8] { font-size: 16px; color: #1d1d1f;
+}
+.focus-mark[data-v-899b2ee8] { color: #c77700; font-size: 12px; font-weight: 600;
+}
+
+/* ① 事件概览卡 */
+.overview-card[data-v-899b2ee8] { margin-bottom: 20px; padding: 22px 24px; background: #fff; border: 1px solid #e8e8ed; border-radius: 12px;
+}
+.card[data-v-899b2ee8] {
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05);
+}
+.table-card[data-v-899b2ee8] { padding: 6px 6px 14px; overflow: hidden;
+}
+.handle-open-btn[data-v-899b2ee8] { margin-left: auto;
+}
+.btn-primary[data-v-899b2ee8] { background: #0071e3; color: #fff;
+}
+.btn-primary[data-v-899b2ee8]:hover:not(:disabled) { background: #0066cc;
+}
+.btn[data-v-899b2ee8]:disabled { cursor: not-allowed; opacity: 0.5;
+}
+.section-title[data-v-899b2ee8] { font-size: 19px; font-weight: 600;
+}
+table.tbl[data-v-899b2ee8] { width: 100%; border-collapse: collapse; font-size: 14px;
+}
+table.tbl thead th[data-v-899b2ee8] {
+  text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b;
+  padding: 14px 18px; border-bottom: 1px solid #e8e8ed; white-space: nowrap;
+}
+table.tbl tbody td[data-v-899b2ee8] {
+  padding: 15px 18px; border-bottom: 1px solid #e8e8ed; color: #1d1d1f; vertical-align: middle;
+}
+table.tbl tbody tr[data-v-899b2ee8] { transition: background-color 0.12s ease;
+}
+table.tbl tbody tr[data-v-899b2ee8]:hover { background: #fafafc;
+}
+table.tbl tbody tr:last-child td[data-v-899b2ee8] { border-bottom: none;
+}
+.col-center[data-v-899b2ee8] { text-align: center;
+}
+.t-title[data-v-899b2ee8] { font-weight: 500; color: #1d1d1f;
+}
+.risk-num[data-v-899b2ee8] { font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.col-center.risk-num[data-v-899b2ee8] { text-align: center;
+}
+.empty-row td[data-v-899b2ee8] { text-align: center; color: #86868b; padding: 40px 0;
+}
+.pill[data-v-899b2ee8] {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px;
+  border-radius: 980px; font-size: 13px; font-weight: 500; line-height: 1.4; white-space: nowrap;
+}
+.pill .dot[data-v-899b2ee8] { width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+}
+.pill-red[data-v-899b2ee8] { background: rgba(255,59,48,0.1); color: #ff3b30;
+}
+.pill-orange[data-v-899b2ee8] { background: rgba(255,159,10,0.12); color: #c77700;
+}
+.pill-green[data-v-899b2ee8] { background: rgba(52,199,89,0.12); color: #1a8e3c;
+}
+.pill-gray[data-v-899b2ee8] { background: rgba(110,110,115,0.12); color: #6e6e73;
+}
+.btn[data-v-899b2ee8] { display: inline-flex; align-items: center; gap: 8px; border: none; border-radius: 980px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 0.18s ease;
+}
+.btn-ghost[data-v-899b2ee8] { background: #e8e8ed; color: #1d1d1f;
+}
+.btn-ghost[data-v-899b2ee8]:hover { background: #dededf;
+}
+
+/* ④ 关联内容 Tab */
+.related-tabs[data-v-899b2ee8] { padding: 4px 4px 0;
+}
+.related-tabs[data-v-899b2ee8] .el-tabs__header { margin: 12px 0 4px; padding: 0 20px;
+}
+.related-tabs[data-v-899b2ee8] .el-tabs__nav-wrap::after { display: none;
+}
+@media (max-width: 720px) {
+.event-detail[data-v-899b2ee8] { padding: 16px 14px;
+}
+.event-meta[data-v-899b2ee8] { gap: 14px;
+}
+table.tbl thead th[data-v-899b2ee8]:nth-child(4), table.tbl tbody td[data-v-899b2ee8]:nth-child(4) { display: none;
+}
+}

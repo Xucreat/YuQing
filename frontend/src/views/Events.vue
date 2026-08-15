@@ -212,60 +212,7 @@
     </div>
     </template>
 
-    <template v-else>
-      <div class="card table-card">
-        <div class="foreign-events-head">
-          <span class="muted">外网事件（候选需人工确认后形成正式事件）</span>
-        </div>
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th style="width:70px">ID</th>
-              <th style="width:280px">事件标题</th>
-              <th style="width:90px">语言</th>
-              <th style="width:110px">确认来源</th>
-              <th style="width:120px" class="col-center">状态</th>
-              <th style="width:120px" class="col-center">正式风险</th>
-              <th style="width:80px" class="col-center">热度</th>
-              <th style="width:90px" class="col-center">文章数</th>
-              <th style="width:90px" class="col-center">来源数</th>
-              <th style="width:100px" class="col-center">置信度</th>
-              <th style="width:180px">首次出现</th>
-              <th style="width:180px">最后出现</th>
-              <th class="col-center operation-col">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(row, idx) in foreignRows" :key="row.id" @click="$router.push('/foreign/event/' + row.id)" style="cursor:pointer">
-              <td>{{ row.id }}</td>
-              <td><span class="t-title">{{ row.title || '无标题' }}</span></td>
-              <td class="nowrap">{{ langText(row.language) }}</td>
-              <td class="nowrap">{{ srcText(row.confirmation_source || 'manual') }}</td>
-              <td class="col-center"><span class="pill" :class="foreignStatusPill(row.event_status)">{{ foreignStatusText(row.event_status) }}</span></td>
-              <td class="col-center"><span class="pill" :class="riskPill(row.formal_risk_level || row.risk_level)">{{ riskText(row.formal_risk_level || row.risk_level) }}</span></td>
-              <td class="col-center risk-num">{{ row.heat_score ?? '-' }}</td>
-              <td class="col-center risk-num">{{ row.opinion_count ?? '-' }}</td>
-              <td class="col-center risk-num">{{ row.source_count ?? '-' }}</td>
-              <td class="col-center risk-num">{{ Math.round((row.confidence || 0) * 100) }}%</td>
-              <td class="nowrap">{{ formatTime(row.first_seen_at) }}</td>
-              <td class="nowrap">{{ formatTime(row.last_seen_at) }}</td>
-              <td class="col-center operation-col" @click.stop>
-                <div class="row-actions">
-                  <button class="btn-operate" title="查看外网事件详情" @click.stop="$router.push('/foreign/event/' + row.id)">查看</button>
-                  <button v-if="canUpdateForeign" class="btn-operate" title="打开外网事件处置弹窗" @click.stop="openForeignHandle(row)">处置</button>
-                  <button v-if="canUpdateForeign" class="btn-icon btn-delete" title="删除外网事件" @click.stop="handleForeignDelete(row)">🗑</button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="foreignRows.length === 0 && !foreignLoading"><td colspan="13" class="empty-row">暂无外网事件</td></tr>
-          </tbody>
-        </table>
-        <div v-if="foreignLoading" class="state">加载外网事件中…</div>
-        <div class="pager-wrap" v-if="foreignTotal > 0">
-          <Pager :total="foreignTotal" v-model:current-page="foreignPage" :page-size="foreignSize" @current-change="loadForeignEvents" />
-        </div>
-      </div>
-    </template>
+    <ForeignEventsView v-if="scope === 'foreign'" :show-disposition-actions="true" />
 
     <EventDispositionDialog
       v-model="handleDialogVisible"
@@ -286,6 +233,7 @@ import type { EventItem, EventListResponse, EventCreateResponse, EventActionItem
 import { EVENT_STATUS_OPTIONS, eventStatusLabel, eventStatusPill } from '@/utils/event'
 import { usePermission } from '@/composables/usePermission'
 import EventDispositionDialog from '@/components/EventDispositionDialog.vue'
+import ForeignEventsView from '@/views/foreign/ForeignEventsView.vue'
 
 const loading = ref(false)
 const aggregating = ref(false)
