@@ -82,6 +82,7 @@ from app.services.foreign_manual_review_service import (
 from app.services.current_risk import apply_review_decision
 from app.models.foreign_ai_alert_candidate import ForeignAIAlertCandidate
 from app.models.foreign_event_candidate import ForeignEventCandidate
+from app.models.foreign_event_opinion import ForeignEventOpinion
 
 
 foreign_router = APIRouter(
@@ -100,7 +101,7 @@ def require_foreign_review_read(current_user: User = Depends(get_current_user), 
         return current_user
     perms = set(get_user_permissions(current_user, db))
     if perms.intersection({
-        "foreign:ai:review:read",
+        "ai:review:read",
         "foreign:events:review:read",
         "foreign:alerts:review:read",
     }):
@@ -1273,6 +1274,93 @@ def _foreign_ai_batch_selection(db: Session, payload: ForeignAIBatchPayload) -> 
     return rows
 
 
+def _preview_foreign_candidate_count(db: Session, opinion_ids: list[int]) -> int:
+    """统计外网「可能影响的预警」候选数：规则风险命中 + AI 分命中（按舆情去重）。
+
+    与 ForeignAlertService.evaluate(dry_run=True) 并列存在：不改动 evaluate 的
+    内部逻辑，也绝不创建 ForeignAlert。AI 分只计入「候选」口径，其正式化仍必须
+    经过人工复核闸门，因此本函数不改变既有边界。统计基于**已存在**的规则风险
+    结果与已完成 AI 结论，属于预估值。
+    """
+    if not opinion_ids:
+        return 0
+    from app.models.foreign_alert_rule import ForeignAlertRule
+    from app.services.foreign_alert_service import _current_risk_rows, _risk_matches
+
+    ids = {int(value) for value in opinion_ids}
+    matched: set[int] = set()
+    rules = list(
+        db.scalars(select(ForeignAlertRule).where(ForeignAlertRule.is_enabled.is_(True))).all()
+    )
+    risk_rules = [
+        rule
+        for rule in rules
+        if rule.rule_type in {"risk_score", "risk_level", "risk_category"}
+    ]
+    if risk_rules:
+        for result, opinion in _current_risk_rows(db):
+            if opinion.id not in ids or opinion.id in matched:
+                continue
+            for rule in risk_rules:
+                try:
+                    hit = _risk_matches(rule, result)
+                except ValueError:
+                    continue
+                if hit:
+                    matched.add(int(opinion.id))
+                    break
+    thresholds: list[float] = []
+    for rule in rules:
+        if rule.rule_type != "ai_risk_score":
+            continue
+        conditions = rule.conditions or {}
+        threshold = conditions.get("threshold", conditions.get("min_score"))
+        if threshold is None:
+            continue
+        try:
+            thresholds.append(float(threshold))
+        except (TypeError, ValueError):
+            continue
+    if thresholds and inspect(db.get_bind()).has_table("foreign_ai_results"):
+        floor = min(thresholds)
+        ai_rows = db.execute(
+            select(ForeignAIResult.foreign_opinion_id, ForeignAIResult.risk_score).where(
+                ForeignAIResult.foreign_opinion_id.in_(list(ids)),
+                ForeignAIResult.status == "completed",
+                ForeignAIResult.risk_score.is_not(None),
+            )
+        ).all()
+        for opinion_id, score in ai_rows:
+            if opinion_id is None or score is None or int(opinion_id) in matched:
+                continue
+            try:
+                if float(score) >= floor:
+                    matched.add(int(opinion_id))
+            except (TypeError, ValueError):
+                continue
+    return len(matched)
+
+
+def _preview_foreign_event_candidate_count(db: Session, opinion_ids: list[int]) -> int:
+    """纯只读预估「可能成为新事件的候选」条数。
+
+    只统计所选舆情中尚未通过 foreign_event_opinions 关联到任何事件的条数，
+    不调用 ForeignEventService.rebuild_candidates（该函数会写入 foreign_event_runs
+    运行记录），不创建 ForeignEventCandidate。属预估值，仅用于预览展示。
+    """
+    if not opinion_ids:
+        return 0
+    ids = {int(v) for v in opinion_ids}
+    linked = set(
+        db.scalars(
+            select(ForeignEventOpinion.foreign_opinion_id).where(
+                ForeignEventOpinion.foreign_opinion_id.in_(list(ids))
+            )
+        ).all()
+    )
+    return len(ids - linked)
+
+
 def _foreign_ai_batch_preview(db: Session, payload: ForeignAIBatchPayload) -> dict[str, Any]:
     rows = _foreign_ai_batch_selection(db, payload)
     all_rows = rows
@@ -1295,24 +1383,23 @@ def _foreign_ai_batch_preview(db: Session, payload: ForeignAIBatchPayload) -> di
     possible_event_count = 0
     possible_alert_count = 0
     if rows:
+        # Phase 2 预览只读化：移除原先的 rebuild_candidates(commit=True) 与
+        # evaluate(dry_run=True) 调用。两者都会在预览阶段向 foreign_event_runs /
+        # foreign_alert_runs 写入运行（审计）记录，违反「预览不写库」约束。
+        # 改为纯 SELECT 统计，不调用 AI、不创建 ForeignAlert / ForeignAIResult /
+        # ForeignRiskResult / 候选记录 / 运行记录；异常时回退为 0，保证接口不 500。
         try:
-            _, _, event_items = ForeignEventService().rebuild_candidates(
-                db, user_id=None, dry_run=True, opinion_ids=[row.id for row in rows], commit=True
+            possible_event_count = _preview_foreign_event_candidate_count(
+                db, [row.id for row in rows]
             )
-            possible_event_count = len(event_items)
         except Exception:
-            # Preview is advisory; recover the session so a subsequent batch
-            # submission can still use the same request-scoped connection.
-            db.rollback()
-            pass
+            possible_event_count = 0
         try:
-            alert_run = ForeignAlertService.evaluate(
-                db, user_id=None, dry_run=True, max_items=200, opinion_ids=[row.id for row in rows]
+            possible_alert_count = _preview_foreign_candidate_count(
+                db, [row.id for row in rows]
             )
-            possible_alert_count = int(alert_run.triggered_count or 0)
         except Exception:
-            db.rollback()
-            pass
+            possible_alert_count = 0
     return {
         "matched_count": len(all_rows),
         "existing_ai_result_count": completed_count,
@@ -1719,9 +1806,9 @@ def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisio
     elif action == "confirm_alert_change":
         required = "foreign:alerts:review:confirm"
     elif action == "complete_review":
-        required = "foreign:ai:review:complete"
+        required = "ai:review:complete"
     else:  # keep_rule / use_ai_display
-        required = "foreign:ai:review:read"
+        required = "ai:review:read"
     if not is_superuser_user(current_user) and required not in get_user_permissions(current_user, db):
         raise HTTPException(status_code=403, detail="Permission denied")
 
@@ -1798,7 +1885,7 @@ def decide_foreign_manual_review(review_id: int, payload: ForeignAIReviewDecisio
     log_operation(db, action="FOREIGN_AI_MANUAL_REVIEW", operator=current_user, request=request, resource_type="foreign_manual_review", resource_id=str(row.id), details={"decision": payload.decision, "reason": payload.reason})
     if not getattr(request.state, "batch_mode", False):
         db.commit()
-    db.refresh(row)
+        db.refresh(row)
     return {
         "review": _foreign_manual_review_item(row, db.get(ForeignOpinion, row.foreign_opinion_id), db.get(User, row.reviewed_by) if row.reviewed_by else None, db=db),
         "decision": payload.decision,
@@ -1819,7 +1906,7 @@ def decide_foreign_manual_reviews_batch(payload: ForeignAIReviewBatchPayload, re
     elif payload.decision == "confirm_alert_change":
         required = "foreign:alerts:review:confirm"
     else:
-        required = "foreign:ai:review:read"
+        required = "ai:review:read"
     if not is_superuser_user(current_user) and required not in get_user_permissions(current_user, db):
         raise HTTPException(status_code=403, detail="Permission denied")
     if payload.confirm_all:
@@ -1832,30 +1919,43 @@ def decide_foreign_manual_reviews_batch(payload: ForeignAIReviewBatchPayload, re
     if not review_ids:
         raise HTTPException(status_code=422, detail="No pending reviews selected")
     results = []
+    failed = []
     request.state.batch_mode = True
+    display_only = {"use_ai_display", "keep_rule"}
     try:
-        # Single database transaction: every per-review decision (event
-        # confirmation, alert evaluation + provenance stamp, review status,
-        # audit log) runs inside this one session. Nothing inside the loop
-        # commits, so either the whole batch commits together or the whole
-        # batch is rolled back on the first failure — there is never a
-        # half-confirmed state.
+        # Display-only decisions (adopt AI / keep rule) only flip the opinion
+        # display source and mint no formal event or alert. They are therefore
+        # safe to apply per-review: a single review that cannot be applied
+        # (e.g. it has no completed AI result) is skipped and recorded, while
+        # the rest of the batch still commits. Formal decisions (confirm
+        # event/alert, reject, complete) keep the original all-or-nothing
+        # guarantee so there is never a half-confirmed formal record.
         for index, review_id in enumerate(review_ids):
-            results.append(decide_foreign_manual_review(
-                review_id,
-                ForeignAIReviewDecisionPayload(
-                    decision=payload.decision,
-                    reason=payload.reason,
-                    request_id=f"{payload.request_id or 'batch'}:{review_id}:{index}",
-                ), request, current_user, db,
-            ))
+            sp = db.begin_nested()
+            try:
+                results.append(decide_foreign_manual_review(
+                    review_id,
+                    ForeignAIReviewDecisionPayload(
+                        decision=payload.decision,
+                        reason=payload.reason,
+                        request_id=f"{payload.request_id or 'batch'}:{review_id}:{index}",
+                    ), request, current_user, db,
+                ))
+            except Exception as exc:
+                db.rollback()  # rolls back to the savepoint, not the whole tx
+                if payload.decision in display_only:
+                    failed.append({"review_id": review_id, "detail": _safe_foreign_error(exc)})
+                    continue
+                raise
+            else:
+                sp.commit()
         db.commit()
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=f"批量人工复核已整体回滚：{_safe_foreign_error(exc)}") from exc
     finally:
         request.state.batch_mode = False
-    return {"items": results, "total": len(results), "transaction": "committed"}
+    return {"items": results, "total": len(results), "failed": failed, "transaction": "committed"}
 
 
 def _foreign_risk_item(result: ForeignRiskResult, opinion: ForeignOpinion) -> dict[str, Any]:

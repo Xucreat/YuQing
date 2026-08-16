@@ -68,6 +68,11 @@ export interface Opinion {
   relevance_score?: number | null
   content_type?: OpinionContentType | string | null
   admission_reason?: Record<string, any> | null
+  // ===== Phase 1：当前展示口径风险字段（后端 OpinionOut 已回传，前端增量展示）=====
+  // 均为 optional：历史接口响应或测试 fixture 可能缺字段，避免类型报错。
+  current_risk_source?: 'rule' | 'ai' | string | null
+  current_risk_score?: number | null
+  current_risk_updated_at?: string | null
 }
 
 // GET /api/opinions 鍒嗛〉鍝嶅簲
@@ -363,6 +368,28 @@ export interface AlertRecordListResponse {
   total: number
   page: number
   size: number
+}
+
+// Phase 5：外网预警记录（后端 ForeignAlert serialize_alert 契约）。
+// 全部 optional/可空：兼容历史响应与缺失字段，不强制断言掩盖字段缺失。
+export interface ForeignAlert {
+  id: number
+  status?: string
+  disposition_status?: 'pending' | 'processing' | 'resolved' | 'ignored' | 'false_positive' | string
+  disposition_note?: string | null
+  severity?: string
+  risk_level?: string
+  formal_risk_level?: string | null
+  formal_risk_score?: number | null
+  risk_score?: number | null
+  title?: string | null
+  message?: string | null
+  opinion_title_snapshot?: string | null
+  triggered_at?: string | null
+  rule_snapshot?: { name?: string } | null
+  matched_conditions?: { reason?: string } | null
+  linked_opinion_current_risk?: CurrentRisk | null
+  foreign_opinion_id?: number | null
 }
 
 export interface AlertEvaluateResponse {

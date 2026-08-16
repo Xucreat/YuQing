@@ -13,8 +13,8 @@
       </div>
       <div class="top-scope-switch">
         <el-radio-group v-model="scope" @change="onScopeChange">
-          <el-radio-button label="domestic">国内</el-radio-button>
-          <el-radio-button label="foreign">外网</el-radio-button>
+          <el-radio-button value="domestic">国内</el-radio-button>
+          <el-radio-button value="foreign">外网</el-radio-button>
         </el-radio-group>
       </div>
     </div>
@@ -47,6 +47,15 @@
           <option value="mid">中危（40-69）</option>
           <option value="low">低危（&lt;40）</option>
         </select>
+        <!-- 展示口径：系统规则 / 当前风险 / AI 研判（localStorage 持久化） -->
+        <div class="risk-view-switch">
+          <span class="risk-view-label">展示口径</span>
+          <select v-model="riskView" class="select" @change="handleSearch">
+            <option value="current">当前风险</option>
+            <option value="rule">系统规则</option>
+            <option value="ai">AI 研判</option>
+          </select>
+        </div>
         <div class="date-range">
           <input
             v-model="filters.date_from"
@@ -139,7 +148,7 @@
             <th style="width:200px">准入原因</th>
             <th style="width:100px" class="col-center">情感</th>
             <th style="width:110px" class="col-center">级别</th>
-            <th style="width:110px" class="col-center">风险评分</th>
+            <th style="width:110px" class="col-center">风险评分{{ riskView === 'ai' ? '(AI)' : '' }}</th>
             <th style="width:110px" class="col-center">分析状态</th>
             <th style="width:170px">发布时间</th>
             <th v-if="canDelete" style="width:90px" class="col-center">操作</th>
@@ -193,10 +202,10 @@
               </span>
             </td>
             <td class="col-center">
-              <span class="pill" :class="levelPill(row.risk_score)">{{ levelText(row.risk_score) }}</span>
+              <span class="pill" :class="levelPill(displayRiskScore(row))">{{ levelText(displayRiskScore(row)) }}</span>
             </td>
             <td class="col-center">
-              <span class="risk-num" :style="{ color: riskColor(row.risk_score) }">{{ row.risk_score }}</span>
+              <span class="risk-num" :style="{ color: riskColor(displayRiskScore(row)) }">{{ displayRiskScore(row) }}</span><span v-if="showAIBadge(row)" class="risk-src-tag">AI</span>
             </td>
             <td class="col-center">
               <span class="pill" :class="statusPill(row.analysis_status)">{{ statusText(row.analysis_status) }}</span>
@@ -239,6 +248,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="use_ai_display" :disabled="selectedReviewIds.size === 0">采用 AI 展示</el-dropdown-item>
+                <el-dropdown-item command="keep_rule" :disabled="selectedReviewIds.size === 0">保留规则风险</el-dropdown-item>
                 <el-dropdown-item command="confirm_event_change" :disabled="selectedReviewIds.size === 0">确认事件影响</el-dropdown-item>
                 <el-dropdown-item command="confirm_alert_change" :disabled="selectedReviewIds.size === 0">确认预警影响</el-dropdown-item>
                 <el-dropdown-item command="reject_change" :disabled="selectedReviewIds.size === 0">驳回选中（全部 AI 变更）</el-dropdown-item>
@@ -269,7 +279,7 @@
                 <td>{{ formatTime(review.publish_time) }}</td>
                 <td><span class="risk-num">{{ review.rule_risk_snapshot?.risk_score ?? '-' }}</span></td>
                 <td><span class="risk-num" :style="{ color: riskColor(review.ai_risk_snapshot?.risk_score) }">{{ review.ai_risk_snapshot?.risk_score ?? '-' }}</span></td>
-                <td>{{ review.display_source === 'ai' ? 'AI 展示' : '规则展示' }}</td>
+                <td>{{ displaySourceLabel(review.display_source) }}</td>
                 <td class="col-center">
                   <span v-if="review.event_review_status === 'confirmed'" class="pill pill-green">已确认</span>
                   <span v-else>{{ review.event_candidate_count }}</span>
@@ -396,6 +406,41 @@ const filters = reactive({
   keyword: '',
 })
 
+// ===== Phase 1：国内列表风险展示口径 =====
+// 持久化 key：domestic-risk-source；可接受 current / rule / ai；默认 current。
+// 仅影响前端展示，不改变后端请求参数、数据库字段或 AI 研判/复核/预警逻辑。
+const RISK_VIEW_KEY = 'domestic-risk-source'
+type RiskView = 'current' | 'rule' | 'ai'
+const ACCEPTED_RISK_VIEWS: RiskView[] = ['current', 'rule', 'ai']
+function resolveRiskView(): RiskView {
+  const raw = localStorage.getItem(RISK_VIEW_KEY)
+  return ACCEPTED_RISK_VIEWS.includes(raw as RiskView) ? (raw as RiskView) : 'current'
+}
+const riskView = ref<RiskView>(resolveRiskView())
+
+// 该行是否真正「采用 AI 展示」：后端 current_risk_source 为 ai 且 current_risk_score 有值。
+function rowUsesAiDisplay(row: Opinion): boolean {
+  return row.current_risk_source === 'ai' && row.current_risk_score != null
+}
+
+// 集中展示函数：风险评分 / 级别 / 颜色 / 标签 全部走它，避免重复分支。
+function displayRiskScore(row: Opinion): number {
+  // 系统规则口径：始终用规则分。
+  if (riskView.value === 'rule') return row.risk_score
+  // AI 研判口径：仅当该行确采用 AI 展示（current_risk_source==='ai' 且有值）才显示 AI 分；否则回落规则分。
+  if (riskView.value === 'ai') {
+    return rowUsesAiDisplay(row) ? (row.current_risk_score as number) : row.risk_score
+  }
+  // 当前风险口径：优先后端当前展示口径（ai 且有值用 AI 分，否则用规则分）；不额外加徽标。
+  return rowUsesAiDisplay(row) ? (row.current_risk_score as number) : row.risk_score
+}
+
+// AI 徽标：仅在「AI 研判」口径下、且该行确采用 AI 展示时显示。
+// 不得因 ai_risk_score 存在就显示；「当前风险」口径不显示徽标。
+function showAIBadge(row: Opinion): boolean {
+  return riskView.value === 'ai' && rowUsesAiDisplay(row)
+}
+
 const detailVisible = ref(false)
 const detailId = ref<number | null>(null)
 
@@ -415,9 +460,9 @@ watch(() => route.query.scope, (val) => {
 }, { immediate: true })
 const canAnalyze = computed(() => hasPermission('ai:analyze') || hasPermission('domestic:ai:analyze'))
 const canBatchRead = computed(() => hasPermission('domestic:ai:batch:read') || isSuperuser.value)
-const canCompleteReview = computed(() => hasPermission('domestic:ai:review:complete') || isSuperuser.value)
+const canCompleteReview = computed(() => hasPermission('ai:review:complete') || isSuperuser.value)
 const canReviewRead = computed(() =>
-  hasPermission('domestic:ai:review:read') ||
+  hasPermission('ai:review:read') ||
   hasPermission('domestic:events:review:read') ||
   hasPermission('domestic:alerts:review:read') ||
   isSuperuser.value,
@@ -933,7 +978,14 @@ async function batchReview(decision: ReviewDecision, confirmAll = false) {
   } catch { return }
   try {
     const { data } = await api.post('/domestic/ai-analysis/reviews/batch', { review_ids: confirmAll ? undefined : ids, decision, confirm_all: confirmAll })
-    ElMessage.success(`已处理 ${data.total || (confirmAll ? reviews.value.length : ids.length)} 条复核记录`)
+    const succ = data.total || (confirmAll ? reviews.value.length : ids.length)
+    const failedItems: any[] = data.failed || []
+    const failCount = failedItems.length
+    ElMessage.success(`批量复核完成：成功 ${succ} 条${failCount ? `，失败 ${failCount} 条` : ''}`)
+    if (failCount) {
+      const msgs = failedItems.slice(0, 3).map((f: any) => `复核#${f.review_id}: ${f.message || f.reason || '失败'}`).join('；')
+      ElMessage.warning(`部分失败：${msgs}${failCount > 3 ? ' 等' : ''}`)
+    }
     await loadReviews()
     window.dispatchEvent(new Event('data-refresh'))
   } catch (err: any) {
@@ -945,6 +997,11 @@ function onBatchCommand(cmd: string) {
   if (cmd === 'confirm_event_all') return batchReview('confirm_event_change', true)
   if (cmd === 'reject_all') return batchReview('reject_change', true)
   return batchReview(cmd as ReviewDecision)
+}
+
+// 展示口径列统一文案：ai → AI 展示；rule / 其他 → 保留规则风险
+function displaySourceLabel(source: string | undefined): string {
+  return source === 'ai' ? 'AI 展示' : '保留规则风险'
 }
 
 function openReviewDetail(review: DomesticAIReview) {
@@ -1307,4 +1364,30 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .review-op-btn:disabled { opacity: .5; cursor: default; }
 .review-op-btn.danger { color: #ff3b30; border-color: #f3c7c2; }
 .review-op-btn.danger:hover:not(:disabled) { background: #fff8f7; border-color: #ff3b30; }
+
+/* ===== Phase 1：国内列表展示口径切换 + AI 徽标 ===== */
+.risk-view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.risk-view-label {
+  font-size: 13px;
+  color: #515154;
+}
+.risk-src-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 980px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  background: #e8f1fd;
+  color: #0071e3;
+  vertical-align: middle;
+}
 </style>

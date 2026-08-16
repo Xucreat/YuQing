@@ -776,29 +776,56 @@ def decide_reviews_batch(
     if not review_ids:
         raise HTTPException(status_code=422, detail="No pending reviews selected")
     results = []
+    failed = []
     request.state.batch_mode = True
+    display_only = {"use_ai_display", "keep_rule"}
     try:
+        # 展示类决策（采用 AI 展示 / 保留规则风险）只翻转舆情展示口径，不生成任何
+        # 正式事件或预警，因此可以逐条隔离执行：单条无法应用（例如缺少已完成的 AI
+        # 结果）时仅记录该条失败并继续，其余条目仍正常提交。正式决策（确认事件/预警、
+        # 驳回、完成复核）保持原有「全有或全无」语义，绝不改成部分成功，以避免出现
+        # 半确认的正式记录。
         for index, review_id in enumerate(review_ids):
-            results.append(
-                decide_review(
-                    review_id,
-                    DomesticAIReviewDecisionPayload(
-                        decision=payload.decision,
-                        reason=payload.reason,
-                        request_id=f"{payload.request_id or 'batch'}:{review_id}:{index}",
-                    ),
-                    request,
-                    current_user,
-                    db,
+            sp = db.begin_nested()
+            try:
+                results.append(
+                    decide_review(
+                        review_id,
+                        DomesticAIReviewDecisionPayload(
+                            decision=payload.decision,
+                            reason=payload.reason,
+                            request_id=f"{payload.request_id or 'batch'}:{review_id}:{index}",
+                        ),
+                        request,
+                        current_user,
+                        db,
+                    )
                 )
-            )
+            except Exception as exc:  # noqa: BLE001
+                db.rollback()  # 回滚到当前 savepoint，而非整笔事务
+                if payload.decision in display_only:
+                    failed.append({
+                        "review_id": review_id,
+                        "reason": _safe_error(exc),
+                        "message": (
+                            "该舆情暂无可采用的 AI 研判结果"
+                            if payload.decision == "use_ai_display"
+                            else "该舆情缺少可保留的规则风险数据"
+                            if payload.decision == "keep_rule"
+                            else "该条复核处理失败，请稍后重试"
+                        ),
+                    })
+                    continue
+                raise
+            else:
+                sp.commit()
         db.commit()
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         raise HTTPException(status_code=409, detail=f"批量人工复核已整体回滚：{_safe_error(exc)}") from exc
     finally:
         request.state.batch_mode = False
-    return {"items": results, "total": len(results), "transaction": "committed"}
+    return {"items": results, "total": len(results), "failed": failed, "transaction": "committed"}
 
 
 @domestic_ai_router.get("/results/{opinion_id}")

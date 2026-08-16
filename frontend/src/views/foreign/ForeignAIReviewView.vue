@@ -12,6 +12,7 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item v-if="canReviewAI" command="use_ai_display" :disabled="!selectedReviewIds.length">确认选中采用 AI 展示</el-dropdown-item>
+              <el-dropdown-item v-if="canReviewAI" command="keep_rule" :disabled="!selectedReviewIds.length">保留规则风险</el-dropdown-item>
               <el-dropdown-item v-if="canConfirmEventReview" command="confirm_event_change" :disabled="!selectedReviewIds.length">确认选中事件影响</el-dropdown-item>
               <el-dropdown-item v-if="canConfirmAlertReview" command="confirm_alert_change" :disabled="!selectedReviewIds.length">确认选中预警影响</el-dropdown-item>
               <el-dropdown-item v-if="canRejectAIReview" command="reject_change" :disabled="!selectedReviewIds.length">驳回选中（全部 AI 变更）</el-dropdown-item>
@@ -214,7 +215,13 @@ async function batchDecideReviews(decision: string, confirmAll = false) {
       if (it.review_status === 'pending_review') missed += 1
     }
     if (data?.transaction === 'committed') {
-      ElMessage.success(`批量复核完成：共 ${processed} 条，事件新建 ${eventsCreated}，预警新建 ${alertsCreated}，既有/去重 ${existing}，跳过/幂等 ${skipped}` + (missed ? `，未处理 ${missed}` : ''))
+      const failedItems: any[] = data?.failed || []
+      const failCount = failedItems.length
+      ElMessage.success(`批量复核完成：共 ${processed} 条，事件新建 ${eventsCreated}，预警新建 ${alertsCreated}，既有/去重 ${existing}，跳过/幂等 ${skipped}` + (missed ? `，未处理 ${missed}` : '') + (failCount ? `，失败 ${failCount}` : ''))
+      if (failCount) {
+        const msgs = failedItems.slice(0, 3).map((f: any) => `复核#${f.review_id}: ${f.message || f.reason || '失败'}`).join('；')
+        ElMessage.warning(`部分失败：${msgs}${failCount > 3 ? ' 等' : ''}`)
+      }
     } else {
       ElMessage.warning('批量复核部分完成：事务未提交，详见列表')
     }
