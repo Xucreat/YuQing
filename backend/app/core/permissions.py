@@ -35,7 +35,7 @@ COMPOSITE_PERMISSIONS: dict[str, list[str]] = {
     "ai:analyze": [
         "domestic:ai:analyze",
         "domestic:ai:batch:read",
-        "domestic:ai:review:read",
+        "ai:review:read",
     ],
     "foreign:read": [
         "foreign:opinions:read",
@@ -66,7 +66,7 @@ COMPOSITE_PERMISSIONS: dict[str, list[str]] = {
         "foreign:risk:ai",
         "foreign:ai:analyze",
         "foreign:ai:batch:read",
-        "foreign:ai:review:read",
+        "ai:review:read",
         "foreign:events:review:read",
         "foreign:events:review:confirm",
         "foreign:alerts:review:read",
@@ -89,6 +89,7 @@ COMPOSITE_PERMISSIONS: dict[str, list[str]] = {
         "foreign:alerts:acknowledge",
         "foreign:alerts:resolve",
         "foreign:alerts:suppress",
+        "foreign:alerts:false_positive",
         "foreign:alerts:enable",
     ],
 }
