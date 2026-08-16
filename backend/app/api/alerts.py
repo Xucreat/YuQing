@@ -1,4 +1,4 @@
-"""Alert center API routes."""
+﻿"""Alert center API routes."""
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
@@ -77,7 +77,7 @@ def _alert_record_payload(row: AlertRecord) -> dict:
 
 # 处置状态白名单（与 AlertRecord.status CheckConstraint 一致）
 _ALLOWED_ALERT_STATUSES = {"pending", "processing", "resolved", "ignored", "false_positive"}
-# 处置状态中文标签（用于流转约束报错提示）
+# 处置状态中文标签（用于接口/审计提示）
 _ALERT_STATUS_LABELS = {
     "pending": "待处理",
     "processing": "处理中",
@@ -85,15 +85,9 @@ _ALERT_STATUS_LABELS = {
     "ignored": "已忽略",
     "false_positive": "误报",
 }
-# 国内预警记录：禁止的处置状态流转（old_status -> new_status），与国外双列模型语义对齐。
-_FORBIDDEN_DOMESTIC_TRANSITIONS = {
-    ("pending", "ignored"),
-    ("pending", "false_positive"),
-    ("resolved", "ignored"),
-    ("resolved", "false_positive"),
-    ("ignored", "resolved"),
-    ("false_positive", "resolved"),
-}
+# Phase 6：国内预警记录不再设普通处置禁止流转矩阵（原 _FORBIDDEN_DOMESTIC_TRANSITIONS 已删除）。
+# 任何合法 status（见 _ALLOWED_ALERT_STATUSES）之间均允许用户自由纠正，例如 resolved -> ignored、
+# resolved -> false_positive、ignored -> resolved 等。仅保留 list_records 中对非法 query 参数值的 422 校验。
 
 
 def _parse_since(since: str | None) -> datetime | None:
@@ -260,16 +254,8 @@ def handle_record(
     old_status = rec.status
     new_status = req.status
 
-    # 禁止不合理的处置状态流转（与国外预警对齐）。
-    if (old_status, new_status) in _FORBIDDEN_DOMESTIC_TRANSITIONS:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"非法的处置状态流转：当前状态"
-                f"「{_ALERT_STATUS_LABELS.get(old_status, old_status)}」"
-                f"不允许切换到「{_ALERT_STATUS_LABELS.get(new_status, new_status)}」"
-            ),
-        )
+    # Phase 6：已删除国内普通处置禁止流转矩阵；任意合法 status 之间均允许纠正，不在此处设限。
+    # 非法 query 参数值仍由 list_records 处的 _ALLOWED_ALERT_STATUSES 校验拦截（返回 422）。
 
     with audit_write(
         db,

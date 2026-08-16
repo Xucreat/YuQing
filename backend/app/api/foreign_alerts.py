@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -20,7 +20,9 @@ from app.services.audit_service import audit_write
 from app.services.foreign_effective_risk import attach_effective_risk, resolve_one
 from app.services.foreign_alert_service import (
     MAX_EVALUATION_ITEMS,
+    ForeignAlertDispositionError,
     ForeignAlertService,
+    VALID_DISPOSITIONS,
     serialize_alert,
     serialize_action,
     serialize_rule,
@@ -111,6 +113,43 @@ class ForeignAlertActionPayload(BaseModel):
         return normalized
 
 
+class ForeignAlertHandlePayload(BaseModel):
+    """Unified human disposition payload (Phase 4).
+
+    New clients send ``disposition_status``. Legacy clients may send the old
+    lifecycle ``status`` (acknowledged/resolved/suppressed/triggered), which is
+    mapped to the equivalent disposition. If both are present they must agree.
+    ``note`` is optional: an explicit (possibly empty) string overwrites the
+    stored note; when omitted the previous note is preserved.
+    """
+
+    disposition_status: str | None = Field(default=None, max_length=16)
+    status: str | None = Field(default=None, max_length=16)
+    note: str | None = Field(default=None, max_length=4000)
+
+
+# Legacy lifecycle status -> unified disposition mapping.
+_LEGACY_STATUS_TO_DISPOSITION = {
+    "acknowledged": "processing",
+    "resolved": "resolved",
+    "suppressed": "ignored",
+    "triggered": "pending",
+}
+
+# Disposition -> the existing foreign-alert permission that gates it. The
+# composite `foreign:alerts:manage` is intentionally NOT used here: it is an
+# orphan (granted to no role), so gating on it would deny every operator.
+# `false_positive` requires its dedicated permission and is never satisfied by
+# `foreign:alerts:suppress`.
+_DISPOSITION_PERMISSION = {
+    "pending": "foreign:alerts:acknowledge",
+    "processing": "foreign:alerts:acknowledge",
+    "resolved": "foreign:alerts:resolve",
+    "ignored": "foreign:alerts:suppress",
+    "false_positive": "foreign:alerts:false_positive",
+}
+
+
 def _parse_datetime(value: str | None, field_name: str) -> datetime | None:
     if not value:
         return None
@@ -183,6 +222,8 @@ def list_foreign_alerts(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=MAX_SIZE),
     status_filter: str | None = Query(None, alias="status"),
+    disposition_status_filter: str | None = Query(None, alias="disposition_status"),
+    disposition_filter: str | None = Query("hide_fp", alias="disposition_filter"),
     severity: str | None = None,
     rule_id: int | None = Query(None, ge=1),
     source: str | None = None,
@@ -203,6 +244,18 @@ def list_foreign_alerts(
         if status_filter not in {"triggered", "acknowledged", "resolved", "suppressed", "failed"}:
             raise HTTPException(status_code=422, detail="invalid foreign alert status")
         stmt = stmt.where(ForeignAlert.status == status_filter)
+    if disposition_status_filter:
+        if disposition_status_filter not in VALID_DISPOSITIONS:
+            raise HTTPException(status_code=422, detail="invalid disposition_status")
+        stmt = stmt.where(ForeignAlert.disposition_status == disposition_status_filter)
+    if disposition_filter and disposition_filter != "all":
+        if disposition_filter == "only_fp":
+            stmt = stmt.where(ForeignAlert.disposition_status == "false_positive")
+        elif disposition_filter == "hide_fp":
+            # Default: hide false positives, keep ignored visible.
+            stmt = stmt.where(ForeignAlert.disposition_status != "false_positive")
+        else:
+            raise HTTPException(status_code=422, detail="invalid disposition_filter")
     if severity:
         stmt = stmt.where(ForeignAlert.severity == severity)
     if rule_id is not None:
@@ -438,6 +491,79 @@ def suppress_foreign_alert(
         except RuntimeError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {**serialize_action(transition.action), "alert": serialize_alert(transition.alert), "idempotent": transition.idempotent}
+
+
+@foreign_alerts_router.put("/{alert_id}/handle")
+def handle_foreign_alert(
+    alert_id: int,
+    payload: ForeignAlertHandlePayload,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Apply a unified human disposition to a foreign alert (Phase 4).
+
+    Accepts either the new ``disposition_status`` or the legacy lifecycle
+    ``status``. On conflict between the two a 409 is returned. The only hard
+    guard is a lifecycle ``failed`` alert, which rejects manual disposition
+    with a Chinese 409. ``false_positive`` requires the dedicated
+    ``foreign:alerts:false_positive`` permission.
+    """
+    final = (payload.disposition_status or "").strip().casefold() or None
+    legacy = (payload.status or "").strip().casefold() or None
+
+    legacy_mapped = None
+    if legacy is not None:
+        if legacy not in _LEGACY_STATUS_TO_DISPOSITION:
+            raise HTTPException(status_code=422, detail="非法的 status 值")
+        legacy_mapped = _LEGACY_STATUS_TO_DISPOSITION[legacy]
+
+    if final is None and legacy_mapped is None:
+        raise HTTPException(
+            status_code=422,
+            detail="请提供 disposition_status 或 status 其中之一",
+        )
+    if final is None:
+        final = legacy_mapped
+    elif legacy_mapped is not None and legacy_mapped != final:
+        raise HTTPException(
+            status_code=409,
+            detail="disposition_status 与 status 不一致，请只使用其一",
+        )
+
+    if final not in VALID_DISPOSITIONS:
+        raise HTTPException(status_code=422, detail="非法的 disposition_status 值")
+
+    required_perm = _DISPOSITION_PERMISSION[final]
+    perms = get_user_permissions(current_user, db)
+    if "*" not in perms and required_perm not in perms:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    audit_details = {"disposition_status": final, "note": payload.note}
+    with audit_write(
+        db,
+        action="DISPOSE_FOREIGN_ALERT",
+        operator=current_user,
+        request=request,
+        resource_type="foreign_alert",
+        resource_id=str(alert_id),
+        details=audit_details,
+    ):
+        try:
+            alert = ForeignAlertService.set_disposition(
+                db,
+                alert_id,
+                disposition_status=final,
+                note=payload.note,
+                user_id=current_user.id,
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ForeignAlertDispositionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return serialize_alert(alert)
 
 
 @foreign_alert_meta_router.get("/alert-rules")

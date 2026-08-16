@@ -43,6 +43,11 @@ class ForeignAlert(Base):
         Index("ix_foreign_alerts_evaluation_source", "evaluation_source"),
         Index("ix_foreign_alerts_ai_result", "foreign_ai_result_id"),
         Index("ix_foreign_alerts_expires_at", "expires_at"),
+        CheckConstraint(
+            "disposition_status IN ('pending','processing','resolved','ignored','false_positive')",
+            name="ck_foreign_alerts_disposition_status",
+        ),
+        Index("ix_foreign_alerts_disposition_status", "disposition_status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -69,6 +74,16 @@ class ForeignAlert(Base):
     )
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="triggered", server_default="triggered")
+    # Unified human disposition status (Phase 15-C). Independent of the lifecycle
+    # `status`; describes how an operator finally disposed of the alert.
+    disposition_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending"
+    )
+    # B2 (Phase 4): operator-entered disposition note. Only ever written from the
+    # disposition endpoint's `note` field; never auto-generated from status or
+    # disposition. History of each operation is kept in
+    # foreign_alert_disposition_actions.note.
+    disposition_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     title: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     message: Mapped[str] = mapped_column(Text, nullable=False, default="")
     matched_conditions: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
@@ -109,3 +124,41 @@ class ForeignAlert(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
+
+
+class ForeignAlertDispositionAction(Base):
+    """Audit trail for the unified human disposition of a foreign alert.
+
+    Lives independently of ``foreign_alert_actions`` (which records lifecycle
+    state changes) so that the two concerns never share a CHECK constraint or
+    pollute each other's audit history.
+    """
+
+    __tablename__ = "foreign_alert_disposition_actions"
+    __table_args__ = (
+        CheckConstraint(
+            "previous_disposition IN ('pending','processing','resolved','ignored','false_positive')",
+            name="ck_fa_disp_act_prev",
+        ),
+        CheckConstraint(
+            "new_disposition IN ('pending','processing','resolved','ignored','false_positive')",
+            name="ck_fa_disp_act_new",
+        ),
+        Index("ix_fa_disp_act_alert_id", "foreign_alert_id"),
+        Index("ix_fa_disp_act_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    foreign_alert_id: Mapped[int] = mapped_column(
+        ForeignKey("foreign_alerts.id", ondelete="CASCADE"), nullable=False
+    )
+    previous_disposition: Mapped[str] = mapped_column(String(16), nullable=False)
+    new_disposition: Mapped[str] = mapped_column(String(16), nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    metadata_json: Mapped[dict] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict, server_default="{}"
+    )

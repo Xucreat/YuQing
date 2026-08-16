@@ -1,4 +1,4 @@
-"""Independent rule evaluation for the foreign alert pipeline.
+﻿"""Independent rule evaluation for the foreign alert pipeline.
 
 This service deliberately imports only foreign opinion, risk, event, rule and
 alert-run models. It never calls the domestic AlertService or writes domestic
@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.foreign_alert import ForeignAlert
+from app.models.foreign_alert import ForeignAlert, ForeignAlertDispositionAction
 from app.models.foreign_alert_action import ForeignAlertAction
 from app.models.foreign_alert_rule import ForeignAlertRule
 from app.models.foreign_alert_run import ForeignAlertRun
@@ -32,6 +32,31 @@ from app.services.foreign_effective_risk import (
 MAX_EVALUATION_ITEMS = 200
 MONITORING_TERMS = {"中国", "china", "chinese"}
 ALERT_STATUSES = {"triggered", "acknowledged", "resolved", "suppressed", "failed"}
+
+# Unified human disposition -> lifecycle status mapping (Phase 4).
+# disposition_status is an independent operator-facing state; the lifecycle
+# `status` column reflects the canonical lifecycle stage it maps to.
+DISPOSITION_LIFECYCLE = {
+    "pending": "triggered",
+    "processing": "acknowledged",
+    "resolved": "resolved",
+    "ignored": "suppressed",
+    "false_positive": "suppressed",
+}
+VALID_DISPOSITIONS = frozenset(DISPOSITION_LIFECYCLE)
+
+
+class ForeignAlertDispositionError(Exception):
+    """Raised when a unified disposition is rejected.
+
+    Carries the HTTP status code so the API layer can map it directly without
+    leaking English exception text. A 409 is used for the 'failed' lifecycle
+    guard (the only hard restriction); 422 is used for invalid input.
+    """
+
+    def __init__(self, message: str, status_code: int = 422) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 @dataclass(frozen=True)
@@ -581,6 +606,92 @@ class ForeignAlertService:
             ).all()
         )
 
+    @staticmethod
+    def set_disposition(
+        db: Session,
+        alert_id: int,
+        *,
+        disposition_status: str,
+        note: str | None,
+        user_id: int | None,
+    ) -> ForeignAlert:
+        """Apply a unified human disposition to a foreign alert atomically.
+
+        This is an independent coordination path from ``transition()`` (which
+        owns the lifecycle action API). It deliberately does NOT consult any
+        forbidden-transition matrix: operators may freely correct ordinary
+        disposition states (e.g. resolved -> ignored, false_positive ->
+        processing). The single hard guard is ``status == 'failed'``, which
+        rejects manual disposition until the system failure is cleared.
+
+        Behaviour:
+          * writes the target lifecycle ``status`` and ``disposition_status``;
+          * writes ``disposition_note`` only when ``note`` is provided
+            (including an empty string, which clears the current note);
+            when ``note`` is omitted the previous note is preserved;
+          * never auto-generates note text from status/disposition;
+          * appends a ``foreign_alert_disposition_actions`` audit row;
+          * rolls back cleanly on any failure (no half-written state).
+        """
+        disposition_status = (disposition_status or "").strip().casefold()
+        if disposition_status not in VALID_DISPOSITIONS:
+            raise ForeignAlertDispositionError(
+                "disposition_status 必须是 pending/processing/resolved/ignored/false_positive 之一",
+                status_code=422,
+            )
+        try:
+            alert = db.scalar(
+                select(ForeignAlert)
+                .where(ForeignAlert.id == alert_id)
+                .with_for_update()
+            )
+            if alert is None:
+                raise LookupError("Foreign alert not found")
+            if alert.evaluation_source not in {"rule", "manual_review_ai"}:
+                raise LookupError("Foreign alert not found")
+            if alert.status == "failed":
+                raise ForeignAlertDispositionError(
+                    "当前预警处于系统失败状态，暂不允许人工处置，请先处理系统异常。",
+                    status_code=409,
+                )
+
+            previous_disposition = alert.disposition_status
+            previous_lifecycle = alert.status
+            target_lifecycle = DISPOSITION_LIFECYCLE[disposition_status]
+
+            alert.status = target_lifecycle
+            alert.disposition_status = disposition_status
+            if note is not None:
+                alert.disposition_note = note
+
+            # Audit note records the note submitted with this operation. When the
+            # caller omitted `note`, retain the alert's current note so the audit
+            # reflects the note in force after this disposition.
+            action_note = note if note is not None else (alert.disposition_note or "")
+            action = ForeignAlertDispositionAction(
+                foreign_alert_id=alert.id,
+                previous_disposition=previous_disposition,
+                new_disposition=disposition_status,
+                note=action_note,
+                actor_id=user_id,
+                metadata_json={
+                    "previous_lifecycle_status": previous_lifecycle,
+                    "new_lifecycle_status": target_lifecycle,
+                },
+            )
+            db.add(action)
+            db.flush()
+            db.commit()
+            db.refresh(alert)
+            db.refresh(action)
+            return alert
+        except (LookupError, ForeignAlertDispositionError):
+            db.rollback()
+            raise
+        except Exception as exc:
+            db.rollback()
+            raise RuntimeError("Foreign alert disposition failed") from exc
+
 
 def serialize_rule(rule: ForeignAlertRule) -> dict[str, Any]:
     return {
@@ -613,6 +724,8 @@ def serialize_alert(alert: ForeignAlert) -> dict[str, Any]:
         "evaluation_source": alert.evaluation_source,
         "severity": alert.severity,
         "status": alert.status,
+        "disposition_status": alert.disposition_status,
+        "disposition_note": alert.disposition_note,
         "title": alert.title,
         "message": alert.message,
         "matched_conditions": alert.matched_conditions or {},
