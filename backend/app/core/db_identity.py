@@ -69,6 +69,11 @@ class ExpectedIdentity:
     database: str = field(
         default_factory=lambda: _env("EXPECTED_PG_DATABASE", DEFAULT_EXPECTED_DATABASE)
     )
+    # 连接 host/port（可选；仅当项目显式配置生产 host/port 时才校验，默认不检查）
+    host: str = field(default_factory=lambda: _env("EXPECTED_PG_HOST", ""))
+    port: str = field(default_factory=lambda: _env("EXPECTED_PG_PORT", ""))
+    # 预期 alembic revision（可选；仅作提示性 WARNING，不阻断幂等重跑）
+    alembic_revision: str = field(default_factory=lambda: _env("EXPECTED_ALEMBIC_REVISION", ""))
     # 业务指纹：连接库为 expected.database 时，opinions 行数必须 >= 此值
     min_opinions: Optional[int] = field(
         default_factory=lambda: int(_env("EXPECTED_MIN_OPINIONS", str(DEFAULT_EXPECTED_MIN_OPINIONS)) or 0) or None
@@ -83,6 +88,7 @@ class IdentityCheckResult:
     data_directory: str = ""
     system_identifier: str = ""
     alembic_version: str = ""
+    recovery: Optional[bool] = None
     opinions_count: Optional[int] = None
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
@@ -148,6 +154,12 @@ def verify_database_identity(
                 res.opinions_count = conn.execute(text("SELECT count(*) FROM opinions")).scalar()
             except Exception:
                 res.opinions_count = None
+
+            # recovery 状态（禁止对只读从库 / 恢复中实例执行迁移写入）
+            try:
+                res.recovery = conn.execute(text("SELECT pg_is_in_recovery()")).scalar()
+            except Exception:
+                res.recovery = None
     except Exception as e:  # 连接失败
         res.ok = False
         res.add_error(f"无法连接数据库: {e!r}")
@@ -160,6 +172,17 @@ def verify_database_identity(
             f"system_identifier 不匹配: 实际={res.system_identifier} 期望={expected.system_identifier}"
         )
 
+    # 1.5) database 名称（核心身份；连错库 / 未知库目标必须中止）
+    if expected.database:
+        if not res.database:
+            res.add_error(
+                f"无法确认当前数据库名称（疑似未知数据库目标）；期望={expected.database}"
+            )
+        elif res.database != expected.database:
+            res.add_error(
+                f"database 名称不匹配: 实际={res.database} 期望={expected.database}"
+            )
+
     # 2) data_directory（可读且不匹配才中止；不可读仅警告）
     if expected.data_directory and res.data_directory:
         if _norm_path(res.data_directory) != _norm_path(expected.data_directory):
@@ -167,7 +190,27 @@ def verify_database_identity(
                 f"data_directory 不匹配: 实际={res.data_directory} 期望={expected.data_directory}"
             )
 
-    # 3) 业务指纹（仅当连接库 == 预期库时校验，避免误伤测试库）
+    # 3) recovery 状态（恢复中 / 只读从库禁止写入）
+    if res.recovery is True:
+        res.add_error(
+            "当前数据库处于 recovery / 只读从库状态，禁止对其执行迁移写入"
+        )
+
+    # 4) host/port（可选；仅当项目显式配置生产 host/port 时校验）
+    _conn_host = getattr(getattr(engine, "url", None), "host", None)
+    _conn_port = getattr(getattr(engine, "url", None), "port", None)
+    if expected.host and _conn_host and expected.host != _conn_host:
+        res.add_error(f"host 不匹配: 实际={_conn_host} 期望={expected.host}")
+    if expected.port and _conn_port is not None and str(expected.port) != str(_conn_port):
+        res.add_error(f"port 不匹配: 实际={_conn_port} 期望={expected.port}")
+
+    # 5) alembic revision（仅提示性 WARNING，不阻断幂等重跑）
+    if expected.alembic_revision and res.alembic_version and res.alembic_version != expected.alembic_revision:
+        res.add_warning(
+            f"alembic revision 与预期不符: 实际={res.alembic_version} 期望={expected.alembic_revision}"
+        )
+
+    # 6) 业务指纹（仅当连接库 == 预期库时校验，避免误伤测试库）
     if (
         expected.min_opinions is not None
         and expected.database
@@ -178,9 +221,12 @@ def verify_database_identity(
                 f"业务指纹校验失败: opinions 表不可读（当前库可能不是预期的生产库 opinion_db）"
             )
         elif res.opinions_count < expected.min_opinions:
-            res.add_error(
-                f"业务指纹校验失败: opinions 行数={res.opinions_count} 低于阈值 {expected.min_opinions}"
-                f"（疑似空库/克隆库/错误数据库，已中止写操作）"
+            # RBAC-2A 修订：核心身份（system_identifier / 库名 / host-port / recovery）已
+            # 全部匹配时，业务数据量低于历史阈值仅作为**异常提示 (WARNING)**，不再阻断生产
+            # migration。低行数本身绝不单独作为身份确认依据，也不把阈值硬编码为具体行数。
+            res.add_warning(
+                f"生产身份已确认，但 opinions 数量低于历史阈值 {expected.min_opinions}，"
+                f"当前数量为 {res.opinions_count}；该阈值仅作为数据量异常提示，不再阻断生产 migration。"
             )
 
     return res
@@ -196,11 +242,14 @@ def print_safety_block(res: IdentityCheckResult, expected: ExpectedIdentity, url
     print(f"Data directory : {res.data_directory or '(unreadable in this env)'}")
     print(f"System ident.  : {res.system_identifier or '(unknown)'}")
     print(f"Alembic version: {res.alembic_version or '(unknown)'}")
+    print(f"Recovery state : {res.recovery if res.recovery is not None else '(unknown)'}")
     print(f"Opinions count : {res.opinions_count if res.opinions_count is not None else '(unknown)'}")
     print("-" * 64)
     print(f"EXPECTED system_identifier : {expected.system_identifier}")
     print(f"EXPECTED data_directory    : {expected.data_directory}")
     print(f"EXPECTED database          : {expected.database}")
+    print(f"EXPECTED host/port         : {expected.host or '(any)'}:{expected.port or '(any)'}")
+    print(f"EXPECTED alembic_revision  : {expected.alembic_revision or '(any)'}")
     print(f"EXPECTED min_opinions      : {expected.min_opinions}")
     if res.warnings:
         print("WARNINGS:")

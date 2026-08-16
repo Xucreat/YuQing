@@ -6,6 +6,7 @@
 """
 import os
 import time
+from urllib.parse import urlparse
 
 import pytest
 
@@ -17,8 +18,22 @@ TEST_DB_URL = (
 
 # RBAC-2A：测试库（opinion_test）是独立于生产库的 cluster，system_identifier 不同，
 # 数据库身份门禁会因此中止。测试为已知安全场景，显式关闭门禁以避免误伤。
-os.environ.setdefault("DB_IDENTITY_CHECK", "off")
-os.environ.setdefault("DATABASE_URL", TEST_DB_URL)
+def _configure_isolated_test_database() -> None:
+    """Require every pytest process to target the isolated test database."""
+    requested_url = os.environ.get("TEST_DATABASE_URL") or os.environ.get(
+        "DATABASE_URL"
+    ) or TEST_DB_URL
+    database_name = (urlparse(requested_url).path or "").lstrip("/")
+    if database_name != "opinion_test":
+        raise RuntimeError(
+            "拒绝运行测试：DATABASE_URL 必须指向独立数据库 opinion_test，"
+            f"当前为 {database_name or '(未识别)'}。"
+        )
+    os.environ["DATABASE_URL"] = requested_url
+    os.environ.setdefault("DB_IDENTITY_CHECK", "off")
+
+
+_configure_isolated_test_database()
 # Tests that exercise the fallback path must never inherit a developer or
 # production DeepSeek key. Tests covering the configured provider set the
 # provider/settings explicitly with monkeypatch.
