@@ -214,13 +214,23 @@ import SentimentDonut from "@/components/SentimentDonut.vue"
 import OpinionDetailModal from "@/components/OpinionDetailModal.vue"
 import ReportExportDrawer from "@/components/report/ReportExportDrawer.vue"
 import ForeignWorkspace from "@/views/ForeignWorkspace.vue"
+import { useRoute } from "vue-router"
 
 const { can } = usePermission()
 const router = useRouter()
+const route = useRoute()
 
 // 国内/外网 视图切换（默认国内驾驶舱；外网复用 ForeignWorkspace 组件，原 /foreign 页面不变）
 import { cockpitScope } from '@/composables/useCockpitScope'
 const scope = cockpitScope
+
+function syncScopeFromRoute() {
+  if (route.path === '/dashboard') {
+    scope.value = route.query.scope === 'foreign' ? 'foreign' : 'domestic'
+  }
+}
+
+watch(() => [route.path, route.query.scope], syncScopeFromRoute, { immediate: true })
 
 // 点击实时快讯 / 预警滚动条目 -> 打开舆情详情弹窗（与「舆情列表」一致）
 const detailVisible = ref(false)

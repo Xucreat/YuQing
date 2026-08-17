@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="ÊÂ¼ş´¦ÖÃ"
+    title="äº‹ä»¶å¤„ç½®"
     width="840px"
     align-center
     :close-on-click-modal="true"
@@ -13,13 +13,13 @@
         <div class="operation-header">
           <div>
             <div class="operation-current">
-              µ±Ç°´¦ÖÃ×´Ì¬
+              å½“å‰å¤„ç½®çŠ¶æ€
               <span class="pill" :class="eventStatusPill(event.status)">{{ eventStatusLabel(event.status) }}</span>
             </div>
           </div>
         </div>
 
-        <div v-if="canUpdate" class="status-actions" aria-label="±ä¸üÊÂ¼ş´¦ÖÃ×´Ì¬">
+        <div v-if="canUpdate" class="status-actions" aria-label="å˜æ›´äº‹ä»¶å¤„ç½®çŠ¶æ€">
           <button
             v-for="option in statusButtons"
             :key="option.value"
@@ -28,29 +28,29 @@
             :disabled="busy || !canChangeStatus(option.value)"
             @click="changeStatus(option.value)"
           >
-            {{ option.value === 'deprecated' ? 'ºöÂÔÊÂ¼ş' : option.label }}
+            {{ option.value === 'deprecated' ? 'å¿½ç•¥äº‹ä»¶' : option.label }}
           </button>
         </div>
 
         <div v-if="canUpdate" class="merge-split-actions">
           <button class="btn btn-ghost" :disabled="busy" @click="toggleMerge">
-            {{ mergePanelOpen ? 'ÊÕÆğºÏ²¢' : 'ºÏ²¢µ½ÆäËüÊÂ¼ş' }}
+            {{ mergePanelOpen ? 'æ”¶èµ·åˆå¹¶' : 'åˆå¹¶åˆ°å…¶å®ƒäº‹ä»¶' }}
           </button>
           <button class="btn btn-ghost" :disabled="busy" @click="toggleSplit">
-            {{ splitPanelOpen ? 'ÊÕÆğ²ğ·Ö' : '²ğ·ÖÓßÇé' }}
+            {{ splitPanelOpen ? 'æ”¶èµ·æ‹†åˆ†' : 'æ‹†åˆ†èˆ†æƒ…' }}
           </button>
         </div>
 
-        <!-- ºÏ²¢×ÓÃæ°å£ºÑ¡ÔñÄ¿±êÊÂ¼ş + Ô­Òò -->
+        <!-- åˆå¹¶å­é¢æ¿ï¼šé€‰æ‹©ç›®æ ‡äº‹ä»¶ + åŸå›  -->
         <div v-if="mergePanelOpen && canUpdate" class="sub-panel">
-          <label>ºÏ²¢µ½Ä¿±êÊÂ¼ş£¨µ±Ç°ÊÂ¼ş½«¹éµµ£¬ÓßÇéÇ¨ÒÆµ½Ä¿±ê£©</label>
+          <label>åˆå¹¶åˆ°ç›®æ ‡äº‹ä»¶ï¼ˆå½“å‰äº‹ä»¶å°†å½’æ¡£ï¼Œèˆ†æƒ…è¿ç§»åˆ°ç›®æ ‡ï¼‰</label>
           <el-select
             v-model="mergeTargetId"
             filterable
             remote
             :remote-method="onMergeSearch"
             :loading="mergeSearching"
-            placeholder="ËÑË÷Ä¿±êÊÂ¼ş£¨°´±êÌâ£©"
+            placeholder="æœç´¢ç›®æ ‡äº‹ä»¶ï¼ˆæŒ‰æ ‡é¢˜ï¼‰"
             clearable
             style="width: 100%"
           >
@@ -61,12 +61,12 @@
               :value="c.id"
             />
           </el-select>
-          <label style="margin-top: 12px">ºÏ²¢Ô­Òò£¨¿ÉÑ¡£©</label>
+          <label style="margin-top: 12px">åˆå¹¶åŸå› ï¼ˆå¯é€‰ï¼‰</label>
           <textarea
             v-model="mergeReason"
             maxlength="5000"
             rows="2"
-            placeholder="ÌîĞ´ºÏ²¢Ô­Òò"
+            placeholder="å¡«å†™åˆå¹¶åŸå› "
             class="sub-textarea"
           ></textarea>
           <div class="sub-actions">
@@ -75,19 +75,19 @@
               :disabled="merging || !mergeTargetId"
               @click="submitMerge"
             >
-              {{ merging ? 'ºÏ²¢ÖĞ' : 'È·ÈÏºÏ²¢' }}
+              {{ merging ? 'åˆå¹¶ä¸­' : 'ç¡®è®¤åˆå¹¶' }}
             </button>
           </div>
         </div>
 
-        <!-- ²ğ·Ö×ÓÃæ°å£ºÑ¡ÔñÒªÇ¨³öµÄÓßÇé + Ô­Òò -->
+        <!-- æ‹†åˆ†å­é¢æ¿ï¼šé€‰æ‹©è¦è¿å‡ºçš„èˆ†æƒ… + åŸå›  -->
         <div v-if="splitPanelOpen && canUpdate" class="sub-panel">
-          <label>²ğ·ÖÓßÇé£¨Ñ¡ÖĞµÄÓßÇé½«Ç¨³ö£¬ĞÂ½¨Ò»¸öÊÂ¼ş³ĞÔØ£©</label>
+          <label>æ‹†åˆ†èˆ†æƒ…ï¼ˆé€‰ä¸­çš„èˆ†æƒ…å°†è¿å‡ºï¼Œæ–°å»ºä¸€ä¸ªäº‹ä»¶æ‰¿è½½ï¼‰</label>
           <el-select
             v-model="splitOpinionIds"
             multiple
             filterable
-            placeholder="Ñ¡ÔñÒª²ğ³öµÄÓßÇé"
+            placeholder="é€‰æ‹©è¦æ‹†å‡ºçš„èˆ†æƒ…"
             style="width: 100%"
           >
             <el-option
@@ -97,12 +97,12 @@
               :value="o.id"
             />
           </el-select>
-          <label style="margin-top: 12px">²ğ·ÖÔ­Òò£¨¿ÉÑ¡£©</label>
+          <label style="margin-top: 12px">æ‹†åˆ†åŸå› ï¼ˆå¯é€‰ï¼‰</label>
           <textarea
             v-model="splitReason"
             maxlength="5000"
             rows="2"
-            placeholder="ÌîĞ´²ğ·ÖÔ­Òò"
+            placeholder="å¡«å†™æ‹†åˆ†åŸå› "
             class="sub-textarea"
           ></textarea>
           <div class="sub-actions">
@@ -111,7 +111,7 @@
               :disabled="splitting || splitOpinionIds.length === 0"
               @click="submitSplit"
             >
-              {{ splitting ? '²ğ·ÖÖĞ' : 'È·ÈÏ²ğ·Ö' }}
+              {{ splitting ? 'æ‹†åˆ†ä¸­' : 'ç¡®è®¤æ‹†åˆ†' }}
             </button>
           </div>
         </div>
@@ -121,13 +121,13 @@
             v-model="noteContent"
             maxlength="5000"
             rows="3"
-            placeholder="ÌîĞ´ºË²é¡¢ÁªÂç»ò´¦ÖÃ½øÕ¹"
+            placeholder="å¡«å†™æ ¸æŸ¥ã€è”ç»œæˆ–å¤„ç½®è¿›å±•"
             :disabled="busy"
           ></textarea>
           <div class="note-submit-row">
             <span>{{ noteContent.length }}/5000</span>
             <button class="btn btn-primary" :disabled="busy || !noteContent.trim()" @click="addNote">
-              {{ savingNote ? 'Ìá½»ÖĞ' : 'Ìí¼Ó±¸×¢' }}
+              {{ savingNote ? 'æäº¤ä¸­' : 'æ·»åŠ å¤‡æ³¨' }}
             </button>
           </div>
         </div>
@@ -135,7 +135,7 @@
 
       <div class="op-right">
         <div class="op-right-title">
-          ´¦ÖÃ¼ÇÂ¼<span class="op-count">{{ (event.actions || []).length }}</span>
+          å¤„ç½®è®°å½•<span class="op-count">{{ (event.actions || []).length }}</span>
         </div>
         <div class="op-right-scroll">
           <div class="action-timeline">
@@ -144,25 +144,25 @@
               <div class="timeline-body">
                 <div class="timeline-meta">
                   <time>{{ formatTime(action.created_at) }}</time>
-                  <strong>{{ action.username || (action.user_id ? `ÓÃ»§ ${action.user_id}` : 'ÏµÍ³') }}</strong>
+                  <strong>{{ action.username || (action.user_id ? `ç”¨æˆ· ${action.user_id}` : 'ç³»ç»Ÿ') }}</strong>
                   <span>{{ actionTypeText(action.action_type) }}</span>
                 </div>
                 <div class="timeline-content">
                   <template v-if="action.action_type === 'status_change' && action.old_status && action.new_status">
-                    {{ eventStatusLabel(action.old_status) }} ¡ú {{ eventStatusLabel(action.new_status) }}
+                    {{ eventStatusLabel(action.old_status) }} â†’ {{ eventStatusLabel(action.new_status) }}
                   </template>
                   <template v-else>{{ action.content }}</template>
                 </div>
               </div>
             </div>
-            <div v-if="(event.actions || []).length === 0" class="timeline-empty">ÔİÎŞ´¦ÖÃ¼ÇÂ¼</div>
+            <div v-if="(event.actions || []).length === 0" class="timeline-empty">æš‚æ— å¤„ç½®è®°å½•</div>
           </div>
         </div>
       </div>
     </div>
-    <div v-else class="op-loading">¼ÓÔØÖĞ¡­</div>
+    <div v-else class="op-loading">åŠ è½½ä¸­â€¦</div>
     <template #footer>
-      <button class="btn btn-ghost" @click="visible = false">¹Ø±Õ</button>
+      <button class="btn btn-ghost" @click="visible = false">å…³é—­</button>
     </template>
   </el-dialog>
 </template>
@@ -231,7 +231,7 @@ const savingStatus = ref(false)
 const savingNote = ref(false)
 const noteContent = ref('')
 
-// ºÏ²¢ / ²ğ·Ö×ÓÃæ°å×´Ì¬
+// åˆå¹¶ / æ‹†åˆ†å­é¢æ¿çŠ¶æ€
 const mergePanelOpen = ref(false)
 const splitPanelOpen = ref(false)
 const mergeTargetId = ref<number | null>(null)
@@ -245,13 +245,13 @@ const splitting = ref(false)
 
 const busy = computed(() => savingStatus.value || savingNote.value || merging.value || splitting.value)
 
-// ×´Ì¬°´Å¥£º6 ¸öÔ­ÓĞ×´Ì¬ + ¹éµµ£¨archived£©
+// çŠ¶æ€æŒ‰é’®ï¼š6 ä¸ªåŸæœ‰çŠ¶æ€ + å½’æ¡£ï¼ˆarchivedï¼‰
 const statusButtons = computed(() => [
   ...EVENT_STATUS_OPTIONS,
-  { value: 'archived', label: '¹éµµ' },
+  { value: 'archived', label: 'å½’æ¡£' },
 ])
 
-// ×´Ì¬Á÷×ª¹æÔò£¨Óëºó¶Ë events.py Ò»ÖÂ£©
+// çŠ¶æ€æµè½¬è§„åˆ™ï¼ˆä¸åç«¯ events.py ä¸€è‡´ï¼‰
 const nextStatus: Partial<Record<EventStatus, EventStatus>> = {
   active: 'verifying',
   verifying: 'processing',
@@ -275,7 +275,7 @@ function formatTime(t: string | null): string {
 }
 function actionTypeText(value: string): string {
   return (
-    { status_change: '×´Ì¬±ä¸ü', note: '±¸×¢', assign: 'Ö¸ÅÉ', resolve: '½â¾ö' } as Record<string, string>
+    { status_change: 'çŠ¶æ€å˜æ›´', note: 'å¤‡æ³¨', assign: 'æŒ‡æ´¾', resolve: 'è§£å†³' } as Record<string, string>
   )[value] || value
 }
 function errorMessage(err: any, fallback: string): string {
@@ -295,7 +295,7 @@ async function loadDetail() {
       opinions: data.opinions || [],
     }
   } catch (err: any) {
-    ElMessage.error(errorMessage(err, '¼ÓÔØÊÂ¼şÏêÇéÊ§°Ü'))
+    ElMessage.error(errorMessage(err, 'åŠ è½½äº‹ä»¶è¯¦æƒ…å¤±è´¥'))
   }
 }
 
@@ -323,11 +323,11 @@ async function changeStatus(target: EventStatus) {
   savingStatus.value = true
   try {
     await api.patch(`${base.value}/${event.value.id}/status`, { status: target })
-    ElMessage.success(`´¦ÖÃ×´Ì¬ÒÑ¸üĞÂÎª${eventStatusLabel(target)}`)
+    ElMessage.success(`å¤„ç½®çŠ¶æ€å·²æ›´æ–°ä¸º${eventStatusLabel(target)}`)
     await loadDetail()
     emit('updated', event.value.id)
   } catch (err: any) {
-    ElMessage.error(errorMessage(err, '¸üĞÂ´¦ÖÃ×´Ì¬Ê§°Ü'))
+    ElMessage.error(errorMessage(err, 'æ›´æ–°å¤„ç½®çŠ¶æ€å¤±è´¥'))
   } finally {
     savingStatus.value = false
   }
@@ -340,11 +340,11 @@ async function addNote() {
   try {
     await api.post(`${base.value}/${event.value.id}/actions`, { action_type: 'note', content })
     noteContent.value = ''
-    ElMessage.success('ÊÂ¼ş±¸×¢ÒÑÌí¼Ó')
+    ElMessage.success('äº‹ä»¶å¤‡æ³¨å·²æ·»åŠ ')
     await loadDetail()
     emit('updated', event.value.id)
   } catch (err: any) {
-    ElMessage.error(errorMessage(err, 'Ìí¼ÓÊÂ¼ş±¸×¢Ê§°Ü'))
+    ElMessage.error(errorMessage(err, 'æ·»åŠ äº‹ä»¶å¤‡æ³¨å¤±è´¥'))
   } finally {
     savingNote.value = false
   }
@@ -386,14 +386,14 @@ async function submitMerge() {
       target_event_id: mergeTargetId.value,
       reason: mergeReason.value.trim(),
     })
-    ElMessage.success('ÊÂ¼şÒÑºÏ²¢µ½Ä¿±êÊÂ¼ş')
+    ElMessage.success('äº‹ä»¶å·²åˆå¹¶åˆ°ç›®æ ‡äº‹ä»¶')
     mergePanelOpen.value = false
     mergeTargetId.value = null
     mergeReason.value = ''
     await loadDetail()
     emit('updated', event.value.id)
   } catch (err: any) {
-    ElMessage.error(errorMessage(err, 'ºÏ²¢ÊÂ¼şÊ§°Ü'))
+    ElMessage.error(errorMessage(err, 'åˆå¹¶äº‹ä»¶å¤±è´¥'))
   } finally {
     merging.value = false
   }
@@ -407,14 +407,14 @@ async function submitSplit() {
       opinion_ids: splitOpinionIds.value,
       reason: splitReason.value.trim(),
     })
-    ElMessage.success('ÒÑ²ğ·ÖÑ¡ÖĞµÄÓßÇé')
+    ElMessage.success('å·²æ‹†åˆ†é€‰ä¸­çš„èˆ†æƒ…')
     splitPanelOpen.value = false
     splitOpinionIds.value = []
     splitReason.value = ''
     await loadDetail()
     emit('updated', event.value.id)
   } catch (err: any) {
-    ElMessage.error(errorMessage(err, '²ğ·ÖÊÂ¼şÊ§°Ü'))
+    ElMessage.error(errorMessage(err, 'æ‹†åˆ†äº‹ä»¶å¤±è´¥'))
   } finally {
     splitting.value = false
   }

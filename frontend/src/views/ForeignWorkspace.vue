@@ -125,112 +125,7 @@
     </section>
 
 
-    <section v-else-if="activeTab === 'events'" class="panel">
-      <div class="alert-scope-note">外网自动聚合：{{ eventAutoStatus?.enabled ? '已启用' : '已停用' }} · 调度已注册：{{ eventAutoStatus?.scheduler_registered ? '是' : '否' }} · 置信度阈值 {{ eventAutoStatus?.confidence_threshold ?? '-' }} · 时间窗口 {{ eventAutoStatus?.time_window_hours ?? '-' }} 小时</div>
-      <div class="toolbar">
-        <button class="btn btn-secondary" @click="loadEvents">刷新外网事件</button>
-        <button class="btn btn-secondary" :disabled="rebuildingEvents" @click="rebuildEvents">
-          {{ rebuildingEvents ? '重建中...' : '候选 Dry-Run' }}
-        </button>
-        <span class="muted">候选只进入外网事件表，必须人工确认后才形成正式事件</span>
-      </div>
-      <div v-if="eventLoadError" class="state error-state">
-        <span>外网事件加载失败：{{ eventLoadError }}</span>
-        <button class="btn btn-secondary" @click="loadEvents">重试</button>
-      </div>
-      <div v-if="eventRunFailures.length" class="event-failures">
-        <strong>外网事件运行失败</strong>
-        <div v-for="run in eventRunFailures" :key="run.id" class="event-failure-row">
-          <span class="status failed">失败</span>
-          <span>{{ formatTime(run.finished_at || run.started_at) }}</span>
-          <span>{{ run.error_message || '运行失败，未提供错误摘要' }}</span>
-        </div>
-      </div>
-      <div class="subtabs">
-        <button class="tab" :class="{ active: eventSection === 'candidates' }" @click="eventSection = 'candidates'">事件候选</button>
-        <button class="tab" :class="{ active: eventSection === 'confirmed' }" @click="eventSection = 'confirmed'">外网事件</button>
-      </div>
-      <div v-if="eventSection === 'candidates'" class="table-wrap">
-        <table>
-          <thead><tr><th>标题</th><th>语言</th><th>审核来源</th><th>置信度</th><th>文章数</th><th>来源数</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="row in eventCandidates" :key="row.id">
-              <td class="title-cell">{{ row.title || '无标题' }}</td>
-               <td>{{ zh(row.language) }}</td>
-               <td>{{ zh(row.review_source || 'manual') }}</td>
-              <td>{{ Math.round(row.confidence * 100) }}%</td>
-              <td>{{ row.opinion_count }}</td>
-              <td>{{ row.source_count }}</td>
-              <td><span class="status" :class="{ on: row.candidate_status === 'converted' }">{{ zh(row.candidate_status) }}</span></td>
-              <td class="actions">
-                <button v-if="row.candidate_status === 'candidate'" class="link-btn" :disabled="!canConfirmEvents || eventActionKey === `candidate-confirm-${row.id}`" @click="confirmCandidate(row)">确认</button>
-                <button v-if="row.candidate_status === 'candidate'" class="link-btn danger" :disabled="!canConfirmEvents || eventActionKey === `candidate-reject-${row.id}`" @click="rejectCandidate(row)">拒绝</button>
-              </td>
-            </tr>
-            <tr v-if="!eventCandidates.length"><td colspan="8" class="empty">暂无外网事件候选</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div v-else-if="eventSection === 'confirmed'" class="table-wrap">
-        <table>
-          <thead><tr><th>标题</th><th>语言</th><th>确认来源</th><th>状态</th><th>正式记录风险</th><th>关联舆情当前风险</th><th>热度</th><th>文章数</th><th>来源数</th><th>置信度</th><th>首次出现</th><th>最近出现</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="row in foreignEvents" :key="row.id" @click="loadEventDetail(row.id)">
-              <td class="title-cell">{{ row.title || '无标题' }}</td>
-               <td>{{ zh(row.language) }}</td>
-               <td>{{ zh(row.confirmation_source || 'manual') }}</td>
-              <td><span class="status" :class="{ on: row.event_status === 'monitoring', failed: row.event_status === 'failed' }">{{ zh(row.event_status) }}</span></td>
-              <td>{{ zh(row.formal_risk_level || row.risk_level) }}</td>
-              <td>
-                <span v-if="row.linked_opinion_current_risk">
-                  {{ row.linked_opinion_current_risk.risk_score ?? '-' }} ·
-                  {{ zh(row.linked_opinion_current_risk.risk_level) }}
-                  <small class="muted">（{{ row.linked_opinion_current_risk.source === 'ai' ? 'AI' : '规则' }}）</small>
-                </span>
-                <span v-else>-</span>
-              </td>
-              <td>{{ row.heat_score ?? '-' }}</td>
-              <td>{{ row.opinion_count }}</td>
-              <td>{{ row.source_count }}</td>
-              <td>{{ Math.round(row.confidence * 100) }}%</td>
-              <td>{{ formatTime(row.first_seen_at) }}</td>
-              <td>{{ formatTime(row.last_seen_at) }}</td>
-              <td><button class="link-btn" :disabled="!canChangeEventStatus || eventActionKey === `event-close-${row.id}`" @click.stop="closeEvent(row)">关闭</button><button class="link-btn" :disabled="!canChangeEventStatus || eventActionKey === `event-archive-${row.id}`" @click.stop="archiveEvent(row)">归档</button></td>
-            </tr>
-            <tr v-if="!foreignEvents.length"><td colspan="13" class="empty">暂无已确认外网事件</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <article v-if="selectedForeignEvent" class="event-detail">
-        <div class="event-provenance">
-          <strong>事件溯源</strong>
-          <span>确认来源：{{ zh(selectedForeignEvent.confirmation_source || 'manual') }}</span>
-          <span>审核来源：{{ zh(selectedForeignEvent.auto_aggregation?.review_source) }}</span>
-          <span>置信度：{{ Math.round((selectedForeignEvent.confidence || 0) * 100) }}%</span>
-          <span>文章数：{{ selectedForeignEvent.opinion_count }} · 来源数：{{ selectedForeignEvent.source_count }}</span>
-          <span>正式记录风险：{{ selectedForeignEvent.formal_risk_score ?? selectedForeignEvent.risk_score ?? '-' }} · {{ zh(selectedForeignEvent.formal_risk_level || selectedForeignEvent.risk_level) }}</span>
-          <span v-if="selectedForeignEvent.linked_opinion_current_risk">关联舆情当前风险：{{ selectedForeignEvent.linked_opinion_current_risk.risk_score ?? '-' }} · {{ zh(selectedForeignEvent.linked_opinion_current_risk.risk_level) }}</span>
-          <details v-if="selectedForeignEvent.auto_aggregation?.evidence"><summary>聚合证据</summary><pre>{{ JSON.stringify(selectedForeignEvent.auto_aggregation.evidence, null, 2) }}</pre></details>
-        </div>
-        <div class="event-detail-head">
-          <h3>{{ selectedForeignEvent.title }}</h3>
-          <div class="actions"><button class="link-btn" :disabled="!canChangeEventStatus || Boolean(eventActionKey)" @click="closeEvent(selectedForeignEvent)">关闭事件</button><button class="link-btn" :disabled="!canMergeEvents || Boolean(eventActionKey)" @click="mergeEvent(selectedForeignEvent)">合并</button><button class="link-btn" :disabled="!canSplitEvents || Boolean(eventActionKey)" @click="splitEvent(selectedForeignEvent)">拆分</button><button class="link-btn" @click="selectedForeignEvent = null">关闭详情</button></div>
-        </div>
-        <p class="muted">{{ zh(selectedForeignEvent.language) }} · {{ zh(selectedForeignEvent.event_status) }} · {{ selectedForeignEvent.opinion_count }} 篇文章</p>
-        <div class="event-metrics">
-          <span>热度：{{ selectedForeignEvent.heat_score ?? '-' }}</span>
-          <span>首次出现：{{ formatTime(selectedForeignEvent.first_seen_at) }}</span>
-          <span>最近出现：{{ formatTime(selectedForeignEvent.last_seen_at) }}</span>
-        </div>
-        <p>{{ selectedForeignEvent.summary || '暂无摘要' }}</p>
-        <div v-for="opinion in selectedForeignEvent.opinions" :key="opinion.id" class="event-opinion">
-          <strong>{{ opinion.title }}</strong>
-          <span class="muted">{{ opinion.source_name_snapshot }} · {{ formatTime(opinion.published_at) }}</span>
-          <span v-if="opinion.current_risk" class="muted">当前风险：{{ opinion.current_risk.risk_score ?? '-' }} · {{ zh(opinion.current_risk.risk_level) }}</span>
-          <a :href="opinion.url" target="_blank" rel="noreferrer" class="original">原文</a>
-        </div>
-      </article>
-    </section>
+    <ForeignEventsView v-if="activeTab === 'events'" />
 
     <ForeignOpinionDetailModal v-model="detailVisible" :opinion-id="detailId" :risk-source="riskSource" @update:risk-source="setRiskSource" />
   </div>
@@ -247,6 +142,7 @@ import { usePermission } from '@/composables/usePermission'
 import ForeignOpinionDetailModal from '@/views/foreign/ForeignOpinionDetailModal.vue'
 import ForeignAIReviewView from '@/views/foreign/ForeignAIReviewView.vue'
 import ForeignOpinionListView from '@/views/foreign/ForeignOpinionListView.vue'
+import ForeignEventsView from '@/views/foreign/ForeignEventsView.vue'
 import Pager from '@/components/Pager.vue'
 
 type Tab = 'dashboard' | 'opinions' | 'events'

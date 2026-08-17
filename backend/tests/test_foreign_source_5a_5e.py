@@ -220,7 +220,7 @@ def test_confirmed_foreign_event_can_be_closed_and_frontend_uses_probe_contract(
         title=f"Phase 5 close {suffix}",
         summary="fixture",
         language="en",
-        event_status="confirmed",
+        event_status="active",
         risk_level="unknown",
         heat_score=0,
         opinion_count=0,
@@ -230,15 +230,20 @@ def test_confirmed_foreign_event_can_be_closed_and_frontend_uses_probe_contract(
     db.add(event)
     db.commit()
     try:
-        closed = ForeignEventService().update_status(
-            db,
-            event.id,
-            status="resolved",
-            user_id=None,
-            reason="fixture close",
-            request_id=f"close-{suffix}",
-        )
-        assert closed.event_status == "resolved"
+        # 与国内事件中心一致的线性流转：active -> verifying -> processing -> resolved -> closed
+        svc = ForeignEventService()
+        for idx, step in enumerate(("verifying", "processing", "resolved", "closed")):
+            moved = svc.update_status(
+                db,
+                event.id,
+                status=step,
+                user_id=None,
+                reason=f"fixture {step}",
+                request_id=f"close-{suffix}-{idx}",
+            )
+            assert moved.event_status == step
+        closed = moved
+        assert closed.event_status == "closed"
         sources_view = (Path(__file__).resolve().parents[2] / "frontend/src/views/foreign/ForeignSourcesView.vue").read_text(encoding="utf-8")
         # 新探测契约：前端读取 sourceTestResult.ok（API 顶层用 ok 反映「连接层面可用」），
         # 不再使用 success 字段。
@@ -302,7 +307,7 @@ def test_foreign_event_merge_split_recomputes_metrics_and_keeps_domestic_snapsho
                 title=title,
                 summary="phase 5 merge/split fixture",
                 language="en",
-                event_status="confirmed",
+                event_status="active",
                 risk_level="unknown",
                 heat_score=0,
                 opinion_count=0,
@@ -357,7 +362,7 @@ def test_foreign_event_merge_split_recomputes_metrics_and_keeps_domestic_snapsho
         )
         event_ids.append(split.id)
         db.refresh(merged)
-        assert split.event_status == "confirmed"
+        assert split.event_status == "active"
         assert split.opinion_count == 2
         assert split.source_count == 2
         assert utc(split.first_seen_at) == min(article_times[opinions[2].id], article_times[opinions[3].id])

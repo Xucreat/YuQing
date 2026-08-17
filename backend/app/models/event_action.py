@@ -31,17 +31,17 @@ class EventAction(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "action_type IN ('status_change','note','assign','resolve')",
+            "action_type IN ('status_change','note','assign','resolve','merge','split')",
             name="ck_event_actions_action_type",
         ),
         CheckConstraint(
             "old_status IS NULL OR old_status IN "
-            "('active','verifying','processing','resolved','closed','deprecated')",
+            "('active','verifying','processing','resolved','closed','deprecated','archived')",
             name="ck_event_actions_old_status",
         ),
         CheckConstraint(
             "new_status IS NULL OR new_status IN "
-            "('active','verifying','processing','resolved','closed','deprecated')",
+            "('active','verifying','processing','resolved','closed','deprecated','archived')",
             name="ck_event_actions_new_status",
         ),
         Index("ix_event_actions_event_id", "event_id"),

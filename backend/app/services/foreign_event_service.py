@@ -61,7 +61,14 @@ def _utcnow() -> datetime:
 
 
 def _article_time(opinion: ForeignOpinion) -> datetime:
-    return opinion.published_at or opinion.collected_at or opinion.created_at or _utcnow()
+    # 归一化为 naive UTC：DB 时间列无时区，若回退到 _utcnow()（aware）会与 naive 字段
+    # 混合相减，触发 "can't subtract offset-naive and offset-aware datetimes"。
+    t = opinion.published_at or opinion.collected_at or opinion.created_at
+    if t is None:
+        t = _utcnow()
+    if t.tzinfo is not None:
+        t = t.astimezone(timezone.utc).replace(tzinfo=None)
+    return t
 
 
 def _article_text(opinion: ForeignOpinion) -> str:

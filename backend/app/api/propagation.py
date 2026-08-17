@@ -12,7 +12,7 @@ propagation_router = APIRouter(tags=["propagation"], dependencies=[Depends(get_c
 
 
 @propagation_router.get("/events")
-def list_propagation_events(db: Session = Depends(get_db), _u: User = Depends(get_current_user)):
+def list_propagation_events(db: Session = Depends(get_db), _u: User = Depends(require_permission("propagation:read"))):
     """List all events with propagation status."""
     return PropagationService.get_all_events_propagation(db)
 
@@ -32,7 +32,7 @@ def rebuild(
 
 
 @propagation_router.get("/graph/{event_id}", response_model=PropagationGraphResponse)
-def get_graph(event_id: int, db: Session = Depends(get_db), _u: User = Depends(get_current_user)):
+def get_graph(event_id: int, db: Session = Depends(get_db), _u: User = Depends(require_permission("propagation:read"))):
     try:
         data = PropagationService.get_graph(db, event_id)
         return data

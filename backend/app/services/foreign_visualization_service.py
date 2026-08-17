@@ -201,7 +201,7 @@ def get_dashboard_summary(db: Session, *, days: int = 7) -> dict[str, Any]:
             **_base_meta(start, end, days),
             "articles": {"total": all_count, "window_new": len(rows), "sources": source_count, "languages": dict(language)},
             "risk": {"completed": len(completed), "failed": status.get("failed", 0), "pending": len(rows) - len({r.foreign_opinion_id for r in risks}), "by_status": dict(status), "by_level": dict(risk_levels)},
-            "events": {"candidate": sum(1 for row in candidates if row.candidate_status == "candidate"), "confirmed": sum(1 for row in events if row.event_status == "confirmed"), "archived": sum(1 for row in events if row.event_status == "archived"), "by_status": dict(Counter(row.event_status for row in events))},
+            "events": {"candidate": sum(1 for row in candidates if row.candidate_status == "candidate"), "active": sum(1 for row in events if row.event_status == "active"), "in_progress": sum(1 for row in events if row.event_status in ("active", "verifying", "processing")), "archived": sum(1 for row in events if row.event_status == "archived"), "by_status": dict(Counter(row.event_status for row in events))},
             "alerts": {"total": len(alerts), "by_status": dict(Counter(row.status for row in alerts))},
             "collection": _collection_summary(db, start, end),
         }
@@ -329,7 +329,7 @@ def _hotword_rows(db: Session, *, start: datetime, end: datetime, source: str | 
         for tokenizer in tokenizers:
             for token in _tokenize(text, tokenizer):
                 rows.append((token, lang, opinion.source_key or opinion.source_name_snapshot))
-    for event in db.scalars(select(ForeignEvent).where(ForeignEvent.event_status == "confirmed", ForeignEvent.created_at >= start, ForeignEvent.created_at < end)).all():
+    for event in db.scalars(select(ForeignEvent).where(ForeignEvent.event_status == "active", ForeignEvent.created_at >= start, ForeignEvent.created_at < end)).all():
         lang = _language(event.language, event.title)
         if source and source != "confirmed_event":
             continue
@@ -393,7 +393,7 @@ def get_source_distribution(db: Session, *, days: int = 7) -> dict[str, Any]:
     event_ids_by_opinion: dict[int, set[int]] = defaultdict(set)
     for event_id, opinion_id in db.execute(select(ForeignEventOpinion.foreign_event_id, ForeignEventOpinion.foreign_opinion_id)).all():
         event_ids_by_opinion[opinion_id].add(event_id)
-    confirmed_event_ids = {row.id for row in db.scalars(select(ForeignEvent).where(ForeignEvent.event_status == "confirmed")).all()}
+    confirmed_event_ids = {row.id for row in db.scalars(select(ForeignEvent).where(ForeignEvent.event_status == "active")).all()}
     alert_rows = list(db.scalars(select(ForeignAlert).where(ForeignAlert.triggered_at >= start, ForeignAlert.triggered_at < end)).all())
     run_rows = list(db.scalars(select(CollectorRun).where(CollectorRun.scope == "foreign", CollectorRun.start_time >= start, CollectorRun.start_time < end)).all())
     groups: dict[tuple[str, str], dict[str, Any]] = {}

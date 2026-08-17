@@ -4,11 +4,23 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-EventStatus = Literal["active", "verifying", "processing", "resolved", "closed", "deprecated"]
+EventStatus = Literal["active", "verifying", "processing", "resolved", "closed", "deprecated", "archived"]
 
 
 class EventStatusUpdate(BaseModel):
     status: EventStatus
+
+
+class EventMergeRequest(BaseModel):
+    """国内事件合并：把当前事件关联舆情迁移到 target_event_id。"""
+    target_event_id: int
+    reason: str = ""
+
+
+class EventSplitRequest(BaseModel):
+    """国内事件拆分：把指定舆情从当前事件迁出，新建事件承载。"""
+    opinion_ids: list[int]
+    reason: str = ""
 
 
 class EventActionCreate(BaseModel):

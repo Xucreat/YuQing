@@ -205,14 +205,16 @@ def test_auto_event_confirms_only_high_confidence_same_language_multi_source(mon
         assert all(event.language in {"en", "zh"} for event in result.created_events)
         assert all(event.opinion_count >= 2 and event.source_count >= 2 for event in result.created_events)
         event = result.created_events[0]
-        resolved = ForeignEventService().update_status(
-            db,
-            event.id,
-            status="resolved",
-            user_id=None,
-            reason="manual revoke of automatic event",
-            request_id=f"resolve-auto-{suffix}",
-        )
+        _svc = ForeignEventService()
+        for _idx, _step in enumerate(("verifying", "processing", "resolved")):
+            resolved = _svc.update_status(
+                db,
+                event.id,
+                status=_step,
+                user_id=None,
+                reason="manual revoke of automatic event",
+                request_id=f"resolve-auto-{suffix}-{_idx}",
+            )
         assert resolved.event_status == "resolved"
         linked_ids = [row.foreign_opinion_id for row in db.query(ForeignEventOpinion).filter(ForeignEventOpinion.foreign_event_id == event.id).all()]
         split = ForeignEventService().split_event(

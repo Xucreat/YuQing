@@ -510,6 +510,10 @@ def update_role(
     role = db.get(Role, role_id)
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
+    # 系统角色保护：仅超级管理员（is_superuser / admin 角色）或 system_admin 可修改系统角色，
+    # 防止其它 roles:write 持有者弱化系统角色的权限（如移除其权限条目）。
+    if role.is_system and not (is_superuser_user(current_user) or current_user.role == "system_admin"):
+        raise HTTPException(status_code=403, detail="只有超级管理员或 system_admin 可以修改系统角色")
     before_snapshot = _role_audit_snapshot(role)
     if body.display_name is not None:
         role.display_name = body.display_name

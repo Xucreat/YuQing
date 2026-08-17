@@ -42,10 +42,18 @@ class MediaCrawlerTimeoutError(MediaCrawlerRunnerError):
 class MediaCrawlerProcessError(MediaCrawlerRunnerError):
     """Raised when the subprocess exits unsuccessfully or emits no output."""
 
-    def __init__(self, message: str, *, stderr: str = "", exit_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        stderr: str = "",
+        exit_code: int | None = None,
+        stderr_path: Path | None = None,
+    ) -> None:
         super().__init__(message)
         self.stderr = stderr
         self.exit_code = exit_code
+        self.stderr_path = stderr_path
 
 
 class MediaCrawlerEmptyOutputError(MediaCrawlerProcessError):
@@ -95,6 +103,37 @@ _STRUCTURED_SECRET_RE = re.compile(
 def _redact(value: str) -> str:
     value = _SECRET_RE.sub(r"\1=[REDACTED]", value)
     return _STRUCTURED_SECRET_RE.sub(r"\1\2\3[REDACTED]", value)
+
+
+def _stderr_excerpt(value: str, limit: int = 1600) -> str:
+    if len(value) <= limit:
+        return value
+    head = limit // 2
+    tail = limit - head
+    omitted = len(value) - limit
+    return f"{value[:head]}\n...[{omitted} chars omitted]...\n{value[-tail:]}"
+
+
+def _single_line(value: str) -> str:
+    return value.replace("\r", "\\r").replace("\n", "\\n")
+
+
+def _is_successful_empty_run(stderr: str) -> bool:
+    """Recognize an upstream crawler that completed without producing records."""
+
+    return bool(re.search(r"\bCrawler finished\b", stderr, flags=re.IGNORECASE))
+
+
+def _has_weibo_upstream_failure(stderr: str) -> bool:
+    """Detect a Weibo session/API failure hidden behind a zero exit code."""
+
+    patterns = (
+        r"cookie may be invalid",
+        r"pong weibo failed",
+        r"search page has no content.*\bok\s*['\"]?\s*:\s*0",
+        r"\bres\s*:\s*\{\s*['\"]?ok['\"]?\s*:\s*0",
+    )
+    return any(re.search(pattern, stderr, flags=re.IGNORECASE | re.DOTALL) for pattern in patterns)
 
 
 class MediaCrawlerRunner:
@@ -514,6 +553,13 @@ class MediaCrawlerRunner:
         command_kind = "mock" if self.mock_command else "real"
         jsonl_snapshot = self._snapshot_jsonl(run_dir)
         process_started_ns = time.time_ns()
+        self.append_log(
+            log_path,
+            f"runtime_context platform={self.platform} source_key={self.source_key} "
+            f"profile_path={self.profile_name or self.browser_data or '[unset]'} "
+            f"command_cwd={self.command_cwd or run_dir} "
+            f"keywords={json.dumps(normalized_keywords, ensure_ascii=False)}",
+        )
         self.append_log(log_path, f"{command_kind}_command_started executable={command[0]}")
         try:
             completed = subprocess.run(
@@ -540,18 +586,29 @@ class MediaCrawlerRunner:
             raise MediaCrawlerProcessError(f"unable to start MediaCrawler command: {exc}") from exc
 
         stderr = _redact(completed.stderr or "")
+        stderr_path = run_dir / "stderr.log"
+        stderr_path.write_text(stderr, encoding="utf-8")
+        upstream_failure = (
+            self.platform == "weibo" and _has_weibo_upstream_failure(stderr)
+        )
         if stderr:
-            self.append_log(log_path, f"stderr={stderr[:4000]}")
+            excerpt = _single_line(_stderr_excerpt(stderr))
+            self.append_log(
+                log_path,
+                f"stderr_path={stderr_path} stderr_chars={len(stderr)} stderr_excerpt={excerpt}",
+            )
+        else:
+            self.append_log(log_path, f"stderr_path={stderr_path} stderr_chars=0")
         self.append_log(
             log_path,
             f"{command_kind}_command_finished exit_code={completed.returncode}",
         )
-        if completed.returncode != 0:
-            self.update_metrics(failed=1)
-            raise MediaCrawlerProcessError(
-                f"MediaCrawler command exited with code {completed.returncode}",
-                stderr=stderr,
-                exit_code=completed.returncode,
+        partial_failure = completed.returncode != 0
+        if partial_failure:
+            self.append_log(
+                log_path,
+                f"nonzero_exit=1 exit_code={completed.returncode}; "
+                f"will attempt to salvage any partial output before failing",
             )
         if not output_path.is_file():
             discovered_native_output = self._discover_native_output(
@@ -571,12 +628,38 @@ class MediaCrawlerRunner:
             discovered_native_output = None
 
         if discovered_native_output is None and not output_path.is_file():
-            self.update_metrics(failed=1)
-            raise MediaCrawlerProcessError(
-                f"MediaCrawler command exited successfully but did not create {output_path}",
-                stderr=stderr,
-                exit_code=completed.returncode,
-            )
+            if upstream_failure:
+                self.update_metrics(failed=1)
+                self.append_log(
+                    log_path,
+                    "upstream_failure=1 reason=weibo_login_or_api_failure "
+                    f"stderr_path={stderr_path}",
+                )
+                raise MediaCrawlerProcessError(
+                    "MediaCrawler Weibo run failed its login/API health check; "
+                    f"stderr saved to {stderr_path}",
+                    stderr=stderr,
+                    exit_code=completed.returncode,
+                    stderr_path=stderr_path,
+                )
+            if _is_successful_empty_run(stderr):
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.touch()
+                self.append_log(
+                    log_path,
+                    f"successful_empty_run=1 output_path={output_path} "
+                    "reason=upstream crawler completed without records",
+                )
+            else:
+                # 子进程非零退出且没有任何产物：确实失败
+                self.update_metrics(failed=1)
+                raise MediaCrawlerProcessError(
+                    f"MediaCrawler command exited with code {completed.returncode}; "
+                    f"stderr saved to {stderr_path}",
+                    stderr=stderr,
+                    exit_code=completed.returncode,
+                    stderr_path=stderr_path,
+                )
 
         source_path = discovered_native_output or output_path
         raw_output_path = self._preserve_raw(
@@ -591,9 +674,44 @@ class MediaCrawlerRunner:
         )
         self.append_log(log_path, f"raw_count={raw_count} output_count={output_count}")
         self.update_metrics(raw_count=raw_count, output_count=output_count)
+        if upstream_failure and raw_count == 0:
+            self.update_metrics(failed=1)
+            self.append_log(
+                log_path,
+                "upstream_failure=1 reason=weibo_login_or_api_failure "
+                f"stderr_path={stderr_path}",
+            )
+            raise MediaCrawlerProcessError(
+                "MediaCrawler Weibo run produced no records after a failed "
+                f"login/API health check; stderr saved to {stderr_path}",
+                stderr=stderr,
+                exit_code=completed.returncode,
+                stderr_path=stderr_path,
+            )
         if raw_count > 0 and output_count == 0:
             self.update_metrics(failed=1)
         self._raise_on_empty_bounded_output(raw_count, output_count, log_path)
+
+        # 抢救成功：子进程虽非零退出，但已落盘有效记录，按部分成功返回（数据照常导入）
+        if partial_failure and raw_count > 0:
+            self.append_log(
+                log_path,
+                f"partial_success=1 salvaged={raw_count} records despite exit_code={completed.returncode}",
+            )
+            return MediaCrawlerRunResult(
+                batch_id=batch_id,
+                run_dir=run_dir,
+                output_path=output_path,
+                log_path=log_path,
+                exit_code=0,
+                stderr=stderr,
+                native_output_path=discovered_native_output,
+                raw_output_path=raw_output_path,
+                raw_count=raw_count,
+                output_count=output_count,
+                effective_max_items=effective_max_items,
+                metrics_path=self.last_metrics_path,
+            )
 
         return MediaCrawlerRunResult(
             batch_id=batch_id,

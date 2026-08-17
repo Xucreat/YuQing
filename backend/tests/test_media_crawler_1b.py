@@ -150,6 +150,100 @@ def test_mock_command_nonzero_exit_preserves_redacted_stderr(tmp_path: Path) -> 
     assert "[REDACTED]" in log
 
 
+def test_nonzero_exit_persists_full_redacted_stderr_artifact(tmp_path: Path) -> None:
+    runner = MediaCrawlerRunner(
+        root=tmp_path / "runtime",
+        command=[
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "sys.stderr.write('token=secret-value\\n' + 'x' * 6000 + '\\ntail-marker\\n'); "
+                "sys.exit(9)"
+            ),
+        ],
+        mock_command=True,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    )
+
+    with pytest.raises(MediaCrawlerProcessError) as exc_info:
+        runner.run([], timeout_seconds=5)
+
+    run_dir = next((tmp_path / "runtime" / "runs").iterdir())
+    stderr_path = run_dir / "stderr.log"
+    assert exc_info.value.stderr_path == stderr_path
+    stderr = stderr_path.read_text(encoding="utf-8")
+    assert "secret-value" not in stderr
+    assert "[REDACTED]" in stderr
+    assert "tail-marker" in stderr
+
+    log = (run_dir / "crawler.log").read_text(encoding="utf-8")
+    assert f"stderr_path={stderr_path}" in log
+    assert "stderr_chars=" in log
+    assert "tail-marker" in log
+
+
+def test_successful_empty_upstream_run_returns_empty_output(tmp_path: Path) -> None:
+    runner = MediaCrawlerRunner(
+        root=tmp_path / "runtime",
+        command=[
+            sys.executable,
+            "-c",
+            "import sys; sys.stderr.write('Weibo Crawler finished ...\\n')",
+        ],
+        mock_command=True,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    )
+
+    result = runner.run([], max_items=20, timeout_seconds=5)
+
+    assert result.exit_code == 0
+    assert result.output_path.is_file()
+    assert result.output_path.read_text(encoding="utf-8") == ""
+    assert result.raw_count == 0
+    assert result.output_count == 0
+    assert result.metrics_path is not None
+    metrics = json.loads(result.metrics_path.read_text(encoding="utf-8"))
+    assert metrics["failed"] == 0
+    log = result.log_path.read_text(encoding="utf-8")
+    assert "successful_empty_run=1" in log
+
+
+def test_weibo_auth_failure_is_not_reported_as_successful_empty(
+    tmp_path: Path,
+) -> None:
+    runner = MediaCrawlerRunner(
+        root=tmp_path / "runtime",
+        command=[
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "sys.stderr.write("
+                "'cookie may be invalid and again login!\\n'"
+                "'search page has no content, res:{\\'ok\\': 0, \\'data\\': {\\'cards\\': []}}\\n'"
+                "'Weibo Crawler finished ...\\n'"
+                ")"
+            ),
+        ],
+        mock_command=True,
+        platform_spec=WEIBO_PLATFORM_SPEC,
+        source_key=WEIBO_SOURCE_KEY,
+    )
+
+    with pytest.raises(MediaCrawlerProcessError, match="health check"):
+        runner.run([], max_items=20, timeout_seconds=5)
+
+    run_dir = next((tmp_path / "runtime" / "runs").iterdir())
+    log = (run_dir / "crawler.log").read_text(encoding="utf-8")
+    assert "upstream_failure=1" in log
+    assert "successful_empty_run=1" not in log
+    metrics = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["failed"] == 1
+
+
 def test_real_run_setting_defaults_closed() -> None:
     assert settings.media_crawler_enable_real_run is False
     assert hasattr(settings, "media_crawler_entry")

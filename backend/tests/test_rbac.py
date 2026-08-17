@@ -259,9 +259,10 @@ def test_analyst_allowed_writes(client: TestClient, analyst_user):
     assert r.status_code == 404, r.text
     # opinions:write（region_id 必须是 Region 真实主键 id，而非 code）
     assert _REGION_ID is not None, "ensure_test_env 未填充 _REGION_ID"
+    # 使用唯一 url，避免与历史残留（唯一约束 opinions.url）冲突导致重跑失败
     r = client.post(
         "/api/opinions",
-        json={"title": "at", "content": "ac", "source": "as", "url": "http://a", "region_id": _REGION_ID},
+        json={"title": "at", "content": "ac", "source": "as", "url": f"http://a-{uuid.uuid4().hex[:8]}", "region_id": _REGION_ID},
         headers=headers,
     )
     assert r.status_code == 201, r.text

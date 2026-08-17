@@ -170,7 +170,13 @@ def _json_default(value: Any) -> str:
 
 
 def _print_result(result: dict[str, Any]) -> None:
-    print(json.dumps(result, ensure_ascii=False, default=_json_default))
+    payload = json.dumps(result, ensure_ascii=False, default=_json_default) + "\n"
+    stdout_buffer = getattr(sys.stdout, "buffer", None)
+    if stdout_buffer is not None:
+        stdout_buffer.write(payload.encode("utf-8", errors="replace"))
+        stdout_buffer.flush()
+    else:
+        print(payload, end="")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -282,23 +288,54 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             command = build_real_command(
                 args.command, root=root, python_executable=python_executable, entry=entry
-            )
+            ) if args.command else None
+            command_cwd = Path(root)
+            command_cwd = Path(root)
     except ValueError as exc:
         _print_result({"status": "BLOCKED", "reason": str(exc)})
         return 3
 
     if runner is None:
-        runner = MediaCrawlerRunner(
-            root=runtime_root if args.native_mode else root,
-            python_executable=python_executable,
-            browser_data=os.getenv("MEDIA_CRAWLER_BROWSER_DATA") or settings.media_crawler_browser_data,
-            command=command,
-            command_cwd=command_cwd,
-            mock_command=False,
-            enable_real_run=True,
-            platform_spec=WEIBO_PLATFORM_SPEC,
-            source_key=WEIBO_SOURCE_KEY,
-        )
+        if command is None:
+            def command_factory(
+                selected_keywords: Sequence[str],
+                max_items: int,
+                output_dir: Path,
+            ) -> list[str]:
+                return build_mediacrawler_command(
+                    selected_keywords,
+                    max_items,
+                    output_dir,
+                    python_executable=python_executable,
+                    entry=entry,
+                    login_type=settings.media_crawler_login_type,
+                    platform_spec=WEIBO_PLATFORM_SPEC,
+                )
+
+            runner = MediaCrawlerRunner(
+                root=runtime_root if args.native_mode else root,
+                browser_data=os.getenv("MEDIA_CRAWLER_BROWSER_DATA") or settings.media_crawler_browser_data,
+                profile_name=os.getenv("MEDIA_CRAWLER_PROFILE_NAME"),
+                command_factory=command_factory,
+                command_cwd=command_cwd,
+                mock_command=False,
+                enable_real_run=True,
+                platform_spec=WEIBO_PLATFORM_SPEC,
+                source_key=WEIBO_SOURCE_KEY,
+            )
+        else:
+            runner = MediaCrawlerRunner(
+                root=runtime_root if args.native_mode else root,
+                python_executable=python_executable,
+                browser_data=os.getenv("MEDIA_CRAWLER_BROWSER_DATA") or settings.media_crawler_browser_data,
+                profile_name=os.getenv("MEDIA_CRAWLER_PROFILE_NAME"),
+                command=command,
+                command_cwd=command_cwd,
+                mock_command=False,
+                enable_real_run=True,
+                platform_spec=WEIBO_PLATFORM_SPEC,
+                source_key=WEIBO_SOURCE_KEY,
+            )
     collector = MediaCrawlerWeiboCollector(
         runner=runner, max_items=args.max_items, timeout_seconds=args.timeout_seconds
     )

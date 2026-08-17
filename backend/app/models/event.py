@@ -53,7 +53,7 @@ class Event(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN "
-            "('active','verifying','processing','resolved','closed','deprecated')",
+            "('active','verifying','processing','resolved','closed','deprecated','archived')",
             name="ck_events_status",
         ),
         CheckConstraint(

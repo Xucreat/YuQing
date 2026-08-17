@@ -2,8 +2,8 @@
   <div class="events" v-loading="loading">
   <div class="top-scope-switch">
     <el-radio-group v-model="scope" @change="loadScope">
-      <el-radio-button label="domestic">国内</el-radio-button>
-      <el-radio-button label="foreign">外网</el-radio-button>
+      <el-radio-button value="domestic">国内</el-radio-button>
+      <el-radio-button value="foreign">外网</el-radio-button>
     </el-radio-group>
   </div>
     <template v-if="scope === 'domestic'">

@@ -69,6 +69,7 @@ def list_opinions(
     date_from: str | None = None,
     date_to: str | None = None,
     include_low_value: bool = False,
+    current_user: User = Depends(require_permission("opinions:read")),
     db: Session = Depends(get_db),
 ) -> OpinionListResponse:
     """分页列表，支持来源 / 风险等级 / 关键词 / 发布日期过滤。
@@ -152,7 +153,7 @@ def list_opinions(
 
 
 @opinions_router.get("/sources", response_model=list[str])
-def list_opinion_sources(db: Session = Depends(get_db)) -> list[str]:
+def list_opinion_sources(current_user: User = Depends(require_permission("opinions:read")), db: Session = Depends(get_db)) -> list[str]:
     """返回库中全部去重且非空的来源名称（按舆情数量降序）。
 
     供前端「来源」筛选项下拉使用，避免仅按当前页数据聚合导致选项不全。
@@ -301,7 +302,7 @@ def _extract_paragraphs(html: str, max_paras: int = 8, max_chars: int = 1600) ->
 
 
 @opinions_router.get("/{opinion_id}/original")
-def get_opinion_original(opinion_id: int, db: Session = Depends(get_db)):
+def get_opinion_original(opinion_id: int, current_user: User = Depends(require_permission("opinions:read")), db: Session = Depends(get_db)):
     """实时抓取来源页并抽取正文段落，供详情弹窗展示比标题更长的原文。
 
     抓取失败 / 无 url / 无正文时 original 为空，前端回退到 opinion.content。
@@ -329,7 +330,7 @@ def get_opinion_original(opinion_id: int, db: Session = Depends(get_db)):
 
 
 @opinions_router.get("/{opinion_id}", response_model=OpinionOut)
-def get_opinion(opinion_id: int, db: Session = Depends(get_db)) -> Opinion:
+def get_opinion(opinion_id: int, current_user: User = Depends(require_permission("opinions:read")), db: Session = Depends(get_db)) -> Opinion:
     """舆情详情；不存在返回 404 {"detail":"Opinion not found"}。"""
     opinion = db.get(Opinion, opinion_id)
     if opinion is None:

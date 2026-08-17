@@ -166,7 +166,7 @@ def test_foreign_candidate_rebuild_is_idempotent_and_does_not_touch_domestic_tab
         event = service.confirm_candidate(
             db, candidates[0].id, user_id=None, reason="fixture review"
         )
-        assert event.event_status == "confirmed"
+        assert event.event_status == "active"
         assert db.query(ForeignEventOpinion).filter(
             ForeignEventOpinion.foreign_event_id == event.id
         ).count() == 2

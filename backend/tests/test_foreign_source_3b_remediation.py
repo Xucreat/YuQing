@@ -41,7 +41,7 @@ def _make_event(db, title: str, opinions: list[ForeignOpinion]) -> ForeignEvent:
         title=title,
         summary="fixture",
         language="en",
-        event_status="confirmed",
+        event_status="active",
         risk_level="unknown",
         heat_score=999,
         first_seen_at=datetime.now(timezone.utc),
@@ -205,7 +205,7 @@ def test_merge_deduplicates_shared_article_and_split_recomputes_metrics():
 
 def test_foreign_event_remediation_contract_exposes_metrics_and_failure_state():
     service = (ROOT / "backend" / "app" / "services" / "foreign_event_service.py").read_text(encoding="utf-8")
-    workspace = (ROOT / "frontend" / "src" / "views" / "ForeignWorkspace.vue").read_text(encoding="utf-8")
+    workspace = (ROOT / "frontend" / "src" / "views" / "foreign" / "ForeignEventsView.vue").read_text(encoding="utf-8")
     assert "def recompute_foreign_event_metrics" in service
     assert '"heat_score": event.heat_score' in service
     assert '"first_seen_at": event.first_seen_at.isoformat()' in service

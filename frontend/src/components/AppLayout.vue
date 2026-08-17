@@ -92,8 +92,8 @@
         </div>
         <div class="actions">
           <el-radio-group v-model="cockpitScope" v-if="route.path === '/dashboard'" style="margin-right: 12px;">
-            <el-radio-button label="domestic">国内</el-radio-button>
-            <el-radio-button label="foreign">外网</el-radio-button>
+            <el-radio-button value="domestic">国内</el-radio-button>
+            <el-radio-button value="foreign">外网</el-radio-button>
           </el-radio-group>
           <CollectMenu />
         </div>
@@ -238,7 +238,6 @@ type MenuEntry = {
 const menuItems = computed<MenuEntry[]>(() => [
   { to: '/dashboard', label: '驾驶舱', icon: '▤' },
   { to: '/opinions', label: '舆情列表', icon: '☰' },
-  { to: '/foreign', label: '外网舆情', icon: '◎', visible: hasDataPerm.value },
   { to: '/ai-search', label: 'AI检索', icon: 'AI', visible: hasAiSearchPerm.value },
   { to: '/events', label: '事件中心', icon: '⚠' },
   { to: '/alerts', label: '预警中心', icon: '🔔' },
@@ -260,9 +259,6 @@ const activeMenu = computed(() => {
   if (route.path.startsWith('/opinion')) return '/opinions'
   if (route.path.startsWith('/event')) return '/events'
   if (route.path.startsWith('/system')) return '/system'
-  if (route.path.startsWith('/foreign')) {
-    return '/foreign'
-  }
   return route.path
 })
 
@@ -270,7 +266,6 @@ const pageTitle = computed(() => {
   const m: Record<string, string> = {
     '/dashboard': '驾驶舱',
     '/opinions': '舆情列表',
-    '/foreign': '外网舆情',
     '/ai-search': 'AI检索',
     '/events': '事件中心',
     '/alerts': '预警中心',
@@ -298,7 +293,6 @@ const pageSub = computed(() => {
   const m: Record<string, string> = {
     '/dashboard': '互联网舆情监测总览',
     '/opinions': '查看和管理所有舆情信息',
-    '/foreign': '独立外网采集、去重、存储与展示',
     '/ai-search': '主动搜索外部舆情线索',
     '/events': '跟踪和管理舆情事件',
     '/alerts': '预警规则配置与预警记录',
