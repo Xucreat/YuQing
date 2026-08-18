@@ -14,6 +14,7 @@ from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
 from app.models.foreign_keyword import ForeignKeyword
 from app.models.foreign_opinion import ForeignOpinion
+from app.models.foreign_risk_result import ForeignRiskResult
 from app.models.opinion import Opinion
 from app.services.foreign_collection_service import collect_foreign
 
@@ -124,7 +125,23 @@ def test_foreign_collection_deduplicates_url_and_content_without_opinions(monkey
         assert first["created"] == 1
         assert second["created"] == 0
         assert second["duplicate"] == 1
-        assert db.query(ForeignOpinion).filter(ForeignOpinion.source_id == source_id).count() == 1
+        opinion = db.query(ForeignOpinion).filter(ForeignOpinion.source_id == source_id).one()
+        assert opinion.content_type == "news"
+        assert opinion.content_type_version == "v1"
+        monkeypatch.setattr(
+            ForeignRSSCollector,
+            "_get",
+            lambda self, _url: (
+                f"<rss><channel><item><title>{keyword_word} fire incident</title>"
+                f"<link>{url}</link><description>A fire accident caused casualties.</description></item>"
+                "</channel></rss>"
+            ),
+        )
+        updated = collect_foreign(db, source_ids=[source_id])
+        db.refresh(opinion)
+        assert updated["updated"] == 1
+        assert opinion.content_type == "risk_event"
+        assert opinion.content_type_version == "v1"
         assert db.query(Opinion).filter(Opinion.url == url).count() == 0
         run = (
             db.query(CollectorRun)
@@ -185,6 +202,85 @@ def test_foreign_api_requires_auth_and_filters_by_foreign_config(client: TestCli
         assert all(item.get("scope") == "foreign" for item in runs.json()["items"])
     finally:
         db.query(DataSource).filter(DataSource.key == key).delete(
+            synchronize_session=False
+        )
+        db.commit()
+        db.close()
+
+
+def test_foreign_opinion_api_returns_and_filters_content_type(client: TestClient, auth_headers):
+    suffix = uuid.uuid4().hex[:10]
+    db = SessionLocal()
+    opinion = ForeignOpinion(
+        source_key=f"content_type_api_{suffix}",
+        source_name_snapshot="Content type API fixture",
+        title="User complaint about service",
+        summary="A complaint fixture with enough text.",
+        content="The user filed a complaint about a delayed public service.",
+        url=f"https://fixture.test/content-type/{suffix}",
+        published_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(timezone.utc),
+        matched_keywords=["complaint"],
+        content_hash=(suffix * 8)[:64],
+        content_type="complaint",
+        content_type_version="v1",
+    )
+    db.add(opinion)
+    db.flush()
+    db.add(
+        ForeignRiskResult(
+            foreign_opinion_id=opinion.id,
+            content_hash=opinion.content_hash,
+            language="en",
+            risk_score=25,
+            risk_level="low",
+            sentiment="negative",
+            risk_category="service",
+            matched_terms=[],
+            explanation="fixture",
+            analyzer_type="rule",
+            model_name="rule",
+            model_version="fixture-v1",
+            analysis_status="completed",
+            analyzed_at=datetime.now(timezone.utc),
+            is_current=True,
+        )
+    )
+    db.commit()
+    opinion_id = opinion.id
+    try:
+        response = client.get(
+            "/api/foreign/opinions",
+            params={"q": suffix, "content_type": "complaint"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        item = next(item for item in response.json()["items"] if item["id"] == opinion_id)
+        assert item["content_type"] == "complaint"
+        assert item["content_type_version"] == "v1"
+        assert item["rule_risk"]["risk_category"] == "service"
+
+        excluded = client.get(
+            "/api/foreign/opinions",
+            params={"q": suffix, "content_type": "news"},
+            headers=auth_headers,
+        )
+        assert excluded.status_code == 200, excluded.text
+        assert all(item["id"] != opinion_id for item in excluded.json()["items"])
+
+        detail = client.get(
+            f"/api/foreign/opinions/{opinion_id}/detail",
+            headers=auth_headers,
+        )
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["content_type"] == "complaint"
+        assert detail.json()["content_type_version"] == "v1"
+        assert detail.json()["rule_result"]["risk_category"] == "service"
+    finally:
+        db.query(ForeignRiskResult).filter(
+            ForeignRiskResult.foreign_opinion_id == opinion_id
+        ).delete(synchronize_session=False)
+        db.query(ForeignOpinion).filter(ForeignOpinion.id == opinion_id).delete(
             synchronize_session=False
         )
         db.commit()

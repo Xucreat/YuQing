@@ -85,17 +85,18 @@
             <span aria-hidden="true">☰</span>
             <span>菜单</span>
           </button>
-          <div class="topbar-copy">
+          <div v-if="!hideTopTitle" class="topbar-copy">
             <h1 class="h-page-title">{{ pageTitle }}</h1>
             <p class="h-page-sub">{{ pageSub }}</p>
           </div>
+          <div id="page-nav-target" class="page-nav-target"></div>
         </div>
         <div class="actions">
           <el-radio-group v-model="cockpitScope" v-if="route.path === '/dashboard'" style="margin-right: 12px;">
             <el-radio-button value="domestic">国内</el-radio-button>
             <el-radio-button value="foreign">外网</el-radio-button>
           </el-radio-group>
-          <CollectMenu />
+          <CollectMenu v-if="route.path !== '/opinions'" />
         </div>
       </header>
 
@@ -173,6 +174,18 @@ import { cockpitScope } from '@/composables/useCockpitScope'
 
 const route = useRoute()
 const router = useRouter()
+// 这些页面的一级横向导航自带标题，隐藏顶栏的页面大标题（避免重复）
+const hideTopTitle = computed(() => {
+  const p = route.path
+  return (
+    p === '/opinions' ||
+    p.startsWith('/ai-search') ||
+    p === '/events' ||
+    p === '/alerts' ||
+    p === '/data' ||
+    p.startsWith('/system')
+  )
+})
 const authStore = useAuthStore()
 const { role, isSuperuser, hasPermission, hasAnyModulePermission } = usePermission()
 const { redDot, unreadCount, openNotifications, start } = useAlertNotifier()
@@ -645,17 +658,18 @@ onUnmounted(() => {
 /* ---- 铃铛上拉消息菜单 ---- */
 .nav-bell-wrap { position: relative; margin-left: auto; }
 .msg-menu {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: 208px;
+  position: fixed;
+  left: 30px;
+  right: auto;
+  bottom: 92px;
+  transform: none;
+  width: 200px;
   background: #fff;
   border: 1px solid #e8e8ed;
   border-radius: 14px;
   box-shadow: 0 8px 30px rgba(0,0,0,0.12);
   padding: 6px;
-  z-index: 200;
+  z-index: 300;
 }
 .msg-menu-item {
   display: flex;
@@ -673,7 +687,7 @@ onUnmounted(() => {
 .sidebar.collapsed .msg-menu {
   position: fixed;
   left: 90px;
-  bottom: 24px;
+  bottom: 92px;
   z-index: 300;
   transform: none;
 }
@@ -710,18 +724,20 @@ onUnmounted(() => {
 /* ---- Topbar ---- */
 .topbar {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 26px;
+  margin-bottom: 16px;
 }
 .topbar-heading {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   min-width: 0;
 }
 .topbar-copy { min-width: 0; }
+.page-nav-target { display: flex; align-items: center; min-width: 0; }
+.page-nav-target .page-nav { margin-bottom: 0; }
 .h-page-title {
   font-size: 28px;
   font-weight: 600;

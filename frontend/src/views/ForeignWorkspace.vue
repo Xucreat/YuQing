@@ -105,7 +105,7 @@
             <div v-show="hotwordItems.length" ref="hotwordChartRef" class="fw-chart"></div>
             <p v-if="!hotwordItems.length" class="empty">该窗口内暂无外网热词</p>
           </article>
-          <article class="fw-card fw-col-2"><h3>事件状态</h3><div v-for="(count, label) in dashboardEvents?.formal_events" :key="label" class="distribution-row"><span>{{ zh(label) }}</span><strong>{{ count }}</strong></div><p v-if="!dashboardEvents || !Object.keys(dashboardEvents.formal_events || {}).length" class="empty">暂无外网事件</p></article>
+          <article class="fw-card fw-card-eventstatus fw-col-2"><h3>事件状态</h3><div class="fw-eventstatus-scroll"><div v-for="(count, label) in dashboardEvents?.formal_events" :key="label" class="distribution-row"><span>{{ zh(label) }}</span><strong>{{ count }}</strong></div><p v-if="!dashboardEvents || !Object.keys(dashboardEvents.formal_events || {}).length" class="empty">暂无外网事件</p></div></article>
 
         </div>
 <div class="visualization-meta">数据范围：{{ formatTime(dashboardSummary.window_start) }} - {{ formatTime(dashboardSummary.window_end) }} · 更新于：{{ formatTime(dashboardSummary.data_as_of) }}</div>
@@ -199,7 +199,7 @@ type EffectiveRiskView = {
 }
 type Keyword = { id: number; word: string; category: string; type: 'monitoring' | 'sensitive'; source: 'system' | 'custom'; weight: number; severity_weight: number; rule_config?: Record<string, unknown>; is_enabled: boolean }
 type Source = { id: number; key: string; name: string; feeds: string[]; language?: string; enabled: boolean; schedule_enabled: boolean; schedule_interval_minutes?: number; class_path?: string; proxy_env?: string; proxy_configured?: boolean; timeout?: number; max_retries?: number; max_items?: number; request_interval?: number; max_content_length?: number; respect_robots?: boolean }
-type Opinion = { id: number; title: string; summary: string; content: string; url: string; source_name_snapshot: string; matched_keywords: string[]; published_at?: string | null; collected_at?: string | null; rule_result?: RiskResult | null; ai_result?: AIResult | null; analysis_runs?: Array<{ id: number; analyzer_type: string; status: string; started_at?: string | null; finished_at?: string | null; error_message?: string | null }> } & EffectiveRiskView
+type Opinion = { id: number; title: string; summary: string; content: string; url: string; source_name_snapshot: string; content_type?: string | null; content_type_version?: string | null; matched_keywords: string[]; published_at?: string | null; collected_at?: string | null; rule_result?: RiskResult | null; ai_result?: AIResult | null; analysis_runs?: Array<{ id: number; analyzer_type: string; status: string; started_at?: string | null; finished_at?: string | null; error_message?: string | null }> } & EffectiveRiskView
 type AIResult = { id: number; status: string; model_version: string; summary: string; sentiment: string; risk_score?: number | null; keywords: string[]; suggestion: string; error_message?: string | null; analyzed_at?: string | null }
 type Run = { id: number; collector_name: string; start_time?: string | null; end_time?: string | null; status: string; fetched_raw: number; matched: number; created: number; duplicate: number; proxy_used: boolean; error_msg?: string | null }
 type RiskResult = {
@@ -1507,14 +1507,19 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .fw-card-head h3 { margin: 0; }
 .fw-chart { width: 100%; height: 260px; }
 .fw-chart-tall { height: 300px; }
-.fw-card-alert { display: flex; flex-direction: column; }
+.fw-card-alert { display: flex; flex-direction: column; align-self: start; }
 .fw-alert-feed { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .fw-alert-summary { display: flex; gap: 16px; margin-bottom: 8px; font-size: 12px; color: #86868b; }
 .fw-alert-sum { display: inline-flex; align-items: center; gap: 6px; }
 .fw-sum-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .fw-sum-dot.is-amber { background: #ff9f0a; }
 .fw-sum-dot.is-teal { background: #34c759; }
-.fw-alert-viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+/* 固定视口高度，与国内驾驶舱预警滚动卡片一致：长告警不再撑高卡片、破坏整行布局 */
+.fw-alert-viewport { position: relative; flex: none; height: 220px; overflow: hidden; }
+.fw-alert-viewport::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 36px;
+  background: linear-gradient(transparent, #fff); pointer-events: none;
+}
 .fw-alert-track { display: flex; flex-direction: column; gap: 8px; }
 .fw-alert-track.scrolling { animation: fw-alert-scroll linear infinite; }
 .fw-alert-track:hover { animation-play-state: paused; }
@@ -1531,6 +1536,13 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .fw-badge.is-teal { color: #1a8e3c; background: #eafaf0; }
 .fw-badge.is-cyan { color: #0071e3; background: #e8f1fd; }
 .fw-mono { font-variant-numeric: tabular-nums; }
+/* 事件状态：固定高度滚动容器，与告警卡片风格一致；无内容/少内容时布局稳定，内容过多时滚动而非拉长页面 */
+.fw-card-eventstatus { align-self: start; }
+.fw-eventstatus-scroll { position: relative; max-height: 220px; overflow-y: auto; }
+.fw-eventstatus-scroll::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28px;
+  background: linear-gradient(transparent, #fff); pointer-events: none;
+}
 @media (prefers-reduced-motion: reduce) { .fw-alert-track.scrolling { animation: none; } }
 .fw-legend { display: flex; flex-wrap: wrap; gap: 6px; }
 .fw-legend-item { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid #e8e8ed; border-radius: 980px; background: #fff; color: #1d1d1f; font-size: 12px; cursor: pointer; transition: opacity .15s ease, background .15s ease; }

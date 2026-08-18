@@ -1,12 +1,18 @@
 <template>
   <div class="sys-admin">
-    <!-- 横向导航栏：在四个子页面间切换（其余功能不变，仅做页面整合） -->
-    <el-tabs v-model="activeTab" class="sys-tabs" @tab-change="onTabChange">
-      <el-tab-pane v-if="canUsers" label="用户管理" name="users" />
-      <el-tab-pane v-if="canRoles" label="角色权限" name="roles" />
-      <el-tab-pane v-if="canLoginLogs" label="登录日志" name="login-logs" />
-      <el-tab-pane v-if="canOperationLogs" label="操作日志" name="operation-logs" />
-    </el-tabs>
+    <Teleport to="#page-nav-target">
+    <div class="page-nav">
+      <div class="head-left">
+        <h1 class="page-title">系统管理</h1>
+        <div class="view-tabs">
+          <button v-if="canUsers" class="view-tab" :class="{ active: activeTab === 'users' }" @click="onTabChange('users')">用户管理</button>
+          <button v-if="canRoles" class="view-tab" :class="{ active: activeTab === 'roles' }" @click="onTabChange('roles')">角色权限</button>
+          <button v-if="canLoginLogs" class="view-tab" :class="{ active: activeTab === 'login-logs' }" @click="onTabChange('login-logs')">登录日志</button>
+          <button v-if="canOperationLogs" class="view-tab" :class="{ active: activeTab === 'operation-logs' }" @click="onTabChange('operation-logs')">操作日志</button>
+        </div>
+      </div>
+    </div>
+    </Teleport>
 
     <div class="sys-body">
       <router-view v-if="hasAny" />
@@ -62,22 +68,6 @@ function onTabChange(name: string | number) {
 .sys-admin {
   display: flex;
   flex-direction: column;
-}
-/* 横向导航栏贴合页面浅色风格 */
-.sys-tabs {
-  margin-bottom: 4px;
-}
-.sys-tabs :deep(.el-tabs__header) {
-  margin: 0 0 18px;
-}
-.sys-tabs :deep(.el-tabs__item) {
-  font-size: 15px;
-  font-weight: 500;
-  height: 44px;
-  line-height: 44px;
-}
-.sys-tabs :deep(.el-tabs__item.is-active) {
-  font-weight: 600;
 }
 .sys-body {
   min-height: 320px;

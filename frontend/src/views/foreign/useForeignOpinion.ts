@@ -54,6 +54,7 @@ export type EffectiveRiskView = {
 export type Keyword = { id: number; word: string; category: string; type: 'monitoring' | 'sensitive'; source: 'system' | 'custom'; weight: number; severity_weight: number; rule_config?: Record<string, unknown>; is_enabled: boolean }
 export type Opinion = {
   id: number; title: string; summary: string; content: string; url: string; source_name_snapshot: string
+  content_type?: string | null; content_type_version?: string | null
   matched_keywords: string[]; published_at?: string | null; collected_at?: string | null
   rule_result?: RiskResult | null; ai_result?: AIResult | null
   analysis_runs?: Array<{ id: number; analyzer_type: string; status: string; started_at?: string | null; finished_at?: string | null; error_message?: string | null }>
@@ -104,6 +105,17 @@ export function zh(value: unknown): string {
   if (value === null || value === undefined || value === '') return '-'
   const key = String(value)
   return ZH_DICT[key] || key
+}
+
+const CONTENT_TYPE_TEXT: Record<string, string> = {
+  complaint: '投诉举报', consultation: '咨询求助', risk_event: '风险事件',
+  public_affairs: '公共事务', news: '新闻', policy: '政策政务',
+  advertising: '广告', entertainment: '娱乐', irrelevant: '无关', unknown: '未分类',
+}
+
+export function contentTypeText(value?: string | null): string {
+  if (!value) return '未分类'
+  return CONTENT_TYPE_TEXT[value] || value
 }
 
 export function formatTime(value?: string | null) {

@@ -4,7 +4,15 @@
       <input v-model="opinionFilters.q" class="input" placeholder="搜索标题、摘要、正文" @keyup.enter="loadOpinions" />
       <select v-model="opinionFilters.source" class="input" @change="loadOpinions">
         <option value="">全部来源</option>
-        <option v-for="source in opinionSources" :key="source" :value="source">{{ source }}</option>
+      <option v-for="source in opinionSources" :key="source" :value="source">{{ source }}</option>
+      </select>
+      <select v-model="opinionFilters.content_type" class="input" @change="loadOpinions">
+        <option value="">全部类型</option>
+        <option value="complaint">投诉举报</option><option value="consultation">咨询求助</option>
+        <option value="risk_event">风险事件</option><option value="public_affairs">公共事务</option>
+        <option value="news">新闻</option><option value="policy">政策政务</option>
+        <option value="advertising">广告</option><option value="entertainment">娱乐</option>
+        <option value="irrelevant">无关</option><option value="unknown">未分类</option>
       </select>
       <input v-model="opinionFilters.keyword" class="input" placeholder="命中关键词" @keyup.enter="loadOpinions" />
       <select v-model="riskFilters.language" class="input" @change="loadOpinions(); loadRisk()">
@@ -48,7 +56,7 @@
     </div>
     <div class="table-wrap tbl-scroll">
       <table>
-        <thead><tr><th>标题</th><th>来源快照</th><th>命中关键词</th><th>发布时间</th><th>采集时间</th><th>当前风险分</th><th>当前等级</th><th>风险来源</th><th>规则 / AI</th><th>情感</th><th>风险类别</th><th>命中风险词</th><th>分析状态</th><th>分析时间</th><th>版本</th><th>操作</th></tr></thead>
+        <thead><tr><th>标题</th><th>来源快照</th><th>命中关键词</th><th>发布时间</th><th>采集时间</th><th>当前风险分</th><th>当前等级</th><th>风险来源</th><th>规则 / AI</th><th>情感</th><th>类型</th><th>命中风险词</th><th>分析状态</th><th>分析时间</th><th>版本</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="row in opinions" :key="row.id" @click="openOpinion(row.id)">
             <td class="title-cell">{{ row.title || '无标题' }}</td>
@@ -64,7 +72,7 @@
               <span class="muted">{{ aiHistoryLabel(row) }}</span>
             </td>
             <td>{{ zh(displayOf(row)?.sentiment) }}</td>
-            <td>{{ zh(ruleOf(row)?.risk_category) }}</td>
+            <td>{{ contentTypeText(row.content_type) }}</td>
             <td>
               <span v-for="term in (riskOf(row.id)?.matched_terms || [])" :key="term.word" class="tag">{{ term.word }}</span>
               <span v-if="!(riskOf(row.id)?.matched_terms || []).length" class="muted">无</span>
@@ -144,7 +152,7 @@ import Pager from '@/components/Pager.vue'
 import BatchAIModal from '@/components/BatchAIModal.vue'
 import {
   type Opinion, type RiskResult,
-  zh, formatTime,
+  zh, formatTime, contentTypeText,
   displayOf, ruleOf, aiHistoryLabel,
   useForeignDetailState,
 } from '@/views/foreign/useForeignOpinion'
@@ -163,7 +171,7 @@ const opinionSize = 20
 const risks = ref<RiskResult[]>([])
 const riskTotal = ref(0)
 
-const opinionFilters = reactive({ q: '', source: '', keyword: '', date_from: '', date_to: '' })
+const opinionFilters = reactive({ q: '', source: '', content_type: '', keyword: '', date_from: '', date_to: '' })
 const riskFilters = reactive({ q: '', source: '', language: '', sentiment: '', risk_level: '', analysis_status: '', date_from: '', date_to: '' })
 
 const riskSource = ref<'current' | 'rule' | 'ai'>(
@@ -198,6 +206,7 @@ async function loadOpinions() {
     const params: Record<string, string | number> = { page: opinionPage.value, size: opinionSize, risk_source: riskSource.value }
     if (opinionFilters.q) params.q = opinionFilters.q
     if (opinionFilters.source) params.source = opinionFilters.source
+    if (opinionFilters.content_type) params.content_type = opinionFilters.content_type
     if (opinionFilters.keyword) params.keyword = opinionFilters.keyword
     if (opinionFilters.date_from) params.date_from = opinionFilters.date_from
     if (opinionFilters.date_to) params.date_to = opinionFilters.date_to

@@ -37,6 +37,7 @@
                   </button>
                 </div>                <div class="detail-meta">
                   <span>来源：{{ detail.source_name_snapshot || '-' }}</span>
+                  <span>类型：{{ contentTypeText(detail.content_type) }}</span>
                   <span>发布时间：{{ formatTime(detail.published_at) }}</span>
                   <span>采集时间：{{ formatTime(detail.collected_at) }}</span>
                 </div>
@@ -68,6 +69,12 @@
                     <span class="meta-item">风险评分 <b :style="{ color: riskColor(displayRiskScore ?? 0) }">{{ displayRiskScore ?? '-' }}</b></span>
                     <span class="meta-sep">·</span>
                     <span class="meta-item">等级 <b>{{ riskLevelZh(displayRiskLevel) }}</b></span>
+                    <span class="meta-sep">·</span>
+                    <span class="meta-item">情感 <b>{{ sentimentText(displayRisk?.sentiment || 'unknown') }}</b></span>
+                    <span class="meta-sep">·</span>
+                    <span class="meta-item">分析时间 <b>{{ formatTime(displayRisk?.evaluated_at) }}</b></span>
+                    <span class="meta-sep">·</span>
+                    <span class="meta-item">版本 <b>{{ displayRisk?.model_version || '-' }}</b></span>
                     <span class="meta-sep" v-if="effectiveRiskReason">·</span>
                     <span class="meta-item" v-if="effectiveRiskReason">依据 <b>{{ effectiveRiskReasonText }}</b></span>
                   </div>
@@ -216,6 +223,7 @@ import { ElMessage } from 'element-plus'
 import api from '@/api'
 import { usePermission } from '@/composables/usePermission'
 import { riskColor, sentimentText, statusPill, statusText, formatTime } from '@/utils/opinion'
+import { contentTypeText } from '@/views/foreign/useForeignOpinion'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -242,6 +250,8 @@ type ForeignOpinionDetail = {
   content: string
   url: string
   source_name_snapshot: string
+  content_type?: string | null
+  content_type_version?: string | null
   matched_keywords: string[]
   published_at?: string | null
   collected_at?: string | null

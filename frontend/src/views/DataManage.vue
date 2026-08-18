@@ -1,76 +1,78 @@
 <template>
   <div class="dm-page">
-    <!-- 横向导航栏：在两个子页面间切换 -->
-    <div class="dm-nav">
-    <div class="segmented" role="tablist">
-      <button
-        v-if="canReadKeyword"
-        class="seg"
-        :class="{ active: tab === 'keywords' }"
-        role="tab"
-        :aria-selected="tab === 'keywords'"
-        @click="switchTab('keywords')"
-      >
-        关键词管理
-      </button>
-      <button
-        v-if="canReadSource"
-        class="seg"
-        :class="{ active: tab === 'sources' }"
-        role="tab"
-        :aria-selected="tab === 'sources'"
-        @click="switchTab('sources')"
-      >
-        数据源管理
-      </button>
-      <button
-        v-if="canReadSource"
-        class="seg"
-        :class="{ active: tab === 'logs' }"
-        role="tab"
-        :aria-selected="tab === 'logs'"
-        @click="switchTab('logs')"
-      >
-        采集日志
-      </button>
-      <button
-        v-if="isSuperuser"
-        class="seg"
-        :class="{ active: tab === 'bocha-leads' }"
-        role="tab"
-        :aria-selected="tab === 'bocha-leads'"
-        @click="switchTab('bocha-leads')"
-      >
-        AI线索审核
-      </button>
-    </div>
+    <Teleport to="#page-nav-target">
+    <div class="page-nav">
+      <div class="head-left">
+        <h1 class="page-title">数据管理</h1>
+        <div class="view-tabs">
+          <button
+            v-if="canReadKeyword"
+            class="view-tab"
+            :class="{ active: tab === 'keywords' }"
+            role="tab"
+            :aria-selected="tab === 'keywords'"
+            @click="switchTab('keywords')"
+          >
+            关键词管理
+          </button>
+          <button
+            v-if="canReadSource"
+            class="view-tab"
+            :class="{ active: tab === 'sources' }"
+            role="tab"
+            :aria-selected="tab === 'sources'"
+            @click="switchTab('sources')"
+          >
+            数据源管理
+          </button>
+          <button
+            v-if="canReadSource"
+            class="view-tab"
+            :class="{ active: tab === 'logs' }"
+            role="tab"
+            :aria-selected="tab === 'logs'"
+            @click="switchTab('logs')"
+          >
+            采集日志
+          </button>
+          <button
+            v-if="isSuperuser"
+            class="view-tab"
+            :class="{ active: tab === 'bocha-leads' }"
+            role="tab"
+            :aria-selected="tab === 'bocha-leads'"
+            @click="switchTab('bocha-leads')"
+          >
+            AI线索审核
+          </button>
+        </div>
+      </div>
 
-    <!-- 国内/外网 二级切换：仅在关键词管理、数据源管理、采集日志子页显示 -->
-    <div
-      v-if="showScopeSwitch"
-      class="segmented sub-segmented"
-      role="tablist"
-    >
-      <button
-        class="seg"
-        :class="{ active: scope === 'domestic' }"
-        role="tab"
-        :aria-selected="scope === 'domestic'"
-        @click="scope = 'domestic'"
-      >
-        国内
-      </button>
-      <button
-        class="seg"
-        :class="{ active: scope === 'foreign' }"
-        role="tab"
-        :aria-selected="scope === 'foreign'"
-        @click="scope = 'foreign'"
-      >
-        外网
-      </button>
+      <template v-if="showScopeSwitch">
+        <div class="head-divider"></div>
+        <div class="scope-switch">
+          <button
+            class="scope-btn"
+            :class="{ active: scope === 'domestic' }"
+            role="tab"
+            :aria-selected="scope === 'domestic'"
+            @click="scope = 'domestic'"
+          >
+            国内
+          </button>
+          <button
+            class="scope-btn"
+            :class="{ active: scope === 'foreign' }"
+            role="tab"
+            :aria-selected="scope === 'foreign'"
+            @click="scope = 'foreign'"
+          >
+            外网
+          </button>
+        </div>
+      </template>
     </div>
-    </div>
+    </Teleport>
 
     <!-- 子页面：keep-alive 保留各自状态（筛选/弹窗等） -->
     <keep-alive>
@@ -170,53 +172,4 @@ function switchTab(t: TabKey) {
 
 <style scoped>
 .dm-page { min-height: 100%; }
-/* primary tabs on the left, domestic/foreign scope switch on the right, same row */
-.dm-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-.segmented {
-  display: inline-flex;
-  max-width: 100%;
-  background: #f0f0f3;
-  border-radius: 12px;
-  padding: 4px;
-  gap: 4px;
-  margin-bottom: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  box-sizing: border-box;
-  -webkit-overflow-scrolling: touch;
-}
-.sub-segmented {
-  margin-left: auto;
-  background: #e8f1fd;
-}
-.seg {
-  flex: 0 0 auto;
-  border: none;
-  background: transparent;
-  padding: 8px 20px;
-  border-radius: 9px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #1d1d1f;
-  cursor: pointer;
-  transition: background-color 0.18s, box-shadow 0.18s, color 0.18s;
-  user-select: none;
-}
-.seg:hover { color: #0071e3; }
-.seg.active {
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  font-weight: 600;
-  color: #1d1d1f;
-}
-.sub-segmented .seg.active {
-  color: #0071e3;
-}
 </style>

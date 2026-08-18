@@ -496,6 +496,31 @@ def test_display_risk_source_switches_without_changing_effective_risk():
         db.close()
 
 
+def test_current_ai_display_uses_the_adopted_ai_result_not_latest_history():
+    db = SessionLocal()
+    suffix = _suffix()
+    try:
+        opinion = _opinion(db, suffix)
+        _rule_result(db, opinion, 20)
+        adopted = _ai_result(db, opinion, 75)
+        latest = _ai_result(db, opinion, 35)
+        opinion.current_risk_source = "ai"
+        opinion.current_risk_score = adopted.risk_score
+        opinion.current_risk_level = "high"
+        opinion.current_ai_result_id = adopted.id
+        opinion.current_risk_updated_at = _utcnow()
+        db.commit()
+
+        view = resolve_one(db, opinion.id)
+        assert view["display_risk"]["source"] == "ai"
+        assert view["display_risk"]["risk_score"] == adopted.risk_score
+        assert view["display_risk"]["model_version"] == adopted.model_version
+        assert view["latest_ai_risk"]["risk_score"] == latest.risk_score
+    finally:
+        _cleanup(db, suffix)
+        db.close()
+
+
 def test_incomplete_ai_result_falls_back_for_display_and_list_filter(client, auth_headers):
     db = SessionLocal()
     suffix = _suffix()

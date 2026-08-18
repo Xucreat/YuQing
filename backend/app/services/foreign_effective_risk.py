@@ -212,8 +212,18 @@ def _display_payload(
 ) -> dict[str, Any]:
     """Return current risk by default, or an explicit comparison source."""
     if source == CURRENT_SOURCE and current is not None:
+        # The persisted current risk only carries score/level/source. Enrich the
+        # display view with sentiment/model_version/evaluated_at from the
+        # underlying rule or AI result so the "当前风险" caliber shows the same
+        # three columns as the rule/AI caliber instead of empty cells.
+        src = current.get("source")
+        base = rule if src == RULE_SOURCE else (ai if src == AI_SOURCE else None)
+        base = base or {}
         return {
             **current,
+            "sentiment": base.get("sentiment"),
+            "model_version": base.get("model_version"),
+            "evaluated_at": base.get("evaluated_at"),
             "fallback": False,
         }
     if source == AI_SOURCE and ai is not None:
@@ -280,6 +290,7 @@ def resolve_effective_risk(
         rule_by_opinion[result.foreign_opinion_id] = result
 
     ai_by_opinion: dict[int, ForeignAIResult] = {}
+    ai_by_id: dict[int, ForeignAIResult] = {}
     if inspector.has_table("foreign_ai_results"):
         for ai_result in db.scalars(
             select(ForeignAIResult)
@@ -289,6 +300,7 @@ def resolve_effective_risk(
             )
             .order_by(ForeignAIResult.id.asc())
         ).all():
+            ai_by_id[ai_result.id] = ai_result
             # Later rows win, so the newest completed AI evaluation is kept as
             # the latest history entry even when is_current was reset.
             # The newest completed result is the latest AI view, regardless of
@@ -325,6 +337,13 @@ def resolve_effective_risk(
         rule_payload = _rule_payload(rule_result)
         ai_payload = _ai_payload(ai_result, None, is_active=False)
         current_payload = current_risk_payload(opinion_by_id.get(opinion_id))
+        display_ai_payload = ai_payload
+        if current_payload is not None and current_payload.get("source") == AI_SOURCE:
+            display_ai_payload = _ai_payload(
+                ai_by_id.get(current_payload.get("ai_result_id")),
+                None,
+                is_active=False,
+            )
         opinion_row = opinion_by_id.get(opinion_id)
         if (
             current_payload is not None
@@ -360,7 +379,7 @@ def resolve_effective_risk(
                 source=risk_source,
                 current=current_payload,
                 rule=rule_payload,
-                ai=ai_payload,
+                ai=display_ai_payload,
             ),
             "rule_risk": rule_payload,
             "latest_ai_risk": ai_payload,

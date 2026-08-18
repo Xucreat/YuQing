@@ -4,6 +4,7 @@ import ElementPlus from "element-plus"
 import "element-plus/dist/index.css"
 import Pager from "./components/Pager.vue"
 import "./styles/theme.css"
+import "./styles/page-nav.css"
 
 import App from "./App.vue"
 import router from "./router"

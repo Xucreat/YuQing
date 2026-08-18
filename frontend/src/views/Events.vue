@@ -1,11 +1,17 @@
 ﻿<template>
   <div class="events" v-loading="loading">
-  <div class="top-scope-switch">
-    <el-radio-group v-model="scope" @change="loadScope">
-      <el-radio-button value="domestic">国内</el-radio-button>
-      <el-radio-button value="foreign">外网</el-radio-button>
-    </el-radio-group>
+  <Teleport to="#page-nav-target">
+  <div class="page-nav">
+    <div class="head-left">
+      <h1 class="page-title">事件中心</h1>
+    </div>
+    <div class="head-divider"></div>
+    <div class="scope-switch">
+      <button class="scope-btn" :class="{ active: scope === 'domestic' }" @click="scope = 'domestic'; loadScope()">国内</button>
+      <button class="scope-btn" :class="{ active: scope === 'foreign' }" @click="scope = 'foreign'; loadScope()">外网</button>
+    </div>
   </div>
+  </Teleport>
     <template v-if="scope === 'domestic'">
   <div class="toolbar">
       <!-- 搜索框（苹果风：内嵌图标 + 毛玻璃 + 蓝色聚焦环） -->
@@ -551,9 +557,8 @@ function openForeignHandle(row: any) {
 
 <style scoped>
 .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; position: relative; z-index: 30; }
-/* 国内/外网切换：右上角绝对定位，容器预留顶部空间避免遮挡工具栏（采集按钮在其下方） */
-.events { position: relative; padding-top: 40px; }
-.top-scope-switch { position: absolute; top: 0; right: 0; z-index: 2; }
+/* 国内/外网切换：改为页面一级横向导航（与舆情列表一致） */
+.events { position: relative; }
 .compact-select, .compact-input { height: 40px; padding: 0 11px; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; background: rgba(245,245,247,0.8); color: #1d1d1f; font: inherit; font-size: 13px; }
 .compact-select { min-width: 112px; }
 .compact-input { width: 92px; }
@@ -796,8 +801,7 @@ table.tbl tbody tr:hover .operation-col { background: #fafafc; }
 }
 @media (max-width: 820px) {
   .events { max-width: 100%; min-width: 0; overflow-x: hidden; padding-top: 0; }
-.top-scope-switch { position: static; display: flex; justify-content: flex-end; margin-bottom: 14px; }
-.foreign-events-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .foreign-events-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
   .toolbar { max-width: 100%; }
 }
 </style>

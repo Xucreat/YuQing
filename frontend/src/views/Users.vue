@@ -1,14 +1,14 @@
 <template>
   <div class="users-page" v-loading="loading">
     <div class="toolbar">
-      <h3 class="section-title">用户管理</h3>
+      <input class="toolbar-search" v-model="searchText" type="text" placeholder="搜索用户名" />
       <button class="btn btn-primary" @click="openAdd">+ 新增用户</button>
     </div>
     <div class="card">
       <table class="tbl">
         <thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>最后登录</th><th>创建时间</th><th>操作</th></tr></thead>
         <tbody>
-          <tr v-for="user in users" :key="user.id">
+          <tr v-for="user in filteredUsers" :key="user.id">
             <td>{{ user.username }}</td>
             <td><span class="pill" :class="rolePill(user.role)">{{ roleText(user.role) }}</span></td>
             <td><span class="pill" :class="user.is_active ? 'pill-green' : 'pill-red'">{{ user.is_active ? '正常' : '禁用' }}</span></td>
@@ -20,7 +20,7 @@
               <button class="btn btn-mini btn-danger" @click="handleDelete(user)" :disabled="user.username === 'admin'">删除</button>
             </td>
           </tr>
-          <tr v-if="!users.length"><td colspan="6" class="empty-row">暂无用户</td></tr>
+          <tr v-if="!filteredUsers.length"><td colspan="6" class="empty-row">暂无用户</td></tr>
         </tbody>
       </table>
     </div>
@@ -67,6 +67,12 @@ const saving = ref(false)
 const passwordSaving = ref(false)
 const userToggleId = ref<number | null>(null)
 const users = ref<UserItem[]>([])
+const searchText = ref('')
+const filteredUsers = computed(() => {
+  const q = searchText.value.trim().toLowerCase()
+  if (!q) return users.value
+  return users.value.filter((u) => u.username.toLowerCase().includes(q))
+})
 const showForm = ref(false)
 const showPassword = ref(false)
 const editingId = ref<number | null>(null)
@@ -154,7 +160,7 @@ onMounted(loadUsers)
 </script>
 
 <style scoped>
-.users-page { min-height: 100%; }.toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }.section-title { font-size: 19px; font-weight: 600; color: #1d1d1f; margin: 0; }.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.05); padding: 6px 6px 14px; overflow: hidden; }.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }.tbl th { text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b; padding: 14px 18px; border-bottom: 1px solid #e8e8ed; }.tbl td { padding: 15px 18px; border-bottom: 1px solid #e8e8ed; color: #1d1d1f; }.actions { white-space: nowrap; }.empty-row td { text-align: center; color: #86868b; padding: 40px 0; }.btn { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; padding: 8px 16px; font-size: 14px; cursor: pointer; }.btn-primary { background: #0071e3; color: #fff; }.btn-primary:disabled { opacity: .55; cursor: default; }.btn-mini { background: transparent; color: #0071e3; padding: 4px 10px; }.btn-mini:hover { background: #e8f1fd; }.btn-danger { color: #ff3b30; }.btn-danger:disabled { opacity: .45; }.pill { display: inline-flex; padding: 3px 10px; border-radius: 999px; font-size: 12px; }.pill-blue { background: #e8f1fd; color: #0071c9; }.pill-green { background: #e8f7ed; color: #1a8e3c; }.pill-red { background: #fff0ef; color: #d93025; }.pill-gray { background: #f0f0f2; color: #6e6e73; }.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 1000; }.modal { background: #fff; border-radius: 8px; padding: 28px 30px; width: 440px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,.15); }.modal h3 { margin: 0 0 20px; font-size: 18px; }.form-group { margin-bottom: 14px; }.form-group label { display: block; font-size: 13px; color: #6e6e73; margin-bottom: 4px; }.input { width: 100%; padding: 10px 12px; border: 1px solid #e8e8ed; border-radius: 6px; font-size: 14px; box-sizing: border-box; background: #f5f5f7; }.form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }.password-row { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #eee; padding-top: 14px; color: #6e6e73; font-size: 13px; }.password-hint { color: #86868b; font-size: 12px; line-height: 1.5; }
+.users-page { min-height: 100%; }.toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }.section-title { font-size: 19px; font-weight: 600; color: #1d1d1f; margin: 0; }.toolbar-search { height: 36px; padding: 0 12px; border: 1px solid #d2d2d7; border-radius: 8px; background: #fff; color: #1d1d1f; font: inherit; font-size: 13px; min-width: 220px; outline: none; transition: border-color .15s ease, box-shadow .15s ease; }.toolbar-search::placeholder { color: #a1a1a6; }.toolbar-search:focus { border-color: #0071e3; box-shadow: 0 0 0 3px rgba(0,113,227,.15); }.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.05); padding: 6px 6px 14px; overflow: hidden; }.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }.tbl th { text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b; padding: 14px 18px; border-bottom: 1px solid #e8e8ed; }.tbl td { padding: 15px 18px; border-bottom: 1px solid #e8e8ed; color: #1d1d1f; }.actions { white-space: nowrap; }.empty-row td { text-align: center; color: #86868b; padding: 40px 0; }.btn { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; padding: 8px 16px; font-size: 14px; cursor: pointer; }.btn-primary { background: #0071e3; color: #fff; }.btn-primary:disabled { opacity: .55; cursor: default; }.btn-mini { background: transparent; color: #0071e3; padding: 4px 10px; }.btn-mini:hover { background: #e8f1fd; }.btn-danger { color: #ff3b30; }.btn-danger:disabled { opacity: .45; }.pill { display: inline-flex; padding: 3px 10px; border-radius: 999px; font-size: 12px; }.pill-blue { background: #e8f1fd; color: #0071c9; }.pill-green { background: #e8f7ed; color: #1a8e3c; }.pill-red { background: #fff0ef; color: #d93025; }.pill-gray { background: #f0f0f2; color: #6e6e73; }.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 1000; }.modal { background: #fff; border-radius: 8px; padding: 28px 30px; width: 440px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,.15); }.modal h3 { margin: 0 0 20px; font-size: 18px; }.form-group { margin-bottom: 14px; }.form-group label { display: block; font-size: 13px; color: #6e6e73; margin-bottom: 4px; }.input { width: 100%; padding: 10px 12px; border: 1px solid #e8e8ed; border-radius: 6px; font-size: 14px; box-sizing: border-box; background: #f5f5f7; }.form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }.password-row { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #eee; padding-top: 14px; color: #6e6e73; font-size: 13px; }.password-hint { color: #86868b; font-size: 12px; line-height: 1.5; }
  .btn:disabled, .is-disabled-action { color: #a1a1a6 !important; background: #f1f1f3 !important; opacity: 1; cursor: not-allowed; pointer-events: none; }.input:disabled { color: #8e8e93; background: #ededf0; border-color: #dedee3; cursor: not-allowed; }.field-hint { display: block; margin-top: 5px; color: #8e8e93; font-size: 12px; }
 @media (max-width: 680px) { .card { overflow-x: auto; }.tbl { min-width: 700px; }.modal { padding: 22px; } }
 </style>

@@ -1,18 +1,29 @@
 <template>
   <div class="alerts" v-loading="loading">
-    <div class="top-scope-switch">
-      <el-radio-group v-model="scope" @change="loadScope">
-        <el-radio-button value="domestic">国内</el-radio-button>
-        <el-radio-button value="foreign">外网</el-radio-button>
-      </el-radio-group>
+    <Teleport to="#page-nav-target">
+    <div class="page-nav">
+      <div class="head-left">
+        <h1 class="page-title">预警中心</h1>
+        <div class="view-tabs">
+          <button class="view-tab" :class="{ active: activeTab === 'rules' }" @click="activeTab = 'rules'">预警规则</button>
+          <button class="view-tab" :class="{ active: activeTab === 'records' }" @click="activeTab = 'records'">预警记录</button>
+        </div>
+      </div>
+      <div class="head-divider"></div>
+      <div class="scope-switch">
+        <button class="scope-btn" :class="{ active: scope === 'domestic' }" @click="scope = 'domestic'; loadScope()">国内</button>
+        <button class="scope-btn" :class="{ active: scope === 'foreign' }" @click="scope = 'foreign'; loadScope()">外网</button>
+      </div>
     </div>
-    <el-tabs v-model="activeTab">
-      <el-tab-pane label="预警规则" name="rules">
+    </Teleport>
+
+    <template v-if="activeTab === 'rules'">
         <div class="scope-bar">
           <el-button @click="loadCurrentScope">刷新</el-button>
           <el-button v-if="scope === 'domestic' && canWriteAlert" type="primary" @click="openDomesticRule(null)">新增规则</el-button>
           <el-button v-if="scope === 'domestic' && canWriteAlert" type="warning" :loading="evaluating" @click="handleEvaluate">执行评估</el-button>
           <el-button v-if="scope === 'foreign' && canForeignRuleWrite" type="primary" @click="openForeignRule(null)">新增外网规则</el-button>
+          <el-button v-if="scope === 'foreign' && canEvaluateForeign" type="warning" :loading="foreignEvaluating" @click="evaluateForeign">执行外网评估</el-button>
           <span v-if="evalResult && scope === 'domestic'" class="eval-result">检查 {{ evalResult.total_checked }} 条，生成 {{ evalResult.alerts_created }} 条</span>
         </div>
 
@@ -39,9 +50,9 @@
             <el-table-column v-if="canForeignRuleWrite" label="操作" width="260"><template #default="{ row }"><el-button link type="primary" @click="openForeignRule(row)">编辑</el-button><el-button link @click="toggleForeignRule(row)">{{ row.is_enabled ? '停用' : '启用' }}</el-button><el-button v-if="!row.is_enabled" link type="danger" @click="deleteForeignRule(row)">删除</el-button></template></el-table-column>
           </el-table>
         </el-card>
-      </el-tab-pane>
+    </template>
 
-      <el-tab-pane label="预警记录" name="records">
+    <template v-else-if="activeTab === 'records'">
         <div class="scope-bar">
           <el-button @click="loadCurrentScope">刷新</el-button>
           <el-button v-if="scope === 'domestic' && canWriteAlert" type="warning" :loading="evaluating" @click="handleEvaluate">执行评估</el-button>
@@ -68,8 +79,7 @@
         <el-card v-else shadow="never" class="table-card"><el-table :data="foreignAlerts" stripe>
           <el-table-column prop="id" label="ID" width="70" /><el-table-column label="触发规则" width="200" show-overflow-tooltip><template #default="{ row }">{{ row.rule_snapshot?.name || '外网预警规则' }}</template></el-table-column><el-table-column label="正式记录风险" width="130"><template #default="{ row }"><el-tag :type="riskTag(row.formal_risk_level || row.risk_level)" size="small">{{ row.formal_risk_score ?? row.risk_score ?? '-' }} 分 · {{ riskText(row.formal_risk_level || row.risk_level) }}</el-tag></template></el-table-column><el-table-column label="关联舆情当前风险" width="150"><template #default="{ row }"><span v-if="row.linked_opinion_current_risk">{{ row.linked_opinion_current_risk.risk_score ?? '-' }} 分 · {{ riskText(row.linked_opinion_current_risk.risk_level) }}</span><span v-else>-</span></template></el-table-column><el-table-column label="关联舆情" min-width="240"><template #default="{ row }"><span v-if="row.foreign_opinion_id" class="nav-link" @click="openForeignOpinion(row.foreign_opinion_id)">{{ row.opinion_title_snapshot || row.title || '-' }}</span><span v-else>{{ row.opinion_title_snapshot || row.title || '-' }}</span></template></el-table-column><el-table-column label="触发原因" min-width="260" show-overflow-tooltip><template #default="{ row }">{{ row.message || row.matched_conditions?.reason || row.title || '-' }}</template></el-table-column><el-table-column label="处置状态" width="110"><template #default="{ row }"><el-tag :type="statusTag(row.disposition_status)" size="small">{{ statusText(row.disposition_status) }}</el-tag></template></el-table-column><el-table-column label="处置备注" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.disposition_note || '-' }}</template></el-table-column><el-table-column label="触发时间" width="180"><template #default="{ row }">{{ formatTime(row.triggered_at) }}</template></el-table-column><el-table-column label="操作" width="100"><template #default="{ row }"><el-button link type="primary" @click="openForeignHandleDialog(row)">处置</el-button></template></el-table-column>
         </el-table></el-card>
-      </el-tab-pane>
-    </el-tabs>
+    </template>
 
     <el-dialog v-model="domesticRuleDialog" :title="domesticEditing ? '编辑规则' : '新增规则'" width="min(600px, calc(100vw - 24px))"><el-form :model="domesticForm" label-width="100px"><el-form-item label="规则名称"><el-input v-model="domesticForm.name" /></el-form-item><el-form-item label="规则类型"><el-select v-model="domesticForm.rule_type"><el-option label="规则风险分" value="risk_score" /><el-option label="AI 风险分（仅候选）" value="ai_risk_score" /></el-select></el-form-item><p v-if="domesticForm.rule_type === 'ai_risk_score'" class="scope-hint">AI 风险分规则只生成待人工复核候选，普通预警评估不会直接创建正式预警。</p><el-form-item label="描述"><el-input v-model="domesticForm.description" type="textarea" /></el-form-item><el-form-item label="风险阈值"><el-input-number v-model="domesticForm.risk_threshold" :min="0" :max="100" /></el-form-item><el-form-item label="关键词匹配"><el-input v-model="domesticForm.keywords" /></el-form-item><el-form-item label="来源过滤"><el-input v-model="domesticForm.sources" /></el-form-item><el-form-item label="建议等级"><el-select v-model="domesticForm.risk_level"><el-option label="严重" value="critical" /><el-option label="高" value="high" /><el-option label="中" value="medium" /><el-option label="低" value="low" /></el-select></el-form-item><el-form-item label="启用"><el-switch v-model="domesticForm.enabled" /></el-form-item></el-form><template #footer><el-button @click="domesticRuleDialog = false">取消</el-button><el-button type="primary" :loading="saving" @click="saveDomesticRule">保存</el-button></template></el-dialog>
     <el-dialog v-model="foreignRuleDialog" :title="foreignEditing ? '编辑外网告警规则' : '新增外网告警规则'" width="min(620px, calc(100vw - 24px))"><el-form :model="foreignForm" label-width="110px"><el-form-item label="规则名称"><el-input v-model="foreignForm.name" /></el-form-item><el-form-item label="规则类型"><el-select v-model="foreignForm.rule_type"><el-option value="risk_score" label="风险分" /><el-option value="risk_level" label="风险等级" /><el-option value="risk_category" label="风险类别" /><el-option value="confirmed_event" label="确认事件" /><el-option value="keyword_combo" label="关键词组合" /><el-option value="ai_risk_score" label="AI 风险分" /></el-select></el-form-item>
@@ -141,6 +151,6 @@ onMounted(() => { normalizeRoute(); loadCurrentScope(); if (activeTab.value === 
 </script>
 
 <style scoped>
-.alerts { height: 100%; position: relative; }.alerts :deep(.el-tabs__header) { padding-right: 190px; }.top-scope-switch { position: absolute; top: 0; right: 0; z-index: 2; }.scope-bar,.filter-card :deep(.el-card__body) { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }.scope-bar { margin: 0 0 16px; }.filter-card { margin-bottom:16px; }.table-card { margin-top:0; }.filter-select { width:160px; }.inline-switch { display:inline-flex; align-items:center; gap:6px; }.pagination { margin-top:16px; display:flex; justify-content:flex-end; }.eval-result { color:#67c23a; }.nav-link { color:#409eff; cursor:pointer; }.detail-pre { max-height:55vh; overflow:auto; white-space:pre-wrap; word-break:break-word; font-size:12px; }.record-filter-select { width:160px; }.scope-hint { margin: 4px 0 0; color:#909399; font-size:12px; line-height:1.5; }
-@media (max-width:600px) { .alerts :deep(.el-tabs__header) { padding-right: 0; padding-top: 48px; }.top-scope-switch { left: 0; right: auto; }.scope-bar,.filter-card :deep(.el-card__body) { align-items:stretch; }.filter-select,.filter-card :deep(.el-date-editor),.scope-bar :deep(.el-button) { width:100%!important; }.scope-bar :deep(.el-radio-group) { width:100%; }.scope-bar :deep(.el-radio-button) { flex:1; }.scope-bar :deep(.el-radio-button__inner) { width:100%; } }
+.alerts { height: 100%; position: relative; }.scope-bar,.filter-card :deep(.el-card__body) { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }.scope-bar { margin: 0 0 16px; }.filter-card { margin-bottom:16px; }.table-card { margin-top:0; }.filter-select { width:160px; }.inline-switch { display:inline-flex; align-items:center; gap:6px; }.pagination { margin-top:16px; display:flex; justify-content:flex-end; }.eval-result { color:#67c23a; }.nav-link { color:#409eff; cursor:pointer; }.detail-pre { max-height:55vh; overflow:auto; white-space:pre-wrap; word-break:break-word; font-size:12px; }.record-filter-select { width:160px; }.scope-hint { margin: 4px 0 0; color:#909399; font-size:12px; line-height:1.5; }
+@media (max-width:600px) { .scope-bar,.filter-card :deep(.el-card__body) { align-items:stretch; }.filter-select,.filter-card :deep(.el-date-editor),.scope-bar :deep(.el-button) { width:100%!important; }.scope-bar :deep(.el-radio-group) { width:100%; }.scope-bar :deep(.el-radio-button) { flex:1; }.scope-bar :deep(.el-radio-button__inner) { width:100%; } }
 </style>

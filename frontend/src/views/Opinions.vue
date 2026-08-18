@@ -1,22 +1,25 @@
 ﻿<template>
   <div class="opinions" v-loading="loading">
-    <div class="opinions-head">
-      <div class="view-tabs">
-        <template v-if="scope === 'domestic'">
-          <button class="view-tab" :class="{ active: activeView === 'opinions' }" @click="activeView = 'opinions'">国内舆情</button>
-          <button v-if="canReviewRead" class="view-tab" :class="{ active: activeView === 'reviews' }" @click="openReviewView">AI 人工复核</button>
-        </template>
-        <template v-else>
-          <button class="view-tab" :class="{ active: foreignView === 'list' }" @click="foreignView = 'list'">国外舆情</button>
-          <button class="view-tab" :class="{ active: foreignView === 'review' }" @click="foreignView = 'review'">AI 人工复核</button>
-        </template>
+    <div class="page-nav">
+      <div class="head-left">
+        <h1 class="page-title">舆情列表</h1>
+        <div class="view-tabs">
+          <template v-if="scope === 'domestic'">
+            <button class="view-tab" :class="{ active: activeView === 'opinions' }" @click="activeView = 'opinions'">国内舆情</button>
+            <button v-if="canReviewRead" class="view-tab" :class="{ active: activeView === 'reviews' }" @click="openReviewView">AI 人工复核</button>
+          </template>
+          <template v-else>
+            <button class="view-tab" :class="{ active: foreignView === 'list' }" @click="foreignView = 'list'">国外舆情</button>
+            <button class="view-tab" :class="{ active: foreignView === 'review' }" @click="foreignView = 'review'">AI 人工复核</button>
+          </template>
+        </div>
       </div>
-      <div class="top-scope-switch">
-        <el-radio-group v-model="scope" @change="onScopeChange">
-          <el-radio-button value="domestic">国内</el-radio-button>
-          <el-radio-button value="foreign">外网</el-radio-button>
-        </el-radio-group>
+      <div class="head-divider"></div>
+      <div class="scope-switch">
+        <button class="scope-btn" :class="{ active: scope === 'domestic' }" @click="scope = 'domestic'; onScopeChange()">国内</button>
+        <button class="scope-btn" :class="{ active: scope === 'foreign' }" @click="scope = 'foreign'; onScopeChange()">外网</button>
       </div>
+      <CollectMenu class="head-collect" />
     </div>
     <template v-if="scope === 'domestic' && activeView === 'opinions'">
     <!-- Filter bar -->
@@ -361,6 +364,7 @@ import ForeignAIReviewView from '@/views/foreign/ForeignAIReviewView.vue'
 import { usePermission } from '@/composables/usePermission'
 import { riskColor, levelPill, levelText, sentimentPill, sentimentText, statusPill, statusText, formatTime } from '@/utils/opinion'
 import { formatAdmissionHits } from '@/utils/admission'
+import CollectMenu from '@/components/CollectMenu.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1299,14 +1303,6 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   margin-bottom: 14px; padding: 12px 16px;
   background: #f5f8ff; border: 1px solid #d6e4ff; border-radius: 14px;
-}
-.view-tabs { display: flex; gap: 4px; }
-.view-tab { border: 1px solid #d2d2d7; background: #fff; color: #515154; border-radius: 10px; padding: 9px 15px; cursor: pointer; font-size: 14px; }
-.view-tab.active { color: #0071e3; border-color: #9bc5f2; background: #eef6ff; font-weight: 600; }
-.opinions-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.top-scope-switch { flex-shrink: 0; }
-@media (max-width: 700px) {
-  .opinions-head { flex-direction: column; align-items: flex-start; gap: 10px; }
 }
 .run-progress { margin-bottom: 14px; padding: 12px 16px; border: 1px solid #cfe1fb; background: #f5f9ff; border-radius: 12px; }
 .run-failed { border-color: #ffd6d2; background: #fff8f7; }

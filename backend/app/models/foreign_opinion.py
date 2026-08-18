@@ -40,6 +40,9 @@ class ForeignOpinion(Base):
     )
     matched_keywords: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    # Content classification is independent from risk_category on the rule result.
+    content_type: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    content_type_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
     duplicate_of_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)

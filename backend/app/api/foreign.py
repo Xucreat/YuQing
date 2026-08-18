@@ -59,6 +59,7 @@ from app.services.foreign_collection_service import (
     _assert_foreign_source_constructable,
     test_foreign_source,
 )
+from app.services.foreign_content_type_service import CONTENT_TYPES
 from app.services.foreign_content_sanitizer import sanitize_foreign_html
 from app.services.foreign_effective_risk import (
     CURRENT_SOURCE,
@@ -935,6 +936,8 @@ def _foreign_opinion_item(row: ForeignOpinion) -> dict[str, Any]:
         "collected_at": row.collected_at.isoformat() if row.collected_at else None,
         "matched_keywords": row.matched_keywords or [],
         "content_hash": row.content_hash,
+        "content_type": row.content_type,
+        "content_type_version": row.content_type_version,
         "duplicate_of_id": row.duplicate_of_id,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "current_risk_source": row.current_risk_source or "rule",
@@ -1015,6 +1018,7 @@ def list_foreign_opinions(
     date_from: str | None = None,
     date_to: str | None = None,
     language: str | None = None,
+    content_type: str | None = None,
     risk_level: str | None = None,
     analysis_status: str | None = None,
     risk_source: RiskSource = Query(CURRENT_SOURCE),
@@ -1037,6 +1041,10 @@ def list_foreign_opinions(
         stmt = stmt.where(
             cast(ForeignOpinion.matched_keywords, String).ilike(f"%{keyword}%")
         )
+    if content_type:
+        if content_type not in CONTENT_TYPES:
+            raise HTTPException(status_code=422, detail="Unsupported foreign content type")
+        stmt = stmt.where(ForeignOpinion.content_type == content_type)
     if language or analysis_status:
         sub = select(ForeignRiskResult.foreign_opinion_id).where(
             ForeignRiskResult.is_current.is_(True)

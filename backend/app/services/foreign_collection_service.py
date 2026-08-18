@@ -16,6 +16,10 @@ from app.collectors.foreign_rss import ForeignRSSCollector, probe_proxy_health
 from app.models.collector_run import CollectorRun
 from app.models.data_source import DataSource
 from app.models.foreign_opinion import ForeignOpinion
+from app.services.foreign_content_type_service import (
+    CONTENT_TYPE_VERSION,
+    classify_foreign_content_type,
+)
 from app.services.foreign_keyword_service import get_foreign_monitoring_keywords
 
 
@@ -289,6 +293,8 @@ def collect_foreign(
         "matched": 0,
         "created": 0,
         "created_ids": [],
+        "updated": 0,
+        "updated_ids": [],
         "duplicate": 0,
         "failed": 0,
         "dry_run": dry_run,
@@ -348,21 +354,67 @@ def collect_foreign(
                     if url:
                         _lock_dedupe_key(db, f"foreign:url:{url}")
                     _lock_dedupe_key(db, f"foreign:content:{digest}")
-                    existing = None
+                    existing_by_url = None
                     if url:
-                        existing = db.scalar(
+                        existing_by_url = db.scalar(
                             select(ForeignOpinion).where(ForeignOpinion.url == url)
                         )
-                    if existing is None:
-                        existing = db.scalar(
-                            select(ForeignOpinion).where(
-                                ForeignOpinion.content_hash == digest
-                            )
+                    existing_by_hash = db.scalar(
+                        select(ForeignOpinion).where(ForeignOpinion.content_hash == digest)
+                    )
+                    existing = existing_by_url or existing_by_hash
+                    if (
+                        existing_by_url is not None
+                        and existing_by_url.content_hash != digest
+                        and (
+                            existing_by_hash is None
+                            or existing_by_hash.id == existing_by_url.id
                         )
+                    ):
+                        decision = classify_foreign_content_type(
+                            title=title,
+                            summary=summary,
+                            content=content,
+                        )
+                        try:
+                            with db.begin_nested():
+                                existing_by_url.title = title
+                                existing_by_url.summary = summary
+                                existing_by_url.content = content
+                                existing_by_url.published_at = item.get("publish_time")
+                                existing_by_url.collected_at = datetime.now(timezone.utc)
+                                existing_by_url.matched_keywords = item.get("matched_keywords") or []
+                                existing_by_url.content_hash = digest
+                                existing_by_url.content_type = decision.content_type
+                                existing_by_url.content_type_version = decision.version
+                                db.flush()
+                        except IntegrityError:
+                            result["duplicate"] += 1
+                            run.duplicate += 1
+                            continue
+                        result["updated"] += 1
+                        result["updated_ids"].append(existing_by_url.id)
+                        continue
                     if existing is not None:
+                        if (
+                            existing.content_type is None
+                            or existing.content_type_version != CONTENT_TYPE_VERSION
+                        ):
+                            decision = classify_foreign_content_type(
+                                title=existing.title,
+                                summary=existing.summary,
+                                content=existing.content,
+                            )
+                            existing.content_type = decision.content_type
+                            existing.content_type_version = decision.version
                         result["duplicate"] += 1
                         run.duplicate += 1
                         continue
+                    content_type = classify_foreign_content_type(
+                        title=title,
+                        summary=summary,
+                        content=content,
+                    )
                     try:
                         with db.begin_nested():
                             opinion = ForeignOpinion(
@@ -377,6 +429,8 @@ def collect_foreign(
                                 collected_at=datetime.now(timezone.utc),
                                 matched_keywords=item.get("matched_keywords") or [],
                                 content_hash=digest,
+                                content_type=content_type.content_type,
+                                content_type_version=content_type.version,
                             )
                             db.add(opinion)
                             db.flush()

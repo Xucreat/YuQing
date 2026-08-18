@@ -1,7 +1,7 @@
 <template>
   <div class="roles-page" v-loading="loading">
     <div class="toolbar">
-      <h3 class="section-title">角色权限</h3>
+      <input class="toolbar-search" v-model="roleSearch" type="text" placeholder="搜索角色名" />
       <button v-if="canWrite" class="btn btn-primary" @click="openCreate">+ 新建角色</button>
     </div>
 
@@ -11,7 +11,7 @@
           <th>角色名</th><th>显示名</th><th>类型</th><th>权限数</th><th>用户数</th><th>状态</th><th>操作</th>
         </tr></thead>
         <tbody>
-          <tr v-for="r in roles" :key="r.id">
+          <tr v-for="r in filteredRoles" :key="r.id">
             <td><span class="role-name">{{ r.name }}</span><span v-if="r.code && r.code !== r.name" class="role-code">{{ r.code }}</span></td>
             <td>{{ r.display_name }}</td>
             <td>
@@ -30,7 +30,7 @@
               <span v-else-if="r.is_system" class="muted">—</span>
             </td>
           </tr>
-          <tr v-if="!roles.length"><td colspan="7" class="empty-row">暂无角色</td></tr>
+          <tr v-if="!filteredRoles.length"><td colspan="7" class="empty-row">暂无角色</td></tr>
         </tbody>
       </table>
     </div>
@@ -151,6 +151,14 @@ const loading = ref(false)
 const saving = ref(false)
 const roleToggleId = ref<number | null>(null)
 const roles = ref<RoleOut[]>([])
+const roleSearch = ref('')
+const filteredRoles = computed(() => {
+  const q = roleSearch.value.trim().toLowerCase()
+  if (!q) return roles.value
+  return roles.value.filter(
+    (r) => r.name.toLowerCase().includes(q) || (r.display_name || '').toLowerCase().includes(q),
+  )
+})
 const catalog = ref<PermissionCatalogItem[]>([])
 
 // 业务模块分组顺序与中文标签（与后端 Permission.group 一一对应）
@@ -361,7 +369,7 @@ onMounted(async () => {
 <style scoped>
 .roles-page { min-height: 100%; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
-.section-title { font-size: 19px; font-weight: 600; color: #1d1d1f; margin: 0; }
+.section-title { font-size: 19px; font-weight: 600; color: #1d1d1f; margin: 0; }.toolbar-search { height: 36px; padding: 0 12px; border: 1px solid #d2d2d7; border-radius: 8px; background: #fff; color: #1d1d1f; font: inherit; font-size: 13px; min-width: 220px; outline: none; transition: border-color .15s ease, box-shadow .15s ease; }.toolbar-search::placeholder { color: #a1a1a6; }.toolbar-search:focus { border-color: #0071e3; box-shadow: 0 0 0 3px rgba(0,113,227,.15); }
 .card { background: #fff; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05); padding: 6px 6px 14px; overflow: hidden; }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.tbl thead th { text-align: left; font-size: 12.5px; font-weight: 600; color: #86868b; padding: 14px 18px; border-bottom: 1px solid #e8e8ed; }

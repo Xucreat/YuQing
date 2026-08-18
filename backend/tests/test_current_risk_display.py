@@ -14,6 +14,7 @@ instances (isinstance guard), so domestic cases use the real ORM model.
 from app.models.foreign_opinion import ForeignOpinion
 from app.models.opinion import Opinion
 from app.services.current_risk import current_risk_payload
+from app.services.foreign_effective_risk import _display_payload
 
 
 def _domestic(**kw):
@@ -84,3 +85,39 @@ def test_payload_serialisable_keys():
     p = current_risk_payload(row)
     for k in ("source", "risk_score", "risk_level", "ai_result_id", "updated_at"):
         assert k in p
+
+
+def test_current_display_enriches_rule_metadata():
+    current = {"source": "rule", "risk_score": 60, "risk_level": "medium"}
+    rule = {
+        "source": "rule",
+        "sentiment": "negative",
+        "model_version": "rule-v2",
+        "evaluated_at": "2026-08-17T01:02:03+00:00",
+    }
+    result = _display_payload(source="current", current=current, rule=rule, ai=None)
+    assert result["sentiment"] == "negative"
+    assert result["model_version"] == "rule-v2"
+    assert result["evaluated_at"] == "2026-08-17T01:02:03+00:00"
+
+
+def test_current_display_enriches_ai_metadata():
+    current = {"source": "ai", "risk_score": 82, "risk_level": "high"}
+    ai = {
+        "source": "ai",
+        "sentiment": "negative",
+        "model_version": "ai-v3",
+        "evaluated_at": "2026-08-17T02:03:04+00:00",
+    }
+    result = _display_payload(source="current", current=current, rule=None, ai=ai)
+    assert result["sentiment"] == "negative"
+    assert result["model_version"] == "ai-v3"
+    assert result["evaluated_at"] == "2026-08-17T02:03:04+00:00"
+
+
+def test_current_display_keeps_shape_when_underlying_result_is_missing():
+    current = {"source": "rule", "risk_score": 20, "risk_level": "low"}
+    result = _display_payload(source="current", current=current, rule=None, ai=None)
+    assert result["sentiment"] is None
+    assert result["model_version"] is None
+    assert result["evaluated_at"] is None
