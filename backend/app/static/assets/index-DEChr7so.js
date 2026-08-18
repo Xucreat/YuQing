@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/Login-p22X1dRB.css","assets/ForeignOpinionDetailModal-01A6RSsL.css","assets/ForeignOpinionListView-Cuc2iDCD.css","assets/EventDispositionDialog-BqTDyHiK.css","assets/ForeignEventsView-CfK3SpOo.css","assets/ForeignWorkspace-B50gHoLE.css","assets/OpinionDetailModal-b6k0u-Lg.css","assets/Dashboard-BxH7gESy.css","assets/Opinions-D0zEW6fJ.css","assets/AiSearch-2wky5dVd.css","assets/OpinionDetail-IdgsExfy.css","assets/Events-C10rf89C.css","assets/EventDetail-CIDoDLOI.css","assets/ForeignEventDetail-hOqUSCuX.css","assets/Alerts-Bs7w3Te0.css","assets/SystemAdmin-Cid_Ga-d.css","assets/Users-7zJJ6Occ.css","assets/Roles-BNtzIy5a.css","assets/LoginLogs-04sttm21.css","assets/OperationLogs-BNk4L1Zy.css","assets/Propagation-Bz0Vfp-U.css","assets/CommandScreen-qXCA06lX.css"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/Login-p22X1dRB.css","assets/ForeignOpinionDetailModal-01A6RSsL.css","assets/ForeignOpinionListView-BisAt9KW.css","assets/EventDispositionDialog-BqTDyHiK.css","assets/ForeignEventsView-CfK3SpOo.css","assets/ForeignWorkspace-B50gHoLE.css","assets/OpinionDetailModal-b6k0u-Lg.css","assets/Dashboard-BxH7gESy.css","assets/Opinions-D0zEW6fJ.css","assets/AiSearch-2wky5dVd.css","assets/OpinionDetail-IdgsExfy.css","assets/Events-C10rf89C.css","assets/EventDetail-CIDoDLOI.css","assets/ForeignEventDetail-hOqUSCuX.css","assets/Alerts-CSIEF5KY.css","assets/SystemAdmin-Cid_Ga-d.css","assets/Users-7zJJ6Occ.css","assets/Roles-BNtzIy5a.css","assets/LoginLogs-04sttm21.css","assets/OperationLogs-BNk4L1Zy.css","assets/Propagation-Bz0Vfp-U.css","assets/CommandScreen-qXCA06lX.css"])))=>i.map(i=>d[i]);
 /**
 * @vue/shared v3.5.41
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
@@ -79808,6 +79808,8 @@ async function pollTask(taskId, opts) {
 const STORAGE_CLEAR = "alert_last_clear_ts";
 const STORAGE_TOAST = "alert_last_toast_ts";
 const STORAGE_DOT = "alert_red_dot";
+const STORAGE_FOREIGN_CLEAR = "foreign_alert_last_clear_ts";
+const STORAGE_FOREIGN_TOAST = "foreign_alert_last_toast_ts";
 const POLL_INTERVAL_MS = 2e4;
 const TOAST_TIMEOUT_MS = 1e4;
 const toast = ref(null);
@@ -79844,6 +79846,28 @@ function setRedDot(v) {
   redDot.value = v;
   localStorage.setItem(STORAGE_DOT, v ? "1" : "0");
 }
+function loadForeignClearTs() {
+  let v = localStorage.getItem(STORAGE_FOREIGN_CLEAR);
+  if (!v) {
+    v = nowIso();
+    localStorage.setItem(STORAGE_FOREIGN_CLEAR, v);
+  }
+  return v;
+}
+function loadForeignToastTs() {
+  let v = localStorage.getItem(STORAGE_FOREIGN_TOAST);
+  if (!v) {
+    v = nowIso();
+    localStorage.setItem(STORAGE_FOREIGN_TOAST, v);
+  }
+  return v;
+}
+function saveForeignClearTs(v) {
+  localStorage.setItem(STORAGE_FOREIGN_CLEAR, v);
+}
+function saveForeignToastTs(v) {
+  localStorage.setItem(STORAGE_FOREIGN_TOAST, v);
+}
 function useAlertNotifier() {
   const router = useRouter();
   const route = useRoute();
@@ -79852,15 +79876,34 @@ function useAlertNotifier() {
     try {
       const since = loadClearTs();
       const { data } = await api.get("/alerts/unread", { params: { since } });
-      const items = data.items || [];
+      const items = (data.items || []).map((i) => ({ ...i, scope: "domestic" }));
       unreadCount.value = data.total || 0;
       const lastToast = new Date(loadToastTs()).getTime();
       const fresh = items.filter((i) => new Date(i.created_at).getTime() > lastToast);
-      if (fresh.length > 0 && !toast.value) {
-        const maxTs = Math.max(...fresh.map((i) => new Date(i.created_at).getTime()));
-        saveToastTs(new Date(maxTs).toISOString());
-        toast.value = { items: fresh.slice(0, 3), count: fresh.length };
-        armDismiss();
+      let foreignFresh = [];
+      try {
+        const fSince = loadForeignClearTs();
+        const fResp = await api.get("/foreign/alerts/unread", { params: { since: fSince } });
+        const fItems = fResp.data.items || [];
+        unreadCount.value = (unreadCount.value || 0) + (fResp.data.total || 0);
+        const fLastToast = new Date(loadForeignToastTs()).getTime();
+        foreignFresh = fItems.filter((i) => new Date(i.created_at).getTime() > fLastToast);
+      } catch {
+      }
+      if (!toast.value) {
+        const merged = [...fresh, ...foreignFresh].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 3);
+        if (merged.length > 0) {
+          if (fresh.length > 0) {
+            const maxTs = Math.max(...fresh.map((i) => new Date(i.created_at).getTime()));
+            saveToastTs(new Date(maxTs).toISOString());
+          }
+          if (foreignFresh.length > 0) {
+            const fMaxTs = Math.max(...foreignFresh.map((i) => new Date(i.created_at).getTime()));
+            saveForeignToastTs(new Date(fMaxTs).toISOString());
+          }
+          toast.value = { items: merged, count: merged.length };
+          armDismiss();
+        }
       }
     } catch {
     }
@@ -79878,9 +79921,10 @@ function useAlertNotifier() {
     if (!viewed) setRedDot(true);
   }
   function viewAlerts() {
+    const scope = toast.value?.items?.[0]?.scope;
     dismissToast(true);
     markVisited();
-    router.push("/alerts?tab=records");
+    router.push(scope === "foreign" ? "/alerts?tab=records&scope=foreign" : "/alerts?tab=records");
   }
   function laterAlerts() {
     dismissToast(false);
@@ -79889,6 +79933,8 @@ function useAlertNotifier() {
     const now = nowIso();
     saveClearTs(now);
     saveToastTs(now);
+    saveForeignClearTs(now);
+    saveForeignToastTs(now);
     setRedDot(false);
     unreadCount.value = 0;
   }
@@ -86828,25 +86874,25 @@ const router = createRouter({
     {
       path: "/login",
       name: "login",
-      component: () => __vitePreload(() => import('./Login-kkzOUb6M.js'),true?__vite__mapDeps([0]):void 0),
+      component: () => __vitePreload(() => import('./Login-DfBTVmfS.js'),true?__vite__mapDeps([0]):void 0),
       meta: { requiresAuth: false }
     },
     {
       path: "/dashboard",
       name: "dashboard",
-      component: () => __vitePreload(() => import('./Dashboard-CQzRuWan.js'),true?__vite__mapDeps([1,2,3,4,5,6,7]):void 0),
+      component: () => __vitePreload(() => import('./Dashboard-C10XS0TR.js'),true?__vite__mapDeps([1,2,3,4,5,6,7]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/opinions",
       name: "opinions",
-      component: () => __vitePreload(() => import('./Opinions-DwL6NYy-.js'),true?__vite__mapDeps([6,1,2,8]):void 0),
+      component: () => __vitePreload(() => import('./Opinions-Bt9V-Hl4.js'),true?__vite__mapDeps([6,1,2,8]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/foreign",
       name: "foreign",
-      component: () => __vitePreload(() => import('./ForeignWorkspace-BVbv7hsU.js'),true?__vite__mapDeps([1,2,3,4,5]):void 0),
+      component: () => __vitePreload(() => import('./ForeignWorkspace-DRFEpjzH.js'),true?__vite__mapDeps([1,2,3,4,5]):void 0),
       meta: { requiresAuth: true, module: ["keywords", "sources", "foreign"] }
     },
     { path: "/foreign/alerts", redirect: { path: "/alerts", query: { tab: "records", scope: "foreign" } } },
@@ -86855,55 +86901,55 @@ const router = createRouter({
     {
       path: "/ai-search",
       name: "ai-search",
-      component: () => __vitePreload(() => import('./AiSearch-DNsYVaqB.js'),true?__vite__mapDeps([9]):void 0),
+      component: () => __vitePreload(() => import('./AiSearch-CekJVPkb.js'),true?__vite__mapDeps([9]):void 0),
       meta: { requiresAuth: true, permission: "ai:search" }
     },
     {
       path: "/ai-search/web",
       name: "ai-search-web",
-      component: () => __vitePreload(() => import('./AiSearch-DNsYVaqB.js'),true?__vite__mapDeps([9]):void 0),
+      component: () => __vitePreload(() => import('./AiSearch-CekJVPkb.js'),true?__vite__mapDeps([9]):void 0),
       meta: { requiresAuth: true, permission: "ai:search" }
     },
     {
       path: "/ai-search/ai",
       name: "ai-search-ai",
-      component: () => __vitePreload(() => import('./AiSearch-DNsYVaqB.js'),true?__vite__mapDeps([9]):void 0),
+      component: () => __vitePreload(() => import('./AiSearch-CekJVPkb.js'),true?__vite__mapDeps([9]):void 0),
       meta: { requiresAuth: true, permission: "ai:search" }
     },
     {
       path: "/ai-search/anspire",
       name: "ai-search-anspire",
-      component: () => __vitePreload(() => import('./AiSearch-DNsYVaqB.js'),true?__vite__mapDeps([9]):void 0),
+      component: () => __vitePreload(() => import('./AiSearch-CekJVPkb.js'),true?__vite__mapDeps([9]):void 0),
       meta: { requiresAuth: true, permission: "ai:search" }
     },
     {
       path: "/opinion/:id",
       name: "opinion-detail",
-      component: () => __vitePreload(() => import('./OpinionDetail-CtZYgmNj.js'),true?__vite__mapDeps([10]):void 0),
+      component: () => __vitePreload(() => import('./OpinionDetail-BYNuq89h.js'),true?__vite__mapDeps([10]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/events",
       name: "events",
-      component: () => __vitePreload(() => import('./Events-DR1tnlo3.js'),true?__vite__mapDeps([3,4,11]):void 0),
+      component: () => __vitePreload(() => import('./Events-C-K1ohov.js'),true?__vite__mapDeps([3,4,11]):void 0),
       meta: { requiresAuth: true, permission: "events:read" }
     },
     {
       path: "/event/:id",
       name: "event-detail",
-      component: () => __vitePreload(() => import('./EventDetail-BGbCxvL4.js'),true?__vite__mapDeps([6,3,12]):void 0),
+      component: () => __vitePreload(() => import('./EventDetail-CCvvbPLf.js'),true?__vite__mapDeps([6,3,12]):void 0),
       meta: { requiresAuth: true, permission: "events:read" }
     },
     {
       path: "/foreign/event/:id",
       name: "foreign-event-detail",
-      component: () => __vitePreload(() => import('./ForeignEventDetail-s-2CXPay.js'),true?__vite__mapDeps([3,1,13]):void 0),
+      component: () => __vitePreload(() => import('./ForeignEventDetail-OiuwhhT0.js'),true?__vite__mapDeps([3,1,13]):void 0),
       meta: { requiresAuth: true, permission: "foreign:events:read" }
     },
     {
       path: "/alerts",
       name: "alerts",
-      component: () => __vitePreload(() => import('./Alerts-D--IqyV9.js'),true?__vite__mapDeps([6,1,14]):void 0),
+      component: () => __vitePreload(() => import('./Alerts-IazmfdDN.js'),true?__vite__mapDeps([6,1,14]):void 0),
       meta: { requiresAuth: true, permission: "alerts:read" }
     },
     // 数据管理聚合页：进入门槛放宽为「关键词/数据源/采集 任一模块权限」即可（module 门禁）。
@@ -86923,7 +86969,7 @@ const router = createRouter({
     {
       path: "/system",
       name: "system",
-      component: () => __vitePreload(() => import('./SystemAdmin-CVYM4TDF.js'),true?__vite__mapDeps([15]):void 0),
+      component: () => __vitePreload(() => import('./SystemAdmin-CVNRY4rG.js'),true?__vite__mapDeps([15]):void 0),
       meta: { requiresAuth: true },
       // 进入系统时按权限分流到首个可见子页；无系统权限则回退首页。
       redirect: (to) => {
@@ -86938,25 +86984,25 @@ const router = createRouter({
         {
           path: "users",
           name: "users",
-          component: () => __vitePreload(() => import('./Users-BtBxPQd7.js'),true?__vite__mapDeps([16]):void 0),
+          component: () => __vitePreload(() => import('./Users-D8MpVa0c.js'),true?__vite__mapDeps([16]):void 0),
           meta: { requiresAuth: true, module: "users" }
         },
         {
           path: "roles",
           name: "roles",
-          component: () => __vitePreload(() => import('./Roles-BJqzrltj.js'),true?__vite__mapDeps([17]):void 0),
+          component: () => __vitePreload(() => import('./Roles-BjFIKlJ-.js'),true?__vite__mapDeps([17]):void 0),
           meta: { requiresAuth: true, module: "roles" }
         },
         {
           path: "login-logs",
           name: "login-logs",
-          component: () => __vitePreload(() => import('./LoginLogs-DIweIjKc.js'),true?__vite__mapDeps([18]):void 0),
+          component: () => __vitePreload(() => import('./LoginLogs-BPbOWwrO.js'),true?__vite__mapDeps([18]):void 0),
           meta: { requiresAuth: true, module: "login_logs" }
         },
         {
           path: "operation-logs",
           name: "operation-logs",
-          component: () => __vitePreload(() => import('./OperationLogs-BWj7WeAO.js'),true?__vite__mapDeps([19]):void 0),
+          component: () => __vitePreload(() => import('./OperationLogs-CXZzsNlw.js'),true?__vite__mapDeps([19]):void 0),
           meta: { requiresAuth: true, module: "audit_logs" }
         }
       ]
@@ -86969,14 +87015,14 @@ const router = createRouter({
     {
       path: "/propagation",
       name: "propagation",
-      component: () => __vitePreload(() => import('./Propagation-D94Js5Vi.js'),true?__vite__mapDeps([20]):void 0),
+      component: () => __vitePreload(() => import('./Propagation-CiPVLjuW.js'),true?__vite__mapDeps([20]):void 0),
       meta: { requiresAuth: true, permission: "propagation:read" }
     },
     {
       // 指挥大屏：独立全屏布局（不套 AppLayout 侧边栏），复用现有认证机制
       path: "/command-screen",
       name: "command-screen",
-      component: () => __vitePreload(() => import('./CommandScreen-D60AiDf5.js'),true?__vite__mapDeps([21]):void 0),
+      component: () => __vitePreload(() => import('./CommandScreen-ByDddoo6.js'),true?__vite__mapDeps([21]):void 0),
       meta: { requiresAuth: true, layout: "fullscreen" }
     }
   ]

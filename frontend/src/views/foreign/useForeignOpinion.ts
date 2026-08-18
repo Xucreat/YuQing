@@ -55,6 +55,7 @@ export type Keyword = { id: number; word: string; category: string; type: 'monit
 export type Opinion = {
   id: number; title: string; summary: string; content: string; url: string; source_name_snapshot: string
   content_type?: string | null; content_type_version?: string | null
+  sentiment_override?: string | null
   matched_keywords: string[]; published_at?: string | null; collected_at?: string | null
   rule_result?: RiskResult | null; ai_result?: AIResult | null
   analysis_runs?: Array<{ id: number; analyzer_type: string; status: string; started_at?: string | null; finished_at?: string | null; error_message?: string | null }>
@@ -165,6 +166,13 @@ export function aiHistoryLabel(row: EffectiveRiskView | null | undefined) {
   if (!ai) return '未做 AI 研判'
   const score = ai.risk_score === null || ai.risk_score === undefined ? '-' : ai.risk_score
   return `AI ${score}（历史）`
+}
+
+// 情感展示优先级：人工覆盖(sentiment_override) → 当前查看口径对应的规则/AI 情感 → unknown
+export function displaySentiment(row: Opinion | null | undefined): string {
+  if (row?.sentiment_override) return row.sentiment_override
+  const base = displayOf(row)?.sentiment
+  return base || 'unknown'
 }
 
 // 详情弹窗的打开状态（列表与复核两处共用，各自实例持有）。

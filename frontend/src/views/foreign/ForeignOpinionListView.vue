@@ -54,11 +54,40 @@
       </div>
       <p v-if="(aiBatchRun.failures || []).length" class="ai-batch-inline-error">失败 {{ aiBatchRun.failures.length }} 条：{{ (aiBatchRun.failures || []).map((item: any) => item.error || item.message || item.code || '未知错误').slice(0, 2).join('；') }}</p>
     </div>
+    <div v-if="selectedIds.size" class="batch-bar">
+      <span class="batch-count">已选择 <b>{{ selectedIds.size }}</b> 条</span>
+      <el-popover
+        v-if="canEditForeignSentiment"
+        trigger="manual"
+        :visible="batchPopVisible"
+        placement="bottom"
+        :width="132"
+        popper-class="sent-popper"
+      >
+        <template #reference>
+          <button class="btn btn-primary" :disabled="bulkDeleting || selectedIds.size === 0" @click.stop="toggleBatchSentPop">修改情感</button>
+        </template>
+        <div class="sent-pop">
+          <button
+            v-for="opt in sentimentOptions"
+            :key="opt.value"
+            type="button"
+            class="sent-opt"
+            :class="sentimentPill(opt.value)"
+            @click.stop="batchSetForeignSentiment(opt.value)"
+          >{{ opt.label }}</button>
+        </div>
+      </el-popover>
+      <button v-if="canDeleteForeignOpinion" class="btn btn-danger" :disabled="bulkDeleting" @click="handleBatchDelete">删除</button>
+      <button class="btn btn-ghost" @click="clearSelection">取消选择</button>
+    </div>
     <div class="table-wrap tbl-scroll">
       <table>
-        <thead><tr><th>标题</th><th>来源快照</th><th>命中关键词</th><th>发布时间</th><th>采集时间</th><th>当前风险分</th><th>当前等级</th><th>风险来源</th><th>规则 / AI</th><th>情感</th><th>类型</th><th>命中风险词</th><th>分析状态</th><th>分析时间</th><th>版本</th><th>操作</th></tr></thead>
+        <thead><tr><th class="col-check"><input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" aria-label="全选" /></th><th>ID</th><th>标题</th><th>来源快照</th><th>命中关键词</th><th>发布时间</th><th>采集时间</th><th>当前风险分</th><th>当前等级</th><th>风险来源</th><th>规则 / AI</th><th>情感</th><th>类型</th><th>命中风险词</th><th>分析状态</th><th>分析时间</th><th>版本</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="row in opinions" :key="row.id" @click="openOpinion(row.id)">
+            <td class="col-check" @click.stop><input type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row.id)" @click.stop aria-label="选择" /></td>
+            <td>{{ row.id }}</td>
             <td class="title-cell">{{ row.title || '无标题' }}</td>
             <td>{{ row.source_name_snapshot }}</td>
             <td><span v-for="word in row.matched_keywords" :key="word" class="tag">{{ word }}</span></td>
@@ -71,7 +100,35 @@
               <span>规则 {{ ruleOf(row)?.risk_score ?? '-' }}</span>
               <span class="muted">{{ aiHistoryLabel(row) }}</span>
             </td>
-            <td>{{ zh(displayOf(row)?.sentiment) }}</td>
+            <td class="col-center">
+              <el-popover
+                v-if="canEditForeignSentiment"
+                trigger="manual"
+                :visible="sentPopRowId === row.id"
+                placement="bottom"
+                :width="132"
+                popper-class="sent-popper"
+              >
+                <template #reference>
+                  <span class="pill editable" :class="sentimentPill(displaySentiment(row))" @click.stop="toggleSentPop(row)">
+                    <span class="dot"></span>{{ sentimentLabel(row) }}
+                  </span>
+                </template>
+                <div class="sent-pop">
+                  <button
+                    v-for="opt in sentimentOptions"
+                    :key="opt.value"
+                    type="button"
+                    class="sent-opt"
+                    :class="[sentimentPill(opt.value), { active: displaySentiment(row) === opt.value }]"
+                    @click.stop="chooseForeignSentiment(row, opt.value)"
+                  >{{ opt.label }}</button>
+                </div>
+              </el-popover>
+              <span v-else class="pill" :class="sentimentPill(displaySentiment(row))">
+                <span class="dot"></span>{{ sentimentLabel(row) }}
+              </span>
+            </td>
             <td>{{ contentTypeText(row.content_type) }}</td>
             <td>
               <span v-for="term in (riskOf(row.id)?.matched_terms || [])" :key="term.word" class="tag">{{ term.word }}</span>
@@ -82,9 +139,10 @@
             <td>{{ displayOf(row)?.model_version || '-' }}</td>
             <td class="actions">
               <button class="link-btn" :disabled="!canAnalyzeRisk" @click.stop="analyzeRisk(row.id)">{{ ruleOf(row) ? '重新分析' : '分析' }}</button>
+              <button v-if="canDeleteForeignOpinion" class="link-btn danger" :disabled="deleting" @click.stop="handleDelete(row)">删除</button>
             </td>
           </tr>
-          <tr v-if="!opinions.length"><td colspan="16" class="empty">暂无外网舆情</td></tr>
+          <tr v-if="!opinions.length"><td colspan="18" class="empty">暂无外网舆情</td></tr>
         </tbody>
       </table>
     </div>
@@ -150,10 +208,11 @@ import { usePermission } from '@/composables/usePermission'
 import ForeignOpinionDetailModal from '@/views/foreign/ForeignOpinionDetailModal.vue'
 import Pager from '@/components/Pager.vue'
 import BatchAIModal from '@/components/BatchAIModal.vue'
+import { sentimentPill, sentimentText } from '@/utils/opinion'
 import {
   type Opinion, type RiskResult,
   zh, formatTime, contentTypeText,
-  displayOf, ruleOf, aiHistoryLabel,
+  displayOf, ruleOf, aiHistoryLabel, displaySentiment,
   useForeignDetailState,
 } from '@/views/foreign/useForeignOpinion'
 
@@ -199,6 +258,8 @@ const canAnalyzeRisk = hasPermission('foreign:risk:analyze')
 const canAnalyzeAI = hasPermission('foreign:ai:analyze')
 const canReadAIBatches = hasPermission('foreign:ai:batch:read')
 const canCancelAIBatch = hasPermission('foreign:ai:batch:cancel')
+const canDeleteForeignOpinion = hasPermission('foreign:opinions:delete')
+const canEditForeignSentiment = hasPermission('foreign:opinions:write')
 
 async function loadOpinions() {
   loading.value = true
@@ -442,8 +503,152 @@ function onForeignRefresh() {
   loadRisk()
 }
 
+// ===== 选择 / 批量操作 / 删除 / 情感覆盖 =====
+const selectedIds = ref<Set<number>>(new Set())
+const deleting = ref(false)
+const bulkDeleting = ref(false)
+const sentPopRowId = ref<number | null>(null)
+const batchPopVisible = ref(false)
+
+const isAllSelected = computed(() =>
+  opinions.value.length > 0 && opinions.value.every((r) => selectedIds.value.has(r.id)),
+)
+function toggleSelect(id: number) {
+  const s = new Set(selectedIds.value)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
+  selectedIds.value = s
+}
+function toggleSelectAll(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  const s = new Set(selectedIds.value)
+  if (checked) opinions.value.forEach((r) => s.add(r.id))
+  else opinions.value.forEach((r) => s.delete(r.id))
+  selectedIds.value = s
+}
+function clearSelection() {
+  selectedIds.value = new Set()
+}
+
+async function handleDelete(row: any) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除外网舆情「${row.title || '无标题'}」？此操作不可恢复。关联的外网正式预警将解除关联但保留快照。`,
+      '删除确认',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  deleting.value = true
+  try {
+    await api.delete(`/foreign/opinions/${row.id}`)
+    ElMessage.success('已删除')
+    const s = new Set(selectedIds.value)
+    s.delete(row.id)
+    selectedIds.value = s
+    await loadOpinions()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '删除失败')
+  } finally {
+    deleting.value = false
+  }
+}
+
+async function handleBatchDelete() {
+  if (!selectedIds.value.size) return
+  try {
+    await ElMessageBox.confirm(
+      `确认批量删除选中的 ${selectedIds.value.size} 条外网舆情？关联预警将解除关联但保留快照。`,
+      '批量删除确认',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  bulkDeleting.value = true
+  try {
+    const ids = [...selectedIds.value].slice(0, 200)
+    await api.post('/foreign/opinions/batch-delete', { ids })
+    ElMessage.success(`已删除 ${ids.length} 条`)
+    clearSelection()
+    await loadOpinions()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '批量删除失败')
+  } finally {
+    bulkDeleting.value = false
+  }
+}
+
+// ===== 情感人工覆盖（行内下拉，参考国内舆情样式）=====
+const sentimentOptions = [
+  { value: 'positive', label: '正面' },
+  { value: 'neutral', label: '中性' },
+  { value: 'negative', label: '负面' },
+] as const
+
+function sentimentLabel(row: any): string {
+  const v = displaySentiment(row)
+  return v && v !== 'unknown' ? sentimentText(v) : '未标注'
+}
+function closeSentPop() {
+  sentPopRowId.value = null
+  batchPopVisible.value = false
+}
+function toggleSentPop(row: any) {
+  sentPopRowId.value = sentPopRowId.value === row.id ? null : row.id
+  batchPopVisible.value = false
+}
+function toggleBatchSentPop() {
+  batchPopVisible.value = !batchPopVisible.value
+  sentPopRowId.value = null
+}
+async function chooseForeignSentiment(row: any, value: string) {
+  if (!canEditForeignSentiment.value) return
+  const cur = displaySentiment(row)
+  closeSentPop()
+  if (cur === value) return // 未变化，无需请求
+  const oldVal = row.sentiment_override
+  row.sentiment_override = value // 乐观更新（displaySentiment 优先返回 override）
+  try {
+    await api.put(`/foreign/opinions/${row.id}/sentiment`, { sentiment: value })
+    ElMessage.success('情感已更新')
+  } catch (err: any) {
+    row.sentiment_override = oldVal // 失败回滚
+    ElMessage.error(err?.response?.data?.detail || '情感更新失败')
+  }
+}
+async function batchSetForeignSentiment(value: string) {
+  if (!canEditForeignSentiment.value || selectedIds.value.size === 0) return
+  const ids = [...selectedIds.value].slice(0, 200)
+  closeSentPop()
+  const oldMap: Record<number, string | null> = {}
+  opinions.value.forEach((r: any) => {
+    if (ids.includes(r.id)) {
+      oldMap[r.id] = r.sentiment_override
+      r.sentiment_override = value
+    }
+  })
+  try {
+    await api.post('/foreign/opinions/batch-sentiment', { ids, sentiment: value })
+    ElMessage.success(`已更新 ${ids.length} 条情感`)
+  } catch (err: any) {
+    opinions.value.forEach((r: any) => {
+      if (oldMap[r.id] !== undefined) r.sentiment_override = oldMap[r.id]
+    })
+    ElMessage.error(err?.response?.data?.detail || '批量修改情感失败')
+  }
+}
+function onDocClick(e: MouseEvent) {
+  if (sentPopRowId.value == null && !batchPopVisible.value) return
+  const t = e.target as HTMLElement | null
+  if (t && t.closest('.sent-pop')) return
+  closeSentPop()
+}
+
 onMounted(() => {
   window.addEventListener('foreign-data-refresh', onForeignRefresh)
+  document.addEventListener('click', onDocClick)
   loadOpinions()
   loadRisk()
   const runId = localStorage.getItem('foreign-ai-batch-run-id')
@@ -452,6 +657,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (aiBatchTimer) clearTimeout(aiBatchTimer)
   window.removeEventListener('foreign-data-refresh', onForeignRefresh)
+  document.removeEventListener('click', onDocClick)
 })
 
 defineExpose({ loadOpinions, loadRisk })
@@ -548,6 +754,24 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 .alert-action-history { display: grid; gap: 8px; margin-top: 12px; }
 .alert-action-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f3; }
 .event-opinion { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid #f0f0f3; }
+
+/* ===== 情感胶囊 + 行内下拉气泡（参考国内舆情样式） ===== */
+.col-center { text-align: center; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 980px; font-size: 12.5px; font-weight: 500; line-height: 1.2; white-space: nowrap; }
+.pill-red { background: rgba(255,59,48,0.10); color: #ff3b30; }
+.pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
+.pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.pill.editable { cursor: pointer; position: relative; transition: box-shadow 0.15s ease, transform 0.12s ease; }
+.pill.editable:hover { box-shadow: 0 0 0 2px rgba(0,113,227,0.35); }
+.pill.editable::after { content: "✎"; margin-left: 6px; font-size: 11px; opacity: 0.55; }
+.sent-pop { display: flex; flex-direction: column; gap: 6px; padding: 4px; }
+.sent-opt { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 8px 12px; border: 1px solid transparent; border-radius: 980px; font-size: 13px; font-weight: 500; cursor: pointer; background: transparent; color: #1d1d1f; transition: background-color 0.15s ease, border-color 0.15s ease; }
+.sent-opt:hover { background: #f0f0f3; }
+.sent-opt.pill-red { background: rgba(255,59,48,0.10); color: #ff3b30; }
+.sent-opt.pill-gray { background: rgba(110,110,115,0.12); color: #6e6e73; }
+.sent-opt.pill-green { background: rgba(52,199,89,0.12); color: #1a8e3c; }
+.sent-opt.active { border-color: rgba(0,0,0,0.25); box-shadow: 0 0 0 2px rgba(0,113,227,0.25); }
 /* ===== 外网 Dashboard：苹果风卡片（对齐驾驶舱视觉） ===== */
 .tabs { display: flex; align-items: center; gap: 0; margin-bottom: 18px; border-bottom: 1px solid #e8e8ed; flex-wrap: wrap; }
 .tab { border: 0; background: transparent; padding: 12px 20px; color: #909399; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 14px; font-weight: 500; transition: color .15s ease, border-color .15s ease; }
@@ -626,6 +850,27 @@ tbody tr:hover { background: #fafafc; cursor: pointer; }.title-cell { min-width:
 /* 规则 / AI 双值单元格 */
 .dual-cell { display: inline-flex; flex-direction: column; gap: 2px; align-items: flex-start; line-height: 1.4; }
 .dual-cell .muted { font-size: 12px; }
+/* ===== 批量操作栏：对齐国内舆情样式 ===== */
+.batch-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 12px 16px;
+  background: #f5f8ff; border: 1px solid #d6e4ff; border-radius: 14px;
+}
+.batch-count { font-size: 14px; color: #1d1d1f; }
+.batch-count b { color: #0071e3; }
+.batch-bar .btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: none; border-radius: 980px;
+  padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+.batch-bar .btn:disabled { opacity: 0.5; cursor: default; }
+.batch-bar .btn-primary { background: #0071e3; color: #fff; }
+.batch-bar .btn-primary:hover:not(:disabled) { background: #0077ed; }
+.batch-bar .btn-danger { background: #ff3b30; color: #fff; }
+.batch-bar .btn-danger:hover:not(:disabled) { background: #e6352b; }
+.batch-bar .btn-ghost { background: #e8e8ed; color: #1d1d1f; }
+.batch-bar .btn-ghost:hover:not(:disabled) { background: #dededf; }
 
 @media (max-width: 1100px) { .fw-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .fw-dash-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 820px) { .fw-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fw-dash-grid { grid-template-columns: 1fr; } .fw-dash-grid > .fw-col-1, .fw-dash-grid > .fw-col-2 { grid-column: 1; } }

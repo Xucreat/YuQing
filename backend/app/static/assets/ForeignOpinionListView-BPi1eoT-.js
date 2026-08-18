@@ -1,5 +1,6 @@
-import { d as defineComponent, z as usePermission, C as onMounted, y as resolveComponent, o as openBlock, c as createElementBlock, a as createBaseVNode, n as normalizeClass, m as createVNode, p as withCtx, H as unref, q as createBlock, e as createTextVNode, s as createCommentVNode, F as Fragment, i as renderList, w as withDirectives, O as vModelCheckbox, t as toDisplayString, S as _sfc_main$3, T as isRef, r as ref, j as computed, g as api, Q as ElMessageBox, E as ElMessage, _ as _export_sfc, f as reactive, P as withModifiers, N as vModelSelect, v as vModelText, L as useRoute, h as useRouter, G as onBeforeUnmount, B as resolveDirective, b as withKeys, U as createStaticVNode, k as normalizeStyle } from './index-CNz59AKK.js';
-import { z as zh, f as formatTime, F as ForeignOpinionDetailModal, u as useForeignDetailState, d as displayOf, r as ruleOf, a as aiHistoryLabel, c as contentTypeText } from './ForeignOpinionDetailModal-IbLRcgq2.js';
+import { d as defineComponent, z as usePermission, C as onMounted, y as resolveComponent, o as openBlock, c as createElementBlock, a as createBaseVNode, n as normalizeClass, m as createVNode, p as withCtx, H as unref, q as createBlock, e as createTextVNode, s as createCommentVNode, F as Fragment, i as renderList, w as withDirectives, O as vModelCheckbox, t as toDisplayString, S as _sfc_main$3, T as isRef, r as ref, j as computed, g as api, Q as ElMessageBox, E as ElMessage, _ as _export_sfc, f as reactive, P as withModifiers, N as vModelSelect, v as vModelText, L as useRoute, h as useRouter, G as onBeforeUnmount, B as resolveDirective, b as withKeys, U as createStaticVNode, k as normalizeStyle } from './index-DEChr7so.js';
+import { z as zh, f as formatTime, F as ForeignOpinionDetailModal, u as useForeignDetailState, d as displayOf, r as ruleOf, a as aiHistoryLabel, b as displaySentiment, c as contentTypeText } from './ForeignOpinionDetailModal-cL7pHRGV.js';
+import { s as sentimentPill, a as sentimentText } from './opinion-Cag9WtuS.js';
 
 const _hoisted_1$2 = { key: 0 };
 const _hoisted_2$2 = { class: "review-filter" };
@@ -809,38 +810,55 @@ const _hoisted_14 = {
   key: 0,
   class: "ai-batch-inline-error"
 };
-const _hoisted_15 = { class: "table-wrap tbl-scroll" };
-const _hoisted_16 = ["onClick"];
-const _hoisted_17 = { class: "title-cell" };
-const _hoisted_18 = { class: "dual-cell" };
-const _hoisted_19 = { class: "muted" };
-const _hoisted_20 = {
+const _hoisted_15 = {
+  key: 1,
+  class: "batch-bar"
+};
+const _hoisted_16 = { class: "batch-count" };
+const _hoisted_17 = ["disabled"];
+const _hoisted_18 = { class: "sent-pop" };
+const _hoisted_19 = ["onClick"];
+const _hoisted_20 = ["disabled"];
+const _hoisted_21 = { class: "table-wrap tbl-scroll" };
+const _hoisted_22 = { class: "col-check" };
+const _hoisted_23 = ["checked"];
+const _hoisted_24 = ["onClick"];
+const _hoisted_25 = ["checked", "onChange"];
+const _hoisted_26 = { class: "title-cell" };
+const _hoisted_27 = { class: "dual-cell" };
+const _hoisted_28 = { class: "muted" };
+const _hoisted_29 = { class: "col-center" };
+const _hoisted_30 = ["onClick"];
+const _hoisted_31 = { class: "sent-pop" };
+const _hoisted_32 = ["onClick"];
+const _hoisted_33 = {
   key: 0,
   class: "muted"
 };
-const _hoisted_21 = { class: "actions" };
-const _hoisted_22 = ["disabled", "onClick"];
-const _hoisted_23 = { key: 0 };
-const _hoisted_24 = {
-  key: 1,
+const _hoisted_34 = { class: "actions" };
+const _hoisted_35 = ["disabled", "onClick"];
+const _hoisted_36 = ["disabled", "onClick"];
+const _hoisted_37 = { key: 0 };
+const _hoisted_38 = {
+  key: 2,
   class: "pager"
 };
-const _hoisted_25 = {
+const _hoisted_39 = {
   key: 0,
   class: "review-empty"
 };
-const _hoisted_26 = {
+const _hoisted_40 = {
   key: 1,
   class: "ai-batch-history"
 };
-const _hoisted_27 = { class: "tbl" };
-const _hoisted_28 = ["onClick"];
-const _hoisted_29 = { key: 0 };
-const _hoisted_30 = {
+const _hoisted_41 = { class: "tbl" };
+const _hoisted_42 = ["onClick"];
+const _hoisted_43 = { key: 0 };
+const _hoisted_44 = {
   key: 0,
   class: "ai-batch-details ai-batch-history-detail"
 };
-const _hoisted_31 = {
+const _hoisted_45 = {
   key: 0,
   class: "failures"
 };
@@ -886,6 +904,8 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
     const canAnalyzeAI = hasPermission("foreign:ai:analyze");
     const canReadAIBatches = hasPermission("foreign:ai:batch:read");
     const canCancelAIBatch = hasPermission("foreign:ai:batch:cancel");
+    const canDeleteForeignOpinion = hasPermission("foreign:opinions:delete");
+    const canEditForeignSentiment = hasPermission("foreign:opinions:write");
     async function loadOpinions() {
       loading.value = true;
       try {
@@ -1115,8 +1135,144 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
       loadOpinions();
       loadRisk();
     }
+    const selectedIds = ref(/* @__PURE__ */ new Set());
+    const deleting = ref(false);
+    const bulkDeleting = ref(false);
+    const sentPopRowId = ref(null);
+    const batchPopVisible = ref(false);
+    const isAllSelected = computed(
+      () => opinions.value.length > 0 && opinions.value.every((r) => selectedIds.value.has(r.id))
+    );
+    function toggleSelect(id) {
+      const s = new Set(selectedIds.value);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
+      selectedIds.value = s;
+    }
+    function toggleSelectAll(e) {
+      const checked = e.target.checked;
+      const s = new Set(selectedIds.value);
+      if (checked) opinions.value.forEach((r) => s.add(r.id));
+      else opinions.value.forEach((r) => s.delete(r.id));
+      selectedIds.value = s;
+    }
+    function clearSelection() {
+      selectedIds.value = /* @__PURE__ */ new Set();
+    }
+    async function handleDelete(row) {
+      try {
+        await ElMessageBox.confirm(
+          `确认删除外网舆情「${row.title || "无标题"}」？此操作不可恢复。关联的外网正式预警将解除关联但保留快照。`,
+          "删除确认",
+          { type: "warning" }
+        );
+      } catch {
+        return;
+      }
+      deleting.value = true;
+      try {
+        await api.delete(`/foreign/opinions/${row.id}`);
+        ElMessage.success("已删除");
+        const s = new Set(selectedIds.value);
+        s.delete(row.id);
+        selectedIds.value = s;
+        await loadOpinions();
+      } catch (err) {
+        ElMessage.error(err?.response?.data?.detail || "删除失败");
+      } finally {
+        deleting.value = false;
+      }
+    }
+    async function handleBatchDelete() {
+      if (!selectedIds.value.size) return;
+      try {
+        await ElMessageBox.confirm(
+          `确认批量删除选中的 ${selectedIds.value.size} 条外网舆情？关联预警将解除关联但保留快照。`,
+          "批量删除确认",
+          { type: "warning" }
+        );
+      } catch {
+        return;
+      }
+      bulkDeleting.value = true;
+      try {
+        const ids = [...selectedIds.value].slice(0, 200);
+        await api.post("/foreign/opinions/batch-delete", { ids });
+        ElMessage.success(`已删除 ${ids.length} 条`);
+        clearSelection();
+        await loadOpinions();
+      } catch (err) {
+        ElMessage.error(err?.response?.data?.detail || "批量删除失败");
+      } finally {
+        bulkDeleting.value = false;
+      }
+    }
+    const sentimentOptions = [
+      { value: "positive", label: "正面" },
+      { value: "neutral", label: "中性" },
+      { value: "negative", label: "负面" }
+    ];
+    function sentimentLabel(row) {
+      const v = displaySentiment(row);
+      return v && v !== "unknown" ? sentimentText(v) : "未标注";
+    }
+    function closeSentPop() {
+      sentPopRowId.value = null;
+      batchPopVisible.value = false;
+    }
+    function toggleSentPop(row) {
+      sentPopRowId.value = sentPopRowId.value === row.id ? null : row.id;
+      batchPopVisible.value = false;
+    }
+    function toggleBatchSentPop() {
+      batchPopVisible.value = !batchPopVisible.value;
+      sentPopRowId.value = null;
+    }
+    async function chooseForeignSentiment(row, value) {
+      if (!canEditForeignSentiment.value) return;
+      const cur = displaySentiment(row);
+      closeSentPop();
+      if (cur === value) return;
+      const oldVal = row.sentiment_override;
+      row.sentiment_override = value;
+      try {
+        await api.put(`/foreign/opinions/${row.id}/sentiment`, { sentiment: value });
+        ElMessage.success("情感已更新");
+      } catch (err) {
+        row.sentiment_override = oldVal;
+        ElMessage.error(err?.response?.data?.detail || "情感更新失败");
+      }
+    }
+    async function batchSetForeignSentiment(value) {
+      if (!canEditForeignSentiment.value || selectedIds.value.size === 0) return;
+      const ids = [...selectedIds.value].slice(0, 200);
+      closeSentPop();
+      const oldMap = {};
+      opinions.value.forEach((r) => {
+        if (ids.includes(r.id)) {
+          oldMap[r.id] = r.sentiment_override;
+          r.sentiment_override = value;
+        }
+      });
+      try {
+        await api.post("/foreign/opinions/batch-sentiment", { ids, sentiment: value });
+        ElMessage.success(`已更新 ${ids.length} 条情感`);
+      } catch (err) {
+        opinions.value.forEach((r) => {
+          if (oldMap[r.id] !== void 0) r.sentiment_override = oldMap[r.id];
+        });
+        ElMessage.error(err?.response?.data?.detail || "批量修改情感失败");
+      }
+    }
+    function onDocClick(e) {
+      if (sentPopRowId.value == null && !batchPopVisible.value) return;
+      const t = e.target;
+      if (t && t.closest(".sent-pop")) return;
+      closeSentPop();
+    }
     onMounted(() => {
       window.addEventListener("foreign-data-refresh", onForeignRefresh);
+      document.addEventListener("click", onDocClick);
       loadOpinions();
       loadRisk();
       const runId = localStorage.getItem("foreign-ai-batch-run-id");
@@ -1125,9 +1281,11 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
     onBeforeUnmount(() => {
       if (aiBatchTimer) clearTimeout(aiBatchTimer);
       window.removeEventListener("foreign-data-refresh", onForeignRefresh);
+      document.removeEventListener("click", onDocClick);
     });
     __expose({ loadOpinions, loadRisk });
     return (_ctx, _cache) => {
+      const _component_el_popover = resolveComponent("el-popover");
       const _component_el_dialog = resolveComponent("el-dialog");
       const _directive_loading = resolveDirective("loading");
       return withDirectives((openBlock(), createElementBlock("div", _hoisted_1, [
@@ -1145,7 +1303,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
             class: "input",
             onChange: loadOpinions
           }, [
-            _cache[18] || (_cache[18] = createBaseVNode("option", { value: "" }, "全部来源", -1)),
+            _cache[20] || (_cache[20] = createBaseVNode("option", { value: "" }, "全部来源", -1)),
             (openBlock(true), createElementBlock(Fragment, null, renderList(opinionSources.value, (source) => {
               return openBlock(), createElementBlock("option", {
                 key: source,
@@ -1159,8 +1317,8 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
             "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => opinionFilters.content_type = $event),
             class: "input",
             onChange: loadOpinions
-          }, [..._cache[19] || (_cache[19] = [
-            createStaticVNode('<option value="" data-v-5e09b597>全部类型</option><option value="complaint" data-v-5e09b597>投诉举报</option><option value="consultation" data-v-5e09b597>咨询求助</option><option value="risk_event" data-v-5e09b597>风险事件</option><option value="public_affairs" data-v-5e09b597>公共事务</option><option value="news" data-v-5e09b597>新闻</option><option value="policy" data-v-5e09b597>政策政务</option><option value="advertising" data-v-5e09b597>广告</option><option value="entertainment" data-v-5e09b597>娱乐</option><option value="irrelevant" data-v-5e09b597>无关</option><option value="unknown" data-v-5e09b597>未分类</option>', 11)
+          }, [..._cache[21] || (_cache[21] = [
+            createStaticVNode('<option value="" data-v-74f62224>全部类型</option><option value="complaint" data-v-74f62224>投诉举报</option><option value="consultation" data-v-74f62224>咨询求助</option><option value="risk_event" data-v-74f62224>风险事件</option><option value="public_affairs" data-v-74f62224>公共事务</option><option value="news" data-v-74f62224>新闻</option><option value="policy" data-v-74f62224>政策政务</option><option value="advertising" data-v-74f62224>广告</option><option value="entertainment" data-v-74f62224>娱乐</option><option value="irrelevant" data-v-74f62224>无关</option><option value="unknown" data-v-74f62224>未分类</option>', 11)
           ])], 544), [
             [vModelSelect, opinionFilters.content_type]
           ]),
@@ -1179,8 +1337,8 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loadOpinions();
               loadRisk();
             })
-          }, [..._cache[20] || (_cache[20] = [
-            createStaticVNode('<option value="" data-v-5e09b597>全部语言</option><option value="zh" data-v-5e09b597>中文</option><option value="en" data-v-5e09b597>英文</option><option value="mixed" data-v-5e09b597>中英混合</option><option value="unknown" data-v-5e09b597>未知</option>', 5)
+          }, [..._cache[22] || (_cache[22] = [
+            createStaticVNode('<option value="" data-v-74f62224>全部语言</option><option value="zh" data-v-74f62224>中文</option><option value="en" data-v-74f62224>英文</option><option value="mixed" data-v-74f62224>中英混合</option><option value="unknown" data-v-74f62224>未知</option>', 5)
           ])], 544), [
             [vModelSelect, riskFilters.language]
           ]),
@@ -1189,7 +1347,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
             class: "input",
             "aria-label": "risk view source",
             onChange: _cache[7] || (_cache[7] = ($event) => setRiskSource(riskSource.value))
-          }, [..._cache[21] || (_cache[21] = [
+          }, [..._cache[23] || (_cache[23] = [
             createBaseVNode("option", { value: "current" }, "当前风险", -1),
             createBaseVNode("option", { value: "rule" }, "系统规则", -1),
             createBaseVNode("option", { value: "ai" }, "AI 研判", -1)
@@ -1204,8 +1362,8 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loadOpinions();
               loadRisk();
             })
-          }, [..._cache[22] || (_cache[22] = [
-            createStaticVNode('<option value="" data-v-5e09b597>全部风险等级</option><option value="high" data-v-5e09b597>高</option><option value="medium" data-v-5e09b597>中</option><option value="low" data-v-5e09b597>低</option><option value="unknown" data-v-5e09b597>未知</option>', 5)
+          }, [..._cache[24] || (_cache[24] = [
+            createStaticVNode('<option value="" data-v-74f62224>全部风险等级</option><option value="high" data-v-74f62224>高</option><option value="medium" data-v-74f62224>中</option><option value="low" data-v-74f62224>低</option><option value="unknown" data-v-74f62224>未知</option>', 5)
           ])], 544), [
             [vModelSelect, riskFilters.risk_level]
           ]),
@@ -1216,7 +1374,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loadOpinions();
               loadRisk();
             })
-          }, [..._cache[23] || (_cache[23] = [
+          }, [..._cache[25] || (_cache[25] = [
             createBaseVNode("option", { value: "" }, "全部分析状态", -1),
             createBaseVNode("option", { value: "completed" }, "完成", -1),
             createBaseVNode("option", { value: "skipped" }, "跳过", -1),
@@ -1258,7 +1416,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
             disabled: aiBatchLoading.value,
             onClick: openAIBatchHistory
           }, "AI 研判运行记录", 8, _hoisted_6)) : createCommentVNode("", true),
-          _cache[24] || (_cache[24] = createBaseVNode("span", { class: "muted" }, "AI 研判经人工采用后进入当前风险；正式预警和事件记录保留创建时的正式风险快照", -1))
+          _cache[26] || (_cache[26] = createBaseVNode("span", { class: "muted" }, "AI 研判经人工采用后进入当前风险；正式预警和事件记录保留创建时的正式风险快照", -1))
         ]),
         aiBatchRun.value && !isAIBatchFinished.value ? (openBlock(), createElementBlock("div", _hoisted_7, [
           createBaseVNode("div", _hoisted_8, [
@@ -1292,35 +1450,105 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
           ]),
           (aiBatchRun.value.failures || []).length ? (openBlock(), createElementBlock("p", _hoisted_14, "失败 " + toDisplayString(aiBatchRun.value.failures.length) + " 条：" + toDisplayString((aiBatchRun.value.failures || []).map((item) => item.error || item.message || item.code || "未知错误").slice(0, 2).join("；")), 1)) : createCommentVNode("", true)
         ])) : createCommentVNode("", true),
-        createBaseVNode("div", _hoisted_15, [
-          createBaseVNode("table", null, [
-            _cache[26] || (_cache[26] = createBaseVNode("thead", null, [
-              createBaseVNode("tr", null, [
-                createBaseVNode("th", null, "标题"),
-                createBaseVNode("th", null, "来源快照"),
-                createBaseVNode("th", null, "命中关键词"),
-                createBaseVNode("th", null, "发布时间"),
-                createBaseVNode("th", null, "采集时间"),
-                createBaseVNode("th", null, "当前风险分"),
-                createBaseVNode("th", null, "当前等级"),
-                createBaseVNode("th", null, "风险来源"),
-                createBaseVNode("th", null, "规则 / AI"),
-                createBaseVNode("th", null, "情感"),
-                createBaseVNode("th", null, "类型"),
-                createBaseVNode("th", null, "命中风险词"),
-                createBaseVNode("th", null, "分析状态"),
-                createBaseVNode("th", null, "分析时间"),
-                createBaseVNode("th", null, "版本"),
-                createBaseVNode("th", null, "操作")
+        selectedIds.value.size ? (openBlock(), createElementBlock("div", _hoisted_15, [
+          createBaseVNode("span", _hoisted_16, [
+            _cache[27] || (_cache[27] = createTextVNode("已选择 ", -1)),
+            createBaseVNode("b", null, toDisplayString(selectedIds.value.size), 1),
+            _cache[28] || (_cache[28] = createTextVNode(" 条", -1))
+          ]),
+          unref(canEditForeignSentiment) ? (openBlock(), createBlock(_component_el_popover, {
+            key: 0,
+            trigger: "manual",
+            visible: batchPopVisible.value,
+            placement: "bottom",
+            width: 132,
+            "popper-class": "sent-popper"
+          }, {
+            reference: withCtx(() => [
+              createBaseVNode("button", {
+                class: "btn btn-primary",
+                disabled: bulkDeleting.value || selectedIds.value.size === 0,
+                onClick: withModifiers(toggleBatchSentPop, ["stop"])
+              }, "修改情感", 8, _hoisted_17)
+            ]),
+            default: withCtx(() => [
+              createBaseVNode("div", _hoisted_18, [
+                (openBlock(), createElementBlock(Fragment, null, renderList(sentimentOptions, (opt) => {
+                  return createBaseVNode("button", {
+                    key: opt.value,
+                    type: "button",
+                    class: normalizeClass(["sent-opt", unref(sentimentPill)(opt.value)]),
+                    onClick: withModifiers(($event) => batchSetForeignSentiment(opt.value), ["stop"])
+                  }, toDisplayString(opt.label), 11, _hoisted_19);
+                }), 64))
               ])
-            ], -1)),
+            ]),
+            _: 1
+          }, 8, ["visible"])) : createCommentVNode("", true),
+          unref(canDeleteForeignOpinion) ? (openBlock(), createElementBlock("button", {
+            key: 1,
+            class: "btn btn-danger",
+            disabled: bulkDeleting.value,
+            onClick: handleBatchDelete
+          }, "删除", 8, _hoisted_20)) : createCommentVNode("", true),
+          createBaseVNode("button", {
+            class: "btn btn-ghost",
+            onClick: clearSelection
+          }, "取消选择")
+        ])) : createCommentVNode("", true),
+        createBaseVNode("div", _hoisted_21, [
+          createBaseVNode("table", null, [
+            createBaseVNode("thead", null, [
+              createBaseVNode("tr", null, [
+                createBaseVNode("th", _hoisted_22, [
+                  createBaseVNode("input", {
+                    type: "checkbox",
+                    checked: isAllSelected.value,
+                    onChange: toggleSelectAll,
+                    "aria-label": "全选"
+                  }, null, 40, _hoisted_23)
+                ]),
+                _cache[29] || (_cache[29] = createBaseVNode("th", null, "ID", -1)),
+                _cache[30] || (_cache[30] = createBaseVNode("th", null, "标题", -1)),
+                _cache[31] || (_cache[31] = createBaseVNode("th", null, "来源快照", -1)),
+                _cache[32] || (_cache[32] = createBaseVNode("th", null, "命中关键词", -1)),
+                _cache[33] || (_cache[33] = createBaseVNode("th", null, "发布时间", -1)),
+                _cache[34] || (_cache[34] = createBaseVNode("th", null, "采集时间", -1)),
+                _cache[35] || (_cache[35] = createBaseVNode("th", null, "当前风险分", -1)),
+                _cache[36] || (_cache[36] = createBaseVNode("th", null, "当前等级", -1)),
+                _cache[37] || (_cache[37] = createBaseVNode("th", null, "风险来源", -1)),
+                _cache[38] || (_cache[38] = createBaseVNode("th", null, "规则 / AI", -1)),
+                _cache[39] || (_cache[39] = createBaseVNode("th", null, "情感", -1)),
+                _cache[40] || (_cache[40] = createBaseVNode("th", null, "类型", -1)),
+                _cache[41] || (_cache[41] = createBaseVNode("th", null, "命中风险词", -1)),
+                _cache[42] || (_cache[42] = createBaseVNode("th", null, "分析状态", -1)),
+                _cache[43] || (_cache[43] = createBaseVNode("th", null, "分析时间", -1)),
+                _cache[44] || (_cache[44] = createBaseVNode("th", null, "版本", -1)),
+                _cache[45] || (_cache[45] = createBaseVNode("th", null, "操作", -1))
+              ])
+            ]),
             createBaseVNode("tbody", null, [
               (openBlock(true), createElementBlock(Fragment, null, renderList(opinions.value, (row) => {
                 return openBlock(), createElementBlock("tr", {
                   key: row.id,
                   onClick: ($event) => unref(openOpinion)(row.id)
                 }, [
-                  createBaseVNode("td", _hoisted_17, toDisplayString(row.title || "无标题"), 1),
+                  createBaseVNode("td", {
+                    class: "col-check",
+                    onClick: _cache[15] || (_cache[15] = withModifiers(() => {
+                    }, ["stop"]))
+                  }, [
+                    createBaseVNode("input", {
+                      type: "checkbox",
+                      checked: selectedIds.value.has(row.id),
+                      onChange: ($event) => toggleSelect(row.id),
+                      onClick: _cache[14] || (_cache[14] = withModifiers(() => {
+                      }, ["stop"])),
+                      "aria-label": "选择"
+                    }, null, 40, _hoisted_25)
+                  ]),
+                  createBaseVNode("td", null, toDisplayString(row.id), 1),
+                  createBaseVNode("td", _hoisted_26, toDisplayString(row.title || "无标题"), 1),
                   createBaseVNode("td", null, toDisplayString(row.source_name_snapshot), 1),
                   createBaseVNode("td", null, [
                     (openBlock(true), createElementBlock(Fragment, null, renderList(row.matched_keywords, (word) => {
@@ -1343,11 +1571,49 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                       class: normalizeClass(["src-tag", { ai: unref(displayOf)(row)?.source === "ai" }])
                     }, toDisplayString(unref(displayOf)(row)?.source === "ai" ? "AI 研判" : "系统规则"), 3)
                   ]),
-                  createBaseVNode("td", _hoisted_18, [
+                  createBaseVNode("td", _hoisted_27, [
                     createBaseVNode("span", null, "规则 " + toDisplayString(unref(ruleOf)(row)?.risk_score ?? "-"), 1),
-                    createBaseVNode("span", _hoisted_19, toDisplayString(unref(aiHistoryLabel)(row)), 1)
+                    createBaseVNode("span", _hoisted_28, toDisplayString(unref(aiHistoryLabel)(row)), 1)
                   ]),
-                  createBaseVNode("td", null, toDisplayString(unref(zh)(unref(displayOf)(row)?.sentiment)), 1),
+                  createBaseVNode("td", _hoisted_29, [
+                    unref(canEditForeignSentiment) ? (openBlock(), createBlock(_component_el_popover, {
+                      key: 0,
+                      trigger: "manual",
+                      visible: sentPopRowId.value === row.id,
+                      placement: "bottom",
+                      width: 132,
+                      "popper-class": "sent-popper"
+                    }, {
+                      reference: withCtx(() => [
+                        createBaseVNode("span", {
+                          class: normalizeClass(["pill editable", unref(sentimentPill)(unref(displaySentiment)(row))]),
+                          onClick: withModifiers(($event) => toggleSentPop(row), ["stop"])
+                        }, [
+                          _cache[46] || (_cache[46] = createBaseVNode("span", { class: "dot" }, null, -1)),
+                          createTextVNode(toDisplayString(sentimentLabel(row)), 1)
+                        ], 10, _hoisted_30)
+                      ]),
+                      default: withCtx(() => [
+                        createBaseVNode("div", _hoisted_31, [
+                          (openBlock(), createElementBlock(Fragment, null, renderList(sentimentOptions, (opt) => {
+                            return createBaseVNode("button", {
+                              key: opt.value,
+                              type: "button",
+                              class: normalizeClass(["sent-opt", [unref(sentimentPill)(opt.value), { active: unref(displaySentiment)(row) === opt.value }]]),
+                              onClick: withModifiers(($event) => chooseForeignSentiment(row, opt.value), ["stop"])
+                            }, toDisplayString(opt.label), 11, _hoisted_32);
+                          }), 64))
+                        ])
+                      ]),
+                      _: 2
+                    }, 1032, ["visible"])) : (openBlock(), createElementBlock("span", {
+                      key: 1,
+                      class: normalizeClass(["pill", unref(sentimentPill)(unref(displaySentiment)(row))])
+                    }, [
+                      _cache[47] || (_cache[47] = createBaseVNode("span", { class: "dot" }, null, -1)),
+                      createTextVNode(toDisplayString(sentimentLabel(row)), 1)
+                    ], 2))
+                  ]),
                   createBaseVNode("td", null, toDisplayString(unref(contentTypeText)(row.content_type)), 1),
                   createBaseVNode("td", null, [
                     (openBlock(true), createElementBlock(Fragment, null, renderList(riskOf(row.id)?.matched_terms || [], (term) => {
@@ -1356,7 +1622,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         class: "tag"
                       }, toDisplayString(term.word), 1);
                     }), 128)),
-                    !(riskOf(row.id)?.matched_terms || []).length ? (openBlock(), createElementBlock("span", _hoisted_20, "无")) : createCommentVNode("", true)
+                    !(riskOf(row.id)?.matched_terms || []).length ? (openBlock(), createElementBlock("span", _hoisted_33, "无")) : createCommentVNode("", true)
                   ]),
                   createBaseVNode("td", null, [
                     createBaseVNode("span", {
@@ -1365,29 +1631,35 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   ]),
                   createBaseVNode("td", null, toDisplayString(unref(formatTime)(unref(displayOf)(row)?.evaluated_at)), 1),
                   createBaseVNode("td", null, toDisplayString(unref(displayOf)(row)?.model_version || "-"), 1),
-                  createBaseVNode("td", _hoisted_21, [
+                  createBaseVNode("td", _hoisted_34, [
                     createBaseVNode("button", {
                       class: "link-btn",
                       disabled: !unref(canAnalyzeRisk),
                       onClick: withModifiers(($event) => analyzeRisk(row.id), ["stop"])
-                    }, toDisplayString(unref(ruleOf)(row) ? "重新分析" : "分析"), 9, _hoisted_22)
+                    }, toDisplayString(unref(ruleOf)(row) ? "重新分析" : "分析"), 9, _hoisted_35),
+                    unref(canDeleteForeignOpinion) ? (openBlock(), createElementBlock("button", {
+                      key: 0,
+                      class: "link-btn danger",
+                      disabled: deleting.value,
+                      onClick: withModifiers(($event) => handleDelete(row), ["stop"])
+                    }, "删除", 8, _hoisted_36)) : createCommentVNode("", true)
                   ])
-                ], 8, _hoisted_16);
+                ], 8, _hoisted_24);
               }), 128)),
-              !opinions.value.length ? (openBlock(), createElementBlock("tr", _hoisted_23, [..._cache[25] || (_cache[25] = [
+              !opinions.value.length ? (openBlock(), createElementBlock("tr", _hoisted_37, [..._cache[48] || (_cache[48] = [
                 createBaseVNode("td", {
-                  colspan: "16",
+                  colspan: "18",
                   class: "empty"
                 }, "暂无外网舆情", -1)
               ])])) : createCommentVNode("", true)
             ])
           ])
         ]),
-        opinionTotal.value > 0 ? (openBlock(), createElementBlock("div", _hoisted_24, [
+        opinionTotal.value > 0 ? (openBlock(), createElementBlock("div", _hoisted_38, [
           createVNode(_sfc_main$3, {
             total: opinionTotal.value,
             "current-page": opinionPage.value,
-            "onUpdate:currentPage": _cache[14] || (_cache[14] = ($event) => opinionPage.value = $event),
+            "onUpdate:currentPage": _cache[16] || (_cache[16] = ($event) => opinionPage.value = $event),
             "page-size": opinionSize,
             onCurrentChange: loadOpinions
           }, null, 8, ["total", "current-page"])
@@ -1401,19 +1673,19 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
           "scope-options": batchScopeOptions,
           "full-scope-value": "full",
           "build-payload": buildBatchPayload,
-          "onUpdate:visible": _cache[15] || (_cache[15] = ($event) => aiBatchDialog.value = $event),
+          "onUpdate:visible": _cache[17] || (_cache[17] = ($event) => aiBatchDialog.value = $event),
           onSubmitted: onBatchSubmitted
         }, null, 8, ["visible"]),
         createVNode(_component_el_dialog, {
           modelValue: aiBatchHistoryDialog.value,
-          "onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => aiBatchHistoryDialog.value = $event),
+          "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => aiBatchHistoryDialog.value = $event),
           title: "AI 研判运行记录",
           width: "720px"
         }, {
           default: withCtx(() => [
-            aiBatchHistoryLoading.value ? (openBlock(), createElementBlock("div", _hoisted_25, "加载中…")) : (openBlock(), createElementBlock("div", _hoisted_26, [
-              createBaseVNode("table", _hoisted_27, [
-                _cache[28] || (_cache[28] = createBaseVNode("thead", null, [
+            aiBatchHistoryLoading.value ? (openBlock(), createElementBlock("div", _hoisted_39, "加载中…")) : (openBlock(), createElementBlock("div", _hoisted_40, [
+              createBaseVNode("table", _hoisted_41, [
+                _cache[50] || (_cache[50] = createBaseVNode("thead", null, [
                   createBaseVNode("tr", null, [
                     createBaseVNode("th", null, "状态"),
                     createBaseVNode("th", null, "进度"),
@@ -1441,11 +1713,11 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         createBaseVNode("button", {
                           class: "link-btn",
                           onClick: withModifiers(($event) => openAIBatchHistoryDetail(r.run_id), ["stop"])
-                        }, "查看", 8, _hoisted_28)
+                        }, "查看", 8, _hoisted_42)
                       ])
                     ]);
                   }), 128)),
-                  !aiBatchHistory.value.length ? (openBlock(), createElementBlock("tr", _hoisted_29, [..._cache[27] || (_cache[27] = [
+                  !aiBatchHistory.value.length ? (openBlock(), createElementBlock("tr", _hoisted_43, [..._cache[49] || (_cache[49] = [
                     createBaseVNode("td", {
                       colspan: "6",
                       class: "empty-row"
@@ -1453,7 +1725,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   ])])) : createCommentVNode("", true)
                 ])
               ]),
-              aiBatchHistorySel.value ? (openBlock(), createElementBlock("div", _hoisted_30, [
+              aiBatchHistorySel.value ? (openBlock(), createElementBlock("div", _hoisted_44, [
                 createBaseVNode("h4", null, "运行详情 " + toDisplayString(aiBatchHistorySel.value.run_id), 1),
                 createBaseVNode("span", null, "状态：" + toDisplayString(unref(zh)(aiBatchHistorySel.value.status)), 1),
                 createBaseVNode("span", null, "进度：" + toDisplayString(aiBatchHistorySel.value.processed_count || 0) + "/" + toDisplayString(aiBatchHistorySel.value.total_count || 0) + "（" + toDisplayString(batchProgressOf(aiBatchHistorySel.value)) + "%）", 1),
@@ -1463,7 +1735,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                 createBaseVNode("span", null, "结束：" + toDisplayString(aiBatchHistorySel.value.finished_at || "-"), 1),
                 createBaseVNode("span", null, "预估 Token：" + toDisplayString(aiBatchHistorySel.value.estimated_token_usage ?? "-"), 1),
                 createBaseVNode("span", null, "实际 Token：" + toDisplayString(aiBatchHistorySel.value.actual_token_usage ?? "-"), 1),
-                (aiBatchHistorySel.value.failures || []).length ? (openBlock(), createElementBlock("p", _hoisted_31, "失败明细：" + toDisplayString((aiBatchHistorySel.value.failures || []).map((item) => `#${item.opinion_id}: ${item.error}`).join("；")), 1)) : createCommentVNode("", true)
+                (aiBatchHistorySel.value.failures || []).length ? (openBlock(), createElementBlock("p", _hoisted_45, "失败明细：" + toDisplayString((aiBatchHistorySel.value.failures || []).map((item) => `#${item.opinion_id}: ${item.error}`).join("；")), 1)) : createCommentVNode("", true)
               ])) : createCommentVNode("", true)
             ]))
           ]),
@@ -1471,7 +1743,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         }, 8, ["modelValue"]),
         createVNode(ForeignOpinionDetailModal, {
           modelValue: unref(detailVisible),
-          "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => isRef(detailVisible) ? detailVisible.value = $event : null),
+          "onUpdate:modelValue": _cache[19] || (_cache[19] = ($event) => isRef(detailVisible) ? detailVisible.value = $event : null),
           "opinion-id": unref(detailId),
           "risk-source": riskSource.value,
           "onUpdate:riskSource": setRiskSource
@@ -1483,6 +1755,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
   }
 });
 
-const ForeignOpinionListView = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-5e09b597"]]);
+const ForeignOpinionListView = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-74f62224"]]);
 
 export { BatchAIModal as B, ForeignOpinionListView as F, ForeignAIReviewView as a };

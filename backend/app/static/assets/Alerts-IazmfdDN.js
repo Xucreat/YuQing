@@ -1,6 +1,6 @@
-import { d as defineComponent, a2 as useAlertNotifier, z as usePermission, A as watch, C as onMounted, w as withDirectives, c as createElementBlock, q as createBlock, a as createBaseVNode, n as normalizeClass, Y as Teleport, F as Fragment, m as createVNode, p as withCtx, s as createCommentVNode, t as toDisplayString, r as ref, j as computed, y as resolveComponent, B as resolveDirective, L as useRoute, f as reactive, g as api, E as ElMessage, Z as isPermissionDenied, o as openBlock, e as createTextVNode, H as unref, a3 as riskTag, a4 as riskText, S as _sfc_main$1, b as withKeys, Q as ElMessageBox, _ as _export_sfc } from './index-CNz59AKK.js';
-import { O as OpinionDetailModal } from './OpinionDetailModal-C6qHaASy.js';
-import { F as ForeignOpinionDetailModal } from './ForeignOpinionDetailModal-IbLRcgq2.js';
+import { d as defineComponent, a2 as useAlertNotifier, z as usePermission, A as watch, C as onMounted, w as withDirectives, c as createElementBlock, q as createBlock, a as createBaseVNode, n as normalizeClass, Y as Teleport, F as Fragment, m as createVNode, p as withCtx, s as createCommentVNode, t as toDisplayString, r as ref, j as computed, y as resolveComponent, B as resolveDirective, L as useRoute, f as reactive, g as api, E as ElMessage, Z as isPermissionDenied, o as openBlock, e as createTextVNode, H as unref, a3 as riskTag, a4 as riskText, S as _sfc_main$1, b as withKeys, Q as ElMessageBox, _ as _export_sfc } from './index-DEChr7so.js';
+import { O as OpinionDetailModal } from './OpinionDetailModal-uaDd-Ds4.js';
+import { F as ForeignOpinionDetailModal } from './ForeignOpinionDetailModal-cL7pHRGV.js';
 import './admission-DpEuIHXC.js';
 import './opinion-Cag9WtuS.js';
 
@@ -15,28 +15,32 @@ const _hoisted_7 = {
   class: "eval-result"
 };
 const _hoisted_8 = { class: "pagination" };
-const _hoisted_9 = { class: "scope-bar" };
-const _hoisted_10 = { class: "inline-switch" };
+const _hoisted_9 = { class: "pagination" };
+const _hoisted_10 = { class: "scope-bar" };
 const _hoisted_11 = { class: "inline-switch" };
-const _hoisted_12 = { key: 0 };
-const _hoisted_13 = { key: 1 };
-const _hoisted_14 = ["onClick"];
-const _hoisted_15 = { key: 1 };
-const _hoisted_16 = { class: "pagination" };
-const _hoisted_17 = { key: 0 };
-const _hoisted_18 = { key: 1 };
-const _hoisted_19 = ["onClick"];
-const _hoisted_20 = { key: 1 };
-const _hoisted_21 = {
+const _hoisted_12 = { class: "inline-switch" };
+const _hoisted_13 = { key: 0 };
+const _hoisted_14 = { key: 1 };
+const _hoisted_15 = ["onClick"];
+const _hoisted_16 = { key: 1 };
+const _hoisted_17 = { class: "pagination" };
+const _hoisted_18 = { key: 0 };
+const _hoisted_19 = { key: 1 };
+const _hoisted_20 = ["onClick"];
+const _hoisted_21 = { key: 1 };
+const _hoisted_22 = { class: "pagination" };
+const _hoisted_23 = {
   key: 0,
   class: "scope-hint"
 };
-const _hoisted_22 = {
+const _hoisted_24 = {
   key: 0,
   class: "scope-hint"
 };
 const rulesSize = 20;
+const foreignRulesSize = 20;
 const recordsSize = 20;
+const foreignSize = 20;
 const _sfc_main = /* @__PURE__ */ defineComponent({
   __name: "Alerts",
   setup(__props) {
@@ -58,6 +62,8 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
     const rulesTotal = ref(0);
     const rulesPage = ref(1);
     const foreignRules = ref([]);
+    const foreignRulesTotal = ref(0);
+    const foreignRulesPage = ref(1);
     const records = ref([]);
     const recordsTotal = ref(0);
     const recordsPage = ref(1);
@@ -69,6 +75,8 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
     const foreignFilters = reactive({ severity: "", source: "" });
     const foreignDateRange = ref(null);
     const hideForeignFalsePositive = ref(true);
+    const foreignTotal = ref(0);
+    const foreignPage = ref(1);
     const domesticRuleDialog = ref(false);
     const domesticEditing = ref(false);
     const domesticId = ref(null);
@@ -123,7 +131,15 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
     async function loadForeignRules() {
       loading.value = true;
       try {
-        foreignRules.value = (await api.get("/foreign/alert-rules", { params: { size: 100 } })).data.items || [];
+        const { data } = await api.get("/foreign/alert-rules", { params: { page: foreignRulesPage.value, size: foreignRulesSize } });
+        foreignRules.value = data.items || [];
+        foreignRulesTotal.value = data.total || 0;
+        if (foreignRules.value.length === 0 && foreignRulesPage.value > 1) {
+          foreignRulesPage.value -= 1;
+          const { data: d2 } = await api.get("/foreign/alert-rules", { params: { page: foreignRulesPage.value, size: foreignRulesSize } });
+          foreignRules.value = d2.items || [];
+          foreignRulesTotal.value = d2.total || 0;
+        }
       } catch (e) {
         foreignRules.value = [];
         if (!isPermissionDenied(e)) ElMessage.error(e?.response?.data?.detail || "加载外网规则失败");
@@ -149,16 +165,23 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         loading.value = false;
       }
     }
-    async function loadForeignRecords() {
+    async function loadForeignRecords(reset = false) {
+      if (reset) foreignPage.value = 1;
       loading.value = true;
       try {
-        const params = { page: 1, size: 100 };
+        const params = { page: foreignPage.value, size: foreignSize };
         params.disposition_filter = hideForeignFalsePositive.value ? "hide_fp" : "all";
         if (foreignFilters.severity) params.severity = foreignFilters.severity;
         if (foreignFilters.source) params.source = foreignFilters.source;
         if (foreignDateRange.value?.[0]) params.triggered_from = foreignDateRange.value[0];
         if (foreignDateRange.value?.[1]) params.triggered_to = foreignDateRange.value[1];
-        foreignAlerts.value = (await api.get("/foreign/alerts", { params })).data.items || [];
+        const { data } = await api.get("/foreign/alerts", { params });
+        foreignAlerts.value = data.items || [];
+        foreignTotal.value = data.total || 0;
+        if (foreignAlerts.value.length === 0 && foreignPage.value > 1) {
+          foreignPage.value -= 1;
+          await loadForeignRecords(false);
+        }
       } catch (e) {
         foreignAlerts.value = [];
         if (!isPermissionDenied(e)) ElMessage.error(e?.response?.data?.detail || "加载外网预警失败");
@@ -366,7 +389,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         (openBlock(), createBlock(Teleport, { to: "#page-nav-target" }, [
           createBaseVNode("div", _hoisted_2, [
             createBaseVNode("div", _hoisted_3, [
-              _cache[44] || (_cache[44] = createBaseVNode("h1", { class: "page-title" }, "预警中心", -1)),
+              _cache[50] || (_cache[50] = createBaseVNode("h1", { class: "page-title" }, "预警中心", -1)),
               createBaseVNode("div", _hoisted_4, [
                 createBaseVNode("button", {
                   class: normalizeClass(["view-tab", { active: activeTab.value === "rules" }]),
@@ -378,7 +401,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                 }, "预警记录", 2)
               ])
             ]),
-            _cache[45] || (_cache[45] = createBaseVNode("div", { class: "head-divider" }, null, -1)),
+            _cache[51] || (_cache[51] = createBaseVNode("div", { class: "head-divider" }, null, -1)),
             createBaseVNode("div", _hoisted_5, [
               createBaseVNode("button", {
                 class: normalizeClass(["scope-btn", { active: scope.value === "domestic" }]),
@@ -400,7 +423,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         activeTab.value === "rules" ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
           createBaseVNode("div", _hoisted_6, [
             createVNode(_component_el_button, { onClick: loadCurrentScope }, {
-              default: withCtx(() => [..._cache[46] || (_cache[46] = [
+              default: withCtx(() => [..._cache[52] || (_cache[52] = [
                 createTextVNode("刷新", -1)
               ])]),
               _: 1
@@ -410,7 +433,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               type: "primary",
               onClick: _cache[4] || (_cache[4] = ($event) => openDomesticRule(null))
             }, {
-              default: withCtx(() => [..._cache[47] || (_cache[47] = [
+              default: withCtx(() => [..._cache[53] || (_cache[53] = [
                 createTextVNode("新增规则", -1)
               ])]),
               _: 1
@@ -421,7 +444,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loading: evaluating.value,
               onClick: handleEvaluate
             }, {
-              default: withCtx(() => [..._cache[48] || (_cache[48] = [
+              default: withCtx(() => [..._cache[54] || (_cache[54] = [
                 createTextVNode("执行评估", -1)
               ])]),
               _: 1
@@ -431,7 +454,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               type: "primary",
               onClick: _cache[5] || (_cache[5] = ($event) => openForeignRule(null))
             }, {
-              default: withCtx(() => [..._cache[49] || (_cache[49] = [
+              default: withCtx(() => [..._cache[55] || (_cache[55] = [
                 createTextVNode("新增外网规则", -1)
               ])]),
               _: 1
@@ -442,7 +465,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loading: foreignEvaluating.value,
               onClick: evaluateForeign
             }, {
-              default: withCtx(() => [..._cache[50] || (_cache[50] = [
+              default: withCtx(() => [..._cache[56] || (_cache[56] = [
                 createTextVNode("执行外网评估", -1)
               ])]),
               _: 1
@@ -545,7 +568,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         type: "primary",
                         onClick: ($event) => openDomesticRule(row)
                       }, {
-                        default: withCtx(() => [..._cache[51] || (_cache[51] = [
+                        default: withCtx(() => [..._cache[57] || (_cache[57] = [
                           createTextVNode("编辑", -1)
                         ])]),
                         _: 1
@@ -555,7 +578,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         type: "danger",
                         onClick: ($event) => deleteDomesticRule(row)
                       }, {
-                        default: withCtx(() => [..._cache[52] || (_cache[52] = [
+                        default: withCtx(() => [..._cache[58] || (_cache[58] = [
                           createTextVNode("删除", -1)
                         ])]),
                         _: 1
@@ -634,7 +657,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         type: "primary",
                         onClick: ($event) => openForeignRule(row)
                       }, {
-                        default: withCtx(() => [..._cache[53] || (_cache[53] = [
+                        default: withCtx(() => [..._cache[59] || (_cache[59] = [
                           createTextVNode("编辑", -1)
                         ])]),
                         _: 1
@@ -654,7 +677,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         type: "danger",
                         onClick: ($event) => deleteForeignRule(row)
                       }, {
-                        default: withCtx(() => [..._cache[54] || (_cache[54] = [
+                        default: withCtx(() => [..._cache[60] || (_cache[60] = [
                           createTextVNode("删除", -1)
                         ])]),
                         _: 1
@@ -664,14 +687,25 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   })) : createCommentVNode("", true)
                 ]),
                 _: 1
-              }, 8, ["data"])
+              }, 8, ["data"]),
+              createBaseVNode("div", _hoisted_9, [
+                createVNode(_sfc_main$1, {
+                  total: foreignRulesTotal.value,
+                  "current-page": foreignRulesPage.value,
+                  "page-size": foreignRulesSize,
+                  onCurrentChange: _cache[7] || (_cache[7] = (p) => {
+                    foreignRulesPage.value = p;
+                    loadForeignRules();
+                  })
+                }, null, 8, ["total", "current-page"])
+              ])
             ]),
             _: 1
           }))
         ], 64)) : activeTab.value === "records" ? (openBlock(), createElementBlock(Fragment, { key: 1 }, [
-          createBaseVNode("div", _hoisted_9, [
+          createBaseVNode("div", _hoisted_10, [
             createVNode(_component_el_button, { onClick: loadCurrentScope }, {
-              default: withCtx(() => [..._cache[55] || (_cache[55] = [
+              default: withCtx(() => [..._cache[61] || (_cache[61] = [
                 createTextVNode("刷新", -1)
               ])]),
               _: 1
@@ -682,7 +716,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loading: evaluating.value,
               onClick: handleEvaluate
             }, {
-              default: withCtx(() => [..._cache[56] || (_cache[56] = [
+              default: withCtx(() => [..._cache[62] || (_cache[62] = [
                 createTextVNode("执行评估", -1)
               ])]),
               _: 1
@@ -693,7 +727,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loading: foreignEvaluating.value,
               onClick: evaluateForeign
             }, {
-              default: withCtx(() => [..._cache[57] || (_cache[57] = [
+              default: withCtx(() => [..._cache[63] || (_cache[63] = [
                 createTextVNode("执行外网评估", -1)
               ])]),
               _: 1
@@ -707,7 +741,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
             default: withCtx(() => [
               createVNode(_component_el_select, {
                 modelValue: recFilterRisk.value,
-                "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => recFilterRisk.value = $event),
+                "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => recFilterRisk.value = $event),
                 placeholder: "预警等级",
                 clearable: "",
                 class: "filter-select",
@@ -735,7 +769,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               }, 8, ["modelValue"]),
               createVNode(_component_el_select, {
                 modelValue: recFilterStatus.value,
-                "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => recFilterStatus.value = $event),
+                "onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => recFilterStatus.value = $event),
                 placeholder: "处置状态",
                 clearable: "",
                 class: "filter-select",
@@ -765,17 +799,17 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                 ]),
                 _: 1
               }, 8, ["modelValue"]),
-              createBaseVNode("span", _hoisted_10, [
+              createBaseVNode("span", _hoisted_11, [
                 createVNode(_component_el_switch, {
                   modelValue: hideFalsePositive.value,
-                  "onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => hideFalsePositive.value = $event),
+                  "onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => hideFalsePositive.value = $event),
                   onChange: loadDomesticRecords
                 }, null, 8, ["modelValue"]),
-                _cache[58] || (_cache[58] = createTextVNode("隐藏误报", -1))
+                _cache[64] || (_cache[64] = createTextVNode("隐藏误报", -1))
               ]),
               createVNode(_component_el_date_picker, {
                 modelValue: recDateRange.value,
-                "onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => recDateRange.value = $event),
+                "onUpdate:modelValue": _cache[11] || (_cache[11] = ($event) => recDateRange.value = $event),
                 type: "daterange",
                 "range-separator": "至",
                 "start-placeholder": "开始日期",
@@ -791,21 +825,21 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
             class: "filter-card"
           }, {
             default: withCtx(() => [
-              createBaseVNode("span", _hoisted_11, [
+              createBaseVNode("span", _hoisted_12, [
                 createVNode(_component_el_switch, {
                   modelValue: hideForeignFalsePositive.value,
-                  "onUpdate:modelValue": _cache[11] || (_cache[11] = ($event) => hideForeignFalsePositive.value = $event),
-                  onChange: loadForeignRecords
+                  "onUpdate:modelValue": _cache[12] || (_cache[12] = ($event) => hideForeignFalsePositive.value = $event),
+                  onChange: _cache[13] || (_cache[13] = ($event) => loadForeignRecords(true))
                 }, null, 8, ["modelValue"]),
-                _cache[59] || (_cache[59] = createTextVNode("隐藏误报", -1))
+                _cache[65] || (_cache[65] = createTextVNode("隐藏误报", -1))
               ]),
               createVNode(_component_el_select, {
                 modelValue: foreignFilters.severity,
-                "onUpdate:modelValue": _cache[12] || (_cache[12] = ($event) => foreignFilters.severity = $event),
+                "onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => foreignFilters.severity = $event),
                 placeholder: "严重度",
                 clearable: "",
                 class: "filter-select",
-                onChange: loadForeignRecords
+                onChange: _cache[15] || (_cache[15] = ($event) => loadForeignRecords(true))
               }, {
                 default: withCtx(() => [
                   createVNode(_component_el_option, {
@@ -829,21 +863,21 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               }, 8, ["modelValue"]),
               createVNode(_component_el_input, {
                 modelValue: foreignFilters.source,
-                "onUpdate:modelValue": _cache[13] || (_cache[13] = ($event) => foreignFilters.source = $event),
+                "onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => foreignFilters.source = $event),
                 placeholder: "来源",
                 clearable: "",
                 class: "filter-select",
-                onKeyup: withKeys(loadForeignRecords, ["enter"])
+                onKeyup: _cache[17] || (_cache[17] = withKeys(($event) => loadForeignRecords(true), ["enter"]))
               }, null, 8, ["modelValue"]),
               createVNode(_component_el_date_picker, {
                 modelValue: foreignDateRange.value,
-                "onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => foreignDateRange.value = $event),
+                "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => foreignDateRange.value = $event),
                 type: "daterange",
                 "range-separator": "至",
                 "start-placeholder": "开始日期",
                 "end-placeholder": "结束日期",
                 "value-format": "YYYY-MM-DD",
-                onChange: loadForeignRecords
+                onChange: _cache[19] || (_cache[19] = ($event) => loadForeignRecords(true))
               }, null, 8, ["modelValue"])
             ]),
             _: 1
@@ -892,7 +926,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                     width: "150"
                   }, {
                     default: withCtx(({ row }) => [
-                      row.linked_opinion_current_risk ? (openBlock(), createElementBlock("span", _hoisted_12, toDisplayString(row.linked_opinion_current_risk.risk_score ?? "-") + " 分 · " + toDisplayString(unref(riskText)(row.linked_opinion_current_risk.risk_level)), 1)) : (openBlock(), createElementBlock("span", _hoisted_13, "-"))
+                      row.linked_opinion_current_risk ? (openBlock(), createElementBlock("span", _hoisted_13, toDisplayString(row.linked_opinion_current_risk.risk_score ?? "-") + " 分 · " + toDisplayString(unref(riskText)(row.linked_opinion_current_risk.risk_level)), 1)) : (openBlock(), createElementBlock("span", _hoisted_14, "-"))
                     ]),
                     _: 1
                   }),
@@ -905,7 +939,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         key: 0,
                         class: "nav-link",
                         onClick: ($event) => openOpinion(row.opinion_id)
-                      }, toDisplayString(row.opinion_title), 9, _hoisted_14)) : (openBlock(), createElementBlock("span", _hoisted_15, toDisplayString(row.opinion_title || "-"), 1))
+                      }, toDisplayString(row.opinion_title), 9, _hoisted_15)) : (openBlock(), createElementBlock("span", _hoisted_16, toDisplayString(row.opinion_title || "-"), 1))
                     ]),
                     _: 1
                   }),
@@ -962,7 +996,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         type: "primary",
                         onClick: ($event) => openHandleDialog(row)
                       }, {
-                        default: withCtx(() => [..._cache[60] || (_cache[60] = [
+                        default: withCtx(() => [..._cache[66] || (_cache[66] = [
                           createTextVNode("处置", -1)
                         ])]),
                         _: 1
@@ -973,12 +1007,12 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                 ]),
                 _: 1
               }, 8, ["data"]),
-              createBaseVNode("div", _hoisted_16, [
+              createBaseVNode("div", _hoisted_17, [
                 createVNode(_sfc_main$1, {
                   total: recordsTotal.value,
                   "current-page": recordsPage.value,
                   "page-size": recordsSize,
-                  onCurrentChange: _cache[15] || (_cache[15] = (p) => {
+                  onCurrentChange: _cache[20] || (_cache[20] = (p) => {
                     recordsPage.value = p;
                     loadDomesticRecords();
                   })
@@ -1034,7 +1068,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                     width: "150"
                   }, {
                     default: withCtx(({ row }) => [
-                      row.linked_opinion_current_risk ? (openBlock(), createElementBlock("span", _hoisted_17, toDisplayString(row.linked_opinion_current_risk.risk_score ?? "-") + " 分 · " + toDisplayString(unref(riskText)(row.linked_opinion_current_risk.risk_level)), 1)) : (openBlock(), createElementBlock("span", _hoisted_18, "-"))
+                      row.linked_opinion_current_risk ? (openBlock(), createElementBlock("span", _hoisted_18, toDisplayString(row.linked_opinion_current_risk.risk_score ?? "-") + " 分 · " + toDisplayString(unref(riskText)(row.linked_opinion_current_risk.risk_level)), 1)) : (openBlock(), createElementBlock("span", _hoisted_19, "-"))
                     ]),
                     _: 1
                   }),
@@ -1047,7 +1081,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         key: 0,
                         class: "nav-link",
                         onClick: ($event) => openForeignOpinion(row.foreign_opinion_id)
-                      }, toDisplayString(row.opinion_title_snapshot || row.title || "-"), 9, _hoisted_19)) : (openBlock(), createElementBlock("span", _hoisted_20, toDisplayString(row.opinion_title_snapshot || row.title || "-"), 1))
+                      }, toDisplayString(row.opinion_title_snapshot || row.title || "-"), 9, _hoisted_20)) : (openBlock(), createElementBlock("span", _hoisted_21, toDisplayString(row.opinion_title_snapshot || row.title || "-"), 1))
                     ]),
                     _: 1
                   }),
@@ -1107,7 +1141,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                         type: "primary",
                         onClick: ($event) => openForeignHandleDialog(row)
                       }, {
-                        default: withCtx(() => [..._cache[61] || (_cache[61] = [
+                        default: withCtx(() => [..._cache[67] || (_cache[67] = [
                           createTextVNode("处置", -1)
                         ])]),
                         _: 1
@@ -1117,22 +1151,33 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   })
                 ]),
                 _: 1
-              }, 8, ["data"])
+              }, 8, ["data"]),
+              createBaseVNode("div", _hoisted_22, [
+                createVNode(_sfc_main$1, {
+                  total: foreignTotal.value,
+                  "current-page": foreignPage.value,
+                  "page-size": foreignSize,
+                  onCurrentChange: _cache[21] || (_cache[21] = (p) => {
+                    foreignPage.value = p;
+                    loadForeignRecords(false);
+                  })
+                }, null, 8, ["total", "current-page"])
+              ])
             ]),
             _: 1
           }))
         ], 64)) : createCommentVNode("", true),
         createVNode(_component_el_dialog, {
           modelValue: domesticRuleDialog.value,
-          "onUpdate:modelValue": _cache[25] || (_cache[25] = ($event) => domesticRuleDialog.value = $event),
+          "onUpdate:modelValue": _cache[31] || (_cache[31] = ($event) => domesticRuleDialog.value = $event),
           title: domesticEditing.value ? "编辑规则" : "新增规则",
           width: "min(600px, calc(100vw - 24px))"
         }, {
           footer: withCtx(() => [
             createVNode(_component_el_button, {
-              onClick: _cache[24] || (_cache[24] = ($event) => domesticRuleDialog.value = false)
+              onClick: _cache[30] || (_cache[30] = ($event) => domesticRuleDialog.value = false)
             }, {
-              default: withCtx(() => [..._cache[62] || (_cache[62] = [
+              default: withCtx(() => [..._cache[68] || (_cache[68] = [
                 createTextVNode("取消", -1)
               ])]),
               _: 1
@@ -1142,7 +1187,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loading: saving.value,
               onClick: saveDomesticRule
             }, {
-              default: withCtx(() => [..._cache[63] || (_cache[63] = [
+              default: withCtx(() => [..._cache[69] || (_cache[69] = [
                 createTextVNode("保存", -1)
               ])]),
               _: 1
@@ -1158,7 +1203,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: domesticForm.name,
-                      "onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => domesticForm.name = $event)
+                      "onUpdate:modelValue": _cache[22] || (_cache[22] = ($event) => domesticForm.name = $event)
                     }, null, 8, ["modelValue"])
                   ]),
                   _: 1
@@ -1167,7 +1212,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_select, {
                       modelValue: domesticForm.rule_type,
-                      "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => domesticForm.rule_type = $event)
+                      "onUpdate:modelValue": _cache[23] || (_cache[23] = ($event) => domesticForm.rule_type = $event)
                     }, {
                       default: withCtx(() => [
                         createVNode(_component_el_option, {
@@ -1184,12 +1229,12 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   ]),
                   _: 1
                 }),
-                domesticForm.rule_type === "ai_risk_score" ? (openBlock(), createElementBlock("p", _hoisted_21, "AI 风险分规则只生成待人工复核候选，普通预警评估不会直接创建正式预警。")) : createCommentVNode("", true),
+                domesticForm.rule_type === "ai_risk_score" ? (openBlock(), createElementBlock("p", _hoisted_23, "AI 风险分规则只生成待人工复核候选，普通预警评估不会直接创建正式预警。")) : createCommentVNode("", true),
                 createVNode(_component_el_form_item, { label: "描述" }, {
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: domesticForm.description,
-                      "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => domesticForm.description = $event),
+                      "onUpdate:modelValue": _cache[24] || (_cache[24] = ($event) => domesticForm.description = $event),
                       type: "textarea"
                     }, null, 8, ["modelValue"])
                   ]),
@@ -1199,7 +1244,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input_number, {
                       modelValue: domesticForm.risk_threshold,
-                      "onUpdate:modelValue": _cache[19] || (_cache[19] = ($event) => domesticForm.risk_threshold = $event),
+                      "onUpdate:modelValue": _cache[25] || (_cache[25] = ($event) => domesticForm.risk_threshold = $event),
                       min: 0,
                       max: 100
                     }, null, 8, ["modelValue"])
@@ -1210,7 +1255,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: domesticForm.keywords,
-                      "onUpdate:modelValue": _cache[20] || (_cache[20] = ($event) => domesticForm.keywords = $event)
+                      "onUpdate:modelValue": _cache[26] || (_cache[26] = ($event) => domesticForm.keywords = $event)
                     }, null, 8, ["modelValue"])
                   ]),
                   _: 1
@@ -1219,7 +1264,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: domesticForm.sources,
-                      "onUpdate:modelValue": _cache[21] || (_cache[21] = ($event) => domesticForm.sources = $event)
+                      "onUpdate:modelValue": _cache[27] || (_cache[27] = ($event) => domesticForm.sources = $event)
                     }, null, 8, ["modelValue"])
                   ]),
                   _: 1
@@ -1228,7 +1273,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_select, {
                       modelValue: domesticForm.risk_level,
-                      "onUpdate:modelValue": _cache[22] || (_cache[22] = ($event) => domesticForm.risk_level = $event)
+                      "onUpdate:modelValue": _cache[28] || (_cache[28] = ($event) => domesticForm.risk_level = $event)
                     }, {
                       default: withCtx(() => [
                         createVNode(_component_el_option, {
@@ -1257,7 +1302,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_switch, {
                       modelValue: domesticForm.enabled,
-                      "onUpdate:modelValue": _cache[23] || (_cache[23] = ($event) => domesticForm.enabled = $event)
+                      "onUpdate:modelValue": _cache[29] || (_cache[29] = ($event) => domesticForm.enabled = $event)
                     }, null, 8, ["modelValue"])
                   ]),
                   _: 1
@@ -1270,15 +1315,15 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         }, 8, ["modelValue", "title"]),
         createVNode(_component_el_dialog, {
           modelValue: foreignRuleDialog.value,
-          "onUpdate:modelValue": _cache[33] || (_cache[33] = ($event) => foreignRuleDialog.value = $event),
+          "onUpdate:modelValue": _cache[39] || (_cache[39] = ($event) => foreignRuleDialog.value = $event),
           title: foreignEditing.value ? "编辑外网告警规则" : "新增外网告警规则",
           width: "min(620px, calc(100vw - 24px))"
         }, {
           footer: withCtx(() => [
             createVNode(_component_el_button, {
-              onClick: _cache[32] || (_cache[32] = ($event) => foreignRuleDialog.value = false)
+              onClick: _cache[38] || (_cache[38] = ($event) => foreignRuleDialog.value = false)
             }, {
-              default: withCtx(() => [..._cache[64] || (_cache[64] = [
+              default: withCtx(() => [..._cache[70] || (_cache[70] = [
                 createTextVNode("取消", -1)
               ])]),
               _: 1
@@ -1288,7 +1333,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loading: foreignRuleSaving.value,
               onClick: saveForeignRule
             }, {
-              default: withCtx(() => [..._cache[65] || (_cache[65] = [
+              default: withCtx(() => [..._cache[71] || (_cache[71] = [
                 createTextVNode("保存", -1)
               ])]),
               _: 1
@@ -1304,7 +1349,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: foreignForm.name,
-                      "onUpdate:modelValue": _cache[26] || (_cache[26] = ($event) => foreignForm.name = $event)
+                      "onUpdate:modelValue": _cache[32] || (_cache[32] = ($event) => foreignForm.name = $event)
                     }, null, 8, ["modelValue"])
                   ]),
                   _: 1
@@ -1313,7 +1358,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_select, {
                       modelValue: foreignForm.rule_type,
-                      "onUpdate:modelValue": _cache[27] || (_cache[27] = ($event) => foreignForm.rule_type = $event)
+                      "onUpdate:modelValue": _cache[33] || (_cache[33] = ($event) => foreignForm.rule_type = $event)
                     }, {
                       default: withCtx(() => [
                         createVNode(_component_el_option, {
@@ -1346,12 +1391,12 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   ]),
                   _: 1
                 }),
-                foreignForm.rule_type === "ai_risk_score" ? (openBlock(), createElementBlock("p", _hoisted_22, "AI 风险分规则：当某条外网舆情的 AI 研判风险分 ≥ 条件中的 threshold 时，会在「外网人工复核」中生成待确认预警候选，需人工确认后才会进入正式外网预警。")) : createCommentVNode("", true),
+                foreignForm.rule_type === "ai_risk_score" ? (openBlock(), createElementBlock("p", _hoisted_24, "AI 风险分规则：当某条外网舆情的 AI 研判风险分 ≥ 条件中的 threshold 时，会在「外网人工复核」中生成待确认预警候选，需人工确认后才会进入正式外网预警。")) : createCommentVNode("", true),
                 createVNode(_component_el_form_item, { label: "条件 JSON" }, {
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: foreignForm.conditionsText,
-                      "onUpdate:modelValue": _cache[28] || (_cache[28] = ($event) => foreignForm.conditionsText = $event),
+                      "onUpdate:modelValue": _cache[34] || (_cache[34] = ($event) => foreignForm.conditionsText = $event),
                       type: "textarea",
                       rows: 3
                     }, null, 8, ["modelValue"])
@@ -1362,7 +1407,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_select, {
                       modelValue: foreignForm.severity,
-                      "onUpdate:modelValue": _cache[29] || (_cache[29] = ($event) => foreignForm.severity = $event)
+                      "onUpdate:modelValue": _cache[35] || (_cache[35] = ($event) => foreignForm.severity = $event)
                     }, {
                       default: withCtx(() => [
                         createVNode(_component_el_option, {
@@ -1391,7 +1436,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input_number, {
                       modelValue: foreignForm.cooldown_seconds,
-                      "onUpdate:modelValue": _cache[30] || (_cache[30] = ($event) => foreignForm.cooldown_seconds = $event),
+                      "onUpdate:modelValue": _cache[36] || (_cache[36] = ($event) => foreignForm.cooldown_seconds = $event),
                       min: 0
                     }, null, 8, ["modelValue"])
                   ]),
@@ -1401,7 +1446,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: foreignForm.description,
-                      "onUpdate:modelValue": _cache[31] || (_cache[31] = ($event) => foreignForm.description = $event),
+                      "onUpdate:modelValue": _cache[37] || (_cache[37] = ($event) => foreignForm.description = $event),
                       type: "textarea"
                     }, null, 8, ["modelValue"])
                   ]),
@@ -1415,15 +1460,15 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         }, 8, ["modelValue", "title"]),
         createVNode(_component_el_dialog, {
           modelValue: foreignHandleDialogVisible.value,
-          "onUpdate:modelValue": _cache[37] || (_cache[37] = ($event) => foreignHandleDialogVisible.value = $event),
+          "onUpdate:modelValue": _cache[43] || (_cache[43] = ($event) => foreignHandleDialogVisible.value = $event),
           title: "外网预警处置",
           width: "min(480px, calc(100vw - 24px))"
         }, {
           footer: withCtx(() => [
             createVNode(_component_el_button, {
-              onClick: _cache[36] || (_cache[36] = ($event) => foreignHandleDialogVisible.value = false)
+              onClick: _cache[42] || (_cache[42] = ($event) => foreignHandleDialogVisible.value = false)
             }, {
-              default: withCtx(() => [..._cache[66] || (_cache[66] = [
+              default: withCtx(() => [..._cache[72] || (_cache[72] = [
                 createTextVNode("取消", -1)
               ])]),
               _: 1
@@ -1433,7 +1478,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loading: foreignHandling.value,
               onClick: submitForeignHandle
             }, {
-              default: withCtx(() => [..._cache[67] || (_cache[67] = [
+              default: withCtx(() => [..._cache[73] || (_cache[73] = [
                 createTextVNode("确认处置", -1)
               ])]),
               _: 1
@@ -1446,7 +1491,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_select, {
                       modelValue: foreignHandleForm.disposition_status,
-                      "onUpdate:modelValue": _cache[34] || (_cache[34] = ($event) => foreignHandleForm.disposition_status = $event)
+                      "onUpdate:modelValue": _cache[40] || (_cache[40] = ($event) => foreignHandleForm.disposition_status = $event)
                     }, {
                       default: withCtx(() => [
                         createVNode(_component_el_option, {
@@ -1479,7 +1524,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: foreignHandleForm.note,
-                      "onUpdate:modelValue": _cache[35] || (_cache[35] = ($event) => foreignHandleForm.note = $event),
+                      "onUpdate:modelValue": _cache[41] || (_cache[41] = ($event) => foreignHandleForm.note = $event),
                       type: "textarea"
                     }, null, 8, ["modelValue"])
                   ]),
@@ -1493,15 +1538,15 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         }, 8, ["modelValue"]),
         createVNode(_component_el_dialog, {
           modelValue: handleDialogVisible.value,
-          "onUpdate:modelValue": _cache[41] || (_cache[41] = ($event) => handleDialogVisible.value = $event),
+          "onUpdate:modelValue": _cache[47] || (_cache[47] = ($event) => handleDialogVisible.value = $event),
           title: "预警处置",
           width: "min(480px, calc(100vw - 24px))"
         }, {
           footer: withCtx(() => [
             createVNode(_component_el_button, {
-              onClick: _cache[40] || (_cache[40] = ($event) => handleDialogVisible.value = false)
+              onClick: _cache[46] || (_cache[46] = ($event) => handleDialogVisible.value = false)
             }, {
-              default: withCtx(() => [..._cache[68] || (_cache[68] = [
+              default: withCtx(() => [..._cache[74] || (_cache[74] = [
                 createTextVNode("取消", -1)
               ])]),
               _: 1
@@ -1511,7 +1556,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               loading: handling.value,
               onClick: submitHandle
             }, {
-              default: withCtx(() => [..._cache[69] || (_cache[69] = [
+              default: withCtx(() => [..._cache[75] || (_cache[75] = [
                 createTextVNode("确认处置", -1)
               ])]),
               _: 1
@@ -1524,7 +1569,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_select, {
                       modelValue: handleForm.status,
-                      "onUpdate:modelValue": _cache[38] || (_cache[38] = ($event) => handleForm.status = $event)
+                      "onUpdate:modelValue": _cache[44] || (_cache[44] = ($event) => handleForm.status = $event)
                     }, {
                       default: withCtx(() => [
                         createVNode(_component_el_option, {
@@ -1557,7 +1602,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
                   default: withCtx(() => [
                     createVNode(_component_el_input, {
                       modelValue: handleForm.note,
-                      "onUpdate:modelValue": _cache[39] || (_cache[39] = ($event) => handleForm.note = $event),
+                      "onUpdate:modelValue": _cache[45] || (_cache[45] = ($event) => handleForm.note = $event),
                       type: "textarea"
                     }, null, 8, ["modelValue"])
                   ]),
@@ -1571,12 +1616,12 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         }, 8, ["modelValue"]),
         createVNode(OpinionDetailModal, {
           modelValue: detailVisible.value,
-          "onUpdate:modelValue": _cache[42] || (_cache[42] = ($event) => detailVisible.value = $event),
+          "onUpdate:modelValue": _cache[48] || (_cache[48] = ($event) => detailVisible.value = $event),
           "opinion-id": detailId.value
         }, null, 8, ["modelValue", "opinion-id"]),
         createVNode(ForeignOpinionDetailModal, {
           modelValue: foreignOpinionDetailVisible.value,
-          "onUpdate:modelValue": _cache[43] || (_cache[43] = ($event) => foreignOpinionDetailVisible.value = $event),
+          "onUpdate:modelValue": _cache[49] || (_cache[49] = ($event) => foreignOpinionDetailVisible.value = $event),
           "opinion-id": foreignOpinionDetailId.value
         }, null, 8, ["modelValue", "opinion-id"])
       ])), [
@@ -1586,6 +1631,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
   }
 });
 
-const Alerts = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-10f80c27"]]);
+const Alerts = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-57ec83f5"]]);
 
 export { Alerts as default };

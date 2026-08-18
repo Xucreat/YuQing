@@ -1,4 +1,4 @@
-import { r as ref, d as defineComponent, z as usePermission, A as watch, q as createBlock, c as createElementBlock, P as withModifiers, a as createBaseVNode, t as toDisplayString, s as createCommentVNode, w as withDirectives, F as Fragment, n as normalizeClass, e as createTextVNode, H as unref, i as renderList, I as vShow, k as normalizeStyle, Y as Teleport, j as computed, g as api, E as ElMessage, y as resolveComponent, B as resolveDirective, o as openBlock, _ as _export_sfc } from './index-CNz59AKK.js';
+import { r as ref, d as defineComponent, z as usePermission, A as watch, q as createBlock, c as createElementBlock, P as withModifiers, a as createBaseVNode, t as toDisplayString, s as createCommentVNode, w as withDirectives, F as Fragment, n as normalizeClass, e as createTextVNode, H as unref, i as renderList, I as vShow, k as normalizeStyle, Y as Teleport, j as computed, g as api, E as ElMessage, y as resolveComponent, B as resolveDirective, o as openBlock, _ as _export_sfc } from './index-DEChr7so.js';
 import { f as formatTime$1, r as riskColor, a as sentimentText, c as statusPill, d as statusText } from './opinion-Cag9WtuS.js';
 
 const ZH_DICT = {
@@ -101,6 +101,11 @@ function aiHistoryLabel(row) {
   if (!ai) return "未做 AI 研判";
   const score = ai.risk_score === null || ai.risk_score === void 0 ? "-" : ai.risk_score;
   return `AI ${score}（历史）`;
+}
+function displaySentiment(row) {
+  if (row?.sentiment_override) return row.sentiment_override;
+  const base = displayOf(row)?.sentiment;
+  return base || "unknown";
 }
 function useForeignDetailState() {
   const detailVisible = ref(false);
@@ -759,4 +764,4 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
 
 const ForeignOpinionDetailModal = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-e58f71d1"]]);
 
-export { ForeignOpinionDetailModal as F, aiHistoryLabel as a, contentTypeText as c, displayOf as d, formatTime as f, ruleOf as r, useForeignDetailState as u, zh as z };
+export { ForeignOpinionDetailModal as F, aiHistoryLabel as a, displaySentiment as b, contentTypeText as c, displayOf as d, formatTime as f, ruleOf as r, useForeignDetailState as u, zh as z };

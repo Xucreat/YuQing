@@ -217,6 +217,46 @@ def _validate_rule_definition(rule_type: str, conditions: dict[str, Any]) -> Non
             raise HTTPException(status_code=422, detail="keyword_combo monitoring_keywords must be a list")
 
 
+@foreign_alerts_router.get("/unread")
+def unread_foreign_alerts(
+    since: str | None = Query(None, description="ISO8601 时间戳，仅返回该时间之后触发的正式外网预警"),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("foreign:alerts:read")),
+):
+    """前端轮询用：返回 since 之后触发的正式外网预警（最多 10 条，含 total 总数）。
+
+    结构与国内 /alerts/unread 对齐，并补齐 AlertToastHost 渲染所需兼容字段
+    （rule_name / opinion_title），以及 scope='foreign' 供前端跳转分流。
+    不写任何持久化字段，纯读取。
+    """
+    stmt = select(ForeignAlert).where(
+        ForeignAlert.evaluation_source.in_(["rule", "manual_review_ai"])
+    )
+    since_dt = _parse_datetime(since, "since")
+    if since_dt is not None:
+        stmt = stmt.where(ForeignAlert.triggered_at > since_dt)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(
+        stmt.order_by(ForeignAlert.triggered_at.desc(), ForeignAlert.id.desc()).limit(10)
+    ).all()
+    items = [_foreign_alert_unread_payload(row) for row in rows]
+    return {"items": items, "total": total, "page": 1, "size": 10}
+
+
+def _foreign_alert_unread_payload(alert: ForeignAlert) -> dict:
+    """复用 serialize_alert，并补齐国内 toast 渲染所需字段，使前端零改动。"""
+    payload = serialize_alert(alert)
+    rule_snapshot = alert.rule_snapshot or {}
+    payload["rule_name"] = rule_snapshot.get("name") or alert.source_name_snapshot or ""
+    payload["opinion_title"] = alert.opinion_title_snapshot or ""
+    # unread 的"产生时间"用 triggered_at，与 since 过滤口径一致（前端去重新预警依据 created_at）。
+    payload["created_at"] = (
+        alert.triggered_at.isoformat() if alert.triggered_at else payload.get("created_at")
+    )
+    payload["scope"] = "foreign"
+    return payload
+
+
 @foreign_alerts_router.get("")
 def list_foreign_alerts(
     page: int = Query(1, ge=1),

@@ -65,3 +65,8 @@ class ForeignOpinion(Base):
     current_risk_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True
     )
+    # Human sentiment correction. Takes priority over the rule/AI sentiment in
+    # the display layer. NULL means "no override" (fall back to source sentiment).
+    sentiment_override: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )

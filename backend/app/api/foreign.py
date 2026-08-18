@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import cast, func, inspect, or_, select, String
 from sqlalchemy.orm import Session
@@ -945,6 +945,7 @@ def _foreign_opinion_item(row: ForeignOpinion) -> dict[str, Any]:
         "current_risk_level": row.current_risk_level or "low",
         "current_ai_result_id": row.current_ai_result_id,
         "current_risk_updated_at": row.current_risk_updated_at.isoformat() if row.current_risk_updated_at else None,
+        "sentiment_override": row.sentiment_override,
     }
 
 
@@ -1111,6 +1112,164 @@ def list_foreign_opinion_sources(
         .order_by(func.count(ForeignOpinion.id).desc())
     ).all()
     return [row[0] for row in rows]
+
+
+# ===== 外网舆情：删除 + 情感覆盖（人工 override）=====
+# 路由顺序红线：所有 /opinions/* 字面路由必须位于 /opinions/{opinion_id} 之前，
+# 否则 "batch" / "batch-sentiment" 会被路径参数 opinion_id 捕获。
+
+class _SentimentOverride(BaseModel):
+    sentiment: str
+
+
+class _BatchSentiment(BaseModel):
+    ids: list[int]
+    sentiment: str
+
+
+class _BatchDelete(BaseModel):
+    ids: list[int]
+
+
+_SENTIMENT_VALUES = {"positive", "negative", "neutral"}
+
+
+def _delete_foreign_opinions(db: Session, ids: list[int]) -> tuple[list[int], int]:
+    """硬删除外网舆情。
+
+    数据库级外键约束自动处理关联：
+    - foreign_risk_results / foreign_ai_results / foreign_event_opinions 等 CASCADE 删除；
+    - foreign_alerts.opinion_id / foreign_risk_result_id 等 SET NULL（预警保留快照）。
+    ck_foreign_alerts_has_target 已被 foreign_opinions_ops_v1 迁移移除，
+    因此解除关联不会触发约束失败。
+
+    返回 (已删除 id 列表, 不存在数量)。不在此处提交事务。
+    """
+    existing = db.scalars(select(ForeignOpinion.id).where(ForeignOpinion.id.in_(ids))).all()
+    existing_set = set(existing)
+    deleted_ids = [i for i in ids if i in existing_set]
+    if deleted_ids:
+        # 解除因删除而悬空的 duplicate_of_id 指针
+        db.query(ForeignOpinion).where(
+            ForeignOpinion.duplicate_of_id.in_(deleted_ids)
+        ).update({ForeignOpinion.duplicate_of_id: None}, synchronize_session=False)
+        db.query(ForeignOpinion).where(
+            ForeignOpinion.id.in_(deleted_ids)
+        ).delete(synchronize_session=False)
+    return deleted_ids, len(ids) - len(deleted_ids)
+
+
+@foreign_router.delete("/opinions/batch")
+def delete_foreign_opinions_batch(
+    payload: _BatchDelete,
+    request: Request,
+    current_user: User = Depends(require_permission("foreign:opinions:delete")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """批量删除外网舆情（仅管理员）。硬删除，解除预警关联，写汇总审计。"""
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="ids 不能为空")
+    if len(payload.ids) > 200:
+        raise HTTPException(status_code=400, detail="单次最多删除 200 条")
+    deleted_ids, not_found = _delete_foreign_opinions(db, payload.ids)
+    log_operation(
+        db,
+        action="FOREIGN_OPINION_DELETE",
+        operator=current_user,
+        request=request,
+        resource_type="foreign_opinion",
+        details={"count": len(deleted_ids), "ids": deleted_ids, "not_found": not_found},
+    )
+    db.commit()
+    return {"deleted": len(deleted_ids), "not_found": not_found}
+
+
+@foreign_router.delete("/opinions/{opinion_id}")
+def delete_foreign_opinion(
+    opinion_id: int,
+    request: Request,
+    current_user: User = Depends(require_permission("foreign:opinions:delete")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """删除单条外网舆情（仅管理员）。硬删除，解除预警关联，写单条审计。"""
+    opinion = db.get(ForeignOpinion, opinion_id)
+    if opinion is None:
+        raise HTTPException(status_code=404, detail="Foreign opinion not found")
+    title = opinion.title
+    with audit_write(
+        db,
+        action="FOREIGN_OPINION_DELETE",
+        operator=current_user,
+        request=request,
+        resource_type="foreign_opinion",
+        resource_id=str(opinion_id),
+        details={"id": opinion_id, "title": title},
+    ):
+        _delete_foreign_opinions(db, [opinion_id])
+    return {"detail": "Foreign opinion deleted", "id": opinion_id}
+
+
+@foreign_router.post("/opinions/batch-sentiment")
+def batch_update_foreign_opinion_sentiment(
+    payload: _BatchSentiment,
+    request: Request,
+    current_user: User = Depends(require_permission("foreign:opinions:write")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """批量覆盖外网舆情情感（管理员+分析员）。一次最多 200 条，写汇总审计。"""
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="ids 不能为空")
+    if len(payload.ids) > 200:
+        raise HTTPException(status_code=400, detail="单次最多修改 200 条")
+    if payload.sentiment not in _SENTIMENT_VALUES:
+        raise HTTPException(status_code=422, detail="不支持的情感取值")
+    rows = db.scalars(select(ForeignOpinion).where(ForeignOpinion.id.in_(payload.ids))).all()
+    found_ids = {r.id for r in rows}
+    for r in rows:
+        r.sentiment_override = payload.sentiment
+    log_operation(
+        db,
+        action="FOREIGN_OPINION_SENTIMENT_UPDATE",
+        operator=current_user,
+        request=request,
+        resource_type="foreign_opinion",
+        details={
+            "count": len(rows),
+            "ids": list(found_ids),
+            "sentiment": payload.sentiment,
+            "not_found": len(payload.ids) - len(found_ids),
+        },
+    )
+    db.commit()
+    return {"updated": len(rows), "not_found": len(payload.ids) - len(rows)}
+
+
+@foreign_router.put("/opinions/{opinion_id}/sentiment")
+def update_foreign_opinion_sentiment(
+    opinion_id: int,
+    payload: _SentimentOverride,
+    request: Request,
+    current_user: User = Depends(require_permission("foreign:opinions:write")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """单行覆盖外网舆情情感（管理员+分析员）。写入 sentiment_override，写审计。"""
+    opinion = db.get(ForeignOpinion, opinion_id)
+    if opinion is None:
+        raise HTTPException(status_code=404, detail="Foreign opinion not found")
+    if payload.sentiment not in _SENTIMENT_VALUES:
+        raise HTTPException(status_code=422, detail="不支持的情感取值")
+    old = opinion.sentiment_override
+    with audit_write(
+        db,
+        action="FOREIGN_OPINION_SENTIMENT_UPDATE",
+        operator=current_user,
+        request=request,
+        resource_type="foreign_opinion",
+        resource_id=str(opinion_id),
+        details={"id": opinion_id, "old": old, "new": payload.sentiment},
+    ):
+        opinion.sentiment_override = payload.sentiment
+    return {"id": opinion_id, "sentiment_override": opinion.sentiment_override}
 
 
 @foreign_router.get("/opinions/{opinion_id}")
