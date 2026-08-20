@@ -1,6 +1,6 @@
 ﻿<template>
   <div class="events" v-loading="loading">
-  <Teleport to="#page-nav-target">
+  <Teleport defer to="#page-nav-target">
   <div class="page-nav">
     <div class="head-left">
       <h1 class="page-title">事件中心</h1>

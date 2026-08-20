@@ -1,4 +1,4 @@
-import { d as defineComponent, z as usePermission, r as ref, A as watch, c as createElementBlock, q as createBlock, a as createBaseVNode, n as normalizeClass, s as createCommentVNode, Y as Teleport, j as computed, h as useRouter, o as openBlock, L as useRoute, y as resolveComponent, _ as _export_sfc } from './index-DEChr7so.js';
+import { d as defineComponent, z as usePermission, r as ref, A as watch, c as createElementBlock, q as createBlock, a as createBaseVNode, n as normalizeClass, s as createCommentVNode, Y as Teleport, j as computed, h as useRouter, o as openBlock, L as useRoute, y as resolveComponent, _ as _export_sfc } from './index-D56tKRkz.js';
 
 const _hoisted_1 = { class: "sys-admin" };
 const _hoisted_2 = { class: "page-nav" };
@@ -41,7 +41,10 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
       const _component_router_view = resolveComponent("router-view");
       const _component_el_empty = resolveComponent("el-empty");
       return openBlock(), createElementBlock("div", _hoisted_1, [
-        (openBlock(), createBlock(Teleport, { to: "#page-nav-target" }, [
+        (openBlock(), createBlock(Teleport, {
+          defer: "",
+          to: "#page-nav-target"
+        }, [
           createBaseVNode("div", _hoisted_2, [
             createBaseVNode("div", _hoisted_3, [
               _cache[4] || (_cache[4] = createBaseVNode("h1", { class: "page-title" }, "系统管理", -1)),
@@ -81,6 +84,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
   }
 });
 
-const SystemAdmin = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-be5fce59"]]);
+const SystemAdmin = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-7c1443e2"]]);
 
 export { SystemAdmin as default };

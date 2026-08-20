@@ -20,11 +20,20 @@
       </div>
     </div>
 
+    <!-- 批量操作栏（复用于关键词管理页的批量启用/停用交互与样式） -->
+    <div class="batch-bar" v-if="isSuperuser">
+      <span class="batch-info">已选 {{ selectedIds.length }} 项</span>
+      <button class="btn btn-primary btn-sm" :disabled="selectedIds.length === 0" @click="batchToggle(true)">批量启用</button>
+      <button class="btn btn-ghost btn-sm" :disabled="selectedIds.length === 0" @click="batchToggle(false)">批量停用</button>
+      <button class="btn btn-ghost btn-sm" v-if="selectedIds.length" @click="selectedIds = []">取消选择</button>
+    </div>
+
     <!-- 管理表格 -->
     <div class="card source-table-card">
       <table class="tbl">
         <thead>
           <tr>
+            <th style="width:44px"><input type="checkbox" class="row-check" :checked="pageAllSelected" @change="togglePageAll" /></th>
             <th>名称</th>
             <th style="width:180px">区域</th>
             <th style="width:240px">关键词策略</th>
@@ -45,11 +54,12 @@
         </thead>
         <tbody>
           <tr v-for="s in sources" :key="s.id">
+            <td><input type="checkbox" class="row-check" :checked="selectedIds.includes(s.id)" @change="toggleRow(s)" /></td>
             <td>
               <div class="ds-name">
                 {{ s.name }}
-                <span class="ck" :class="s.type === 'rss' ? 'ck-rss' : (s.collector_kind === 'dedicated' ? 'ck-ded' : 'ck-gen')">
-                  {{ s.type === 'rss' ? 'RSS' : (s.collector_kind === 'dedicated' ? '专用型' : '通用型') }}
+                <span class="ck" :class="s.type === 'rss' ? 'ck-rss' : (s.collector_kind === 'external_browser' ? 'ck-ext' : (s.collector_kind === 'dedicated' ? 'ck-ded' : 'ck-gen'))">
+                  {{ s.type === 'rss' ? 'RSS' : (s.collector_kind === 'external_browser' ? '聚合' : (s.collector_kind === 'dedicated' ? '专用型' : '通用型')) }}
                 </span>
               </div>
               <div class="ds-key">{{ s.key }} · {{ s.type }}</div>
@@ -157,7 +167,7 @@
               <button v-if="isSuperuser" class="btn btn-mini" @click="openSchedule(s)">调度</button>
             </td>
           </tr>
-          <tr v-if="!sources.length"><td colspan="15" class="empty-row">暂无数据源</td></tr>
+          <tr v-if="!sources.length"><td colspan="17" class="empty-row">暂无数据源</td></tr>
         </tbody>
       </table>
     </div>
@@ -373,6 +383,7 @@
             <el-option label="政府网站" value="gov_site" />
             <el-option label="搜索引擎" value="search" />
             <el-option label="RSS" value="rss" />
+            <el-option label="bb-browser 聚合采集（百度/虎扑/头条/B站/YouTube）" value="external_browser" />
           </el-select>
         </div>
         <div class="cf-row">
@@ -414,11 +425,20 @@
           <div v-if="rssFeedError" class="cfg-err">{{ rssFeedError }}</div>
           <div class="cf-hint">填写一个或多个 RSS/Atom 地址（仅支持 http/https）。保存时会用真实抓取校验。</div>
         </div>
+        <div class="cf-row" v-if="form.type === 'external_browser'">
+          <label class="cf-label">调度模式</label>
+          <el-switch v-model="form.schedule_enabled" active-text="自动" inactive-text="手动" />
+          <div class="cf-hint">bb-browser 聚合采集默认「手动」。Phase 2 灰度期间必须保持手动（schedule_enabled=false），不得自动调度。</div>
+        </div>
         <div class="cf-row" v-if="form.type !== 'rss'">
           <label class="cf-label">配置 config_json <span class="req">*</span></label>
           <el-input v-model="form.config_json" type="textarea" :rows="13" placeholder="JSON 配置" />
           <div v-if="createConfigError" class="cfg-err">{{ createConfigError }}</div>
-          <div class="cf-hint">新建的数据源将使用<strong>通用型采集器（配置驱动）</strong>，需填写 config_json（至少含 list_urls）；保存时会用真实抓取校验：能取到正文才创建成功。</div>
+          <div v-if="form.type === 'external_browser'" class="cf-hint">
+            bb-browser 聚合采集：填写 config_json（JSON），至少含 <code>platforms</code>、<code>control_root</code>、<code>exchange_root</code>、<code>bb_browser_cli</code>；
+            平台白名单仅允许 baidu/hupu/toutiao/bilibili/youtube，禁止 weibo/xiaohongshu/zhihu。保存时仅做结构校验，不会触发实时抓取。
+          </div>
+          <div v-else class="cf-hint">新建的数据源将使用<strong>通用型采集器（配置驱动）</strong>，需填写 config_json（至少含 list_urls）；保存时会用真实抓取校验：能取到正文才创建成功。</div>
         </div>
         <div class="cf-row">
           <label class="cf-label">过滤策略（可选）</label>
@@ -669,6 +689,40 @@ const filterEnabled = ref<boolean | ''>('')
 const filterQ = ref('')
 const qualityBySourceId = ref<Record<number, DataSourceQualityItem>>({})
 
+// 批量启用/停用：行选择状态（复用关键词管理页交互）
+const selectedIds = ref<number[]>([])
+const pageAllSelected = computed(
+  () => sources.value.length > 0 && sources.value.every((s) => selectedIds.value.includes(s.id)),
+)
+function toggleRow(s: Row) {
+  const i = selectedIds.value.indexOf(s.id)
+  if (i >= 0) selectedIds.value.splice(i, 1)
+  else selectedIds.value.push(s.id)
+}
+function togglePageAll(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  if (checked) {
+    for (const s of sources.value) if (!selectedIds.value.includes(s.id)) selectedIds.value.push(s.id)
+  } else {
+    const pageIds = new Set(sources.value.map((s) => s.id))
+    selectedIds.value = selectedIds.value.filter((id) => !pageIds.has(id))
+  }
+}
+async function batchToggle(enabled: boolean) {
+  if (selectedIds.value.length === 0) return
+  try {
+    const { data } = await api.post<{ affected_count: number; skipped: number }>(
+      '/admin/data-sources/batch-toggle',
+      { ids: selectedIds.value, enabled },
+    )
+    ElMessage.success(enabled ? `已批量启用 ${data.affected_count} 个` : `已批量停用 ${data.affected_count} 个`)
+    selectedIds.value = []
+    reload()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '批量操作失败')
+  }
+}
+
 const historyVisible = ref(false)
 const configVisible = ref(false)
 const currentSource = ref<Row | null>(null)
@@ -742,6 +796,7 @@ const form = reactive({
   scope_region_codes: [] as string[],
   priority: 50,
   enabled: true,
+  schedule_enabled: false,
   config_json: DEFAULT_CONFIG,
   filter_mode: '' as string,
   keyword_scope: '' as string,
@@ -1233,7 +1288,7 @@ function buildPayload(): DataSourceCreateRequest {
   else delete cfgObj.keyword_scope
   if (form.max_items != null && form.max_items >= 1) cfgObj.max_items = form.max_items
   else delete cfgObj.max_items
-  return {
+  const payload: DataSourceCreateRequest = {
     name: form.name.trim(),
     key: form.key.trim(),
     type: form.type,
@@ -1242,6 +1297,10 @@ function buildPayload(): DataSourceCreateRequest {
     enabled: form.enabled,
     config_json: JSON.stringify(cfgObj),
   }
+  if (form.type === 'external_browser') {
+    payload.schedule_enabled = form.schedule_enabled
+  }
+  return payload
 }
 
 async function testCreate() {
@@ -1419,6 +1478,12 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .btn-ghost:hover { background: #e8e8ed; }
 .btn-mini { background: transparent; color: #0071e3; padding: 4px 10px; font-size: 13px; }
 .btn-mini:hover { background: #e8f1fd; }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+
+/* 批量操作栏（复用关键词管理页样式） */
+.batch-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.batch-info { font-size: 13px; color: #86868b; }
+.row-check { width: 16px; height: 16px; cursor: pointer; accent-color: #0071e3; }
 
 .dlg-sub { font-size: 15px; font-weight: 600; margin: 0 0 10px; color: #1d1d1f; }
 .run-summary {
@@ -1488,6 +1553,7 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 .ck-gen { background: rgba(0,122,255,0.1); color: #007aff; }
 .ck-ded { background: rgba(52,199,89,0.12); color: #1a8e3c; }
 .ck-rss { background: rgba(175,82,222,0.12); color: #af52de; }
+.ck-ext { background: rgba(255,149,0,0.12); color: #c2700a; }
 
 /* RSS feeds 编辑列表 */
 .feed-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }

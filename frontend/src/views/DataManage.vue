@@ -1,6 +1,6 @@
 <template>
   <div class="dm-page">
-    <Teleport to="#page-nav-target">
+    <Teleport defer to="#page-nav-target">
     <div class="page-nav">
       <div class="head-left">
         <h1 class="page-title">数据管理</h1>

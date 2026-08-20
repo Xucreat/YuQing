@@ -1,7 +1,7 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/index-C_gVXZAK.css"])))=>i.map(i=>d[i]);
-import { d as defineComponent, r as ref, z as usePermission, A as watch, C as onMounted, w as withDirectives, c as createElementBlock, q as createBlock, a as createBaseVNode, n as normalizeClass, Y as Teleport, F as Fragment, b as withKeys, v as vModelText, m as createVNode, p as withCtx, $ as Transition, s as createCommentVNode, e as createTextVNode, t as toDisplayString, i as renderList, N as vModelSelect, H as unref, U as createStaticVNode, L as useRoute, j as computed, g as api, E as ElMessage, a0 as pollTask, Z as isPermissionDenied, y as resolveComponent, B as resolveDirective, h as useRouter, o as openBlock, P as withModifiers, k as normalizeStyle, a1 as __vitePreload, _ as _export_sfc } from './index-DEChr7so.js';
-import { E as EVENT_STATUS_OPTIONS, b as EventDispositionDialog, e as eventStatusPill, a as eventStatusLabel } from './EventDispositionDialog-BfWP8RlH.js';
-import { F as ForeignEventsView } from './ForeignEventsView-DkhQoqX6.js';
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/index-CA2OEymE.css"])))=>i.map(i=>d[i]);
+import { d as defineComponent, r as ref, z as usePermission, A as watch, C as onMounted, w as withDirectives, c as createElementBlock, q as createBlock, a as createBaseVNode, n as normalizeClass, Y as Teleport, F as Fragment, b as withKeys, v as vModelText, m as createVNode, p as withCtx, $ as Transition, s as createCommentVNode, e as createTextVNode, t as toDisplayString, i as renderList, N as vModelSelect, H as unref, U as createStaticVNode, L as useRoute, j as computed, g as api, E as ElMessage, a0 as pollTask, Z as isPermissionDenied, y as resolveComponent, B as resolveDirective, h as useRouter, o as openBlock, P as withModifiers, k as normalizeStyle, a1 as __vitePreload, _ as _export_sfc } from './index-D56tKRkz.js';
+import { E as EVENT_STATUS_OPTIONS, b as EventDispositionDialog, e as eventStatusPill, a as eventStatusLabel } from './EventDispositionDialog-CAZgSSH_.js';
+import { F as ForeignEventsView } from './ForeignEventsView-DcBL_Gnk.js';
 
 const _hoisted_1 = { class: "events" };
 const _hoisted_2 = { class: "page-nav" };
@@ -317,7 +317,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         ElMessage.error("权限不足，无法删除事件");
         return;
       }
-      const { ElMessageBox } = await __vitePreload(async () => { const { ElMessageBox } = await import('./index-DEChr7so.js').then(n => n.a7);return { ElMessageBox }},true?__vite__mapDeps([0]):void 0);
+      const { ElMessageBox } = await __vitePreload(async () => { const { ElMessageBox } = await import('./index-D56tKRkz.js').then(n => n.a7);return { ElMessageBox }},true?__vite__mapDeps([0]):void 0);
       try {
         await ElMessageBox.confirm(
           `确认删除事件「${row.title}」？关联的舆情不会被删除，仅解除关联。`,
@@ -347,7 +347,10 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
       const _component_Pager = resolveComponent("Pager");
       const _directive_loading = resolveDirective("loading");
       return withDirectives((openBlock(), createElementBlock("div", _hoisted_1, [
-        (openBlock(), createBlock(Teleport, { to: "#page-nav-target" }, [
+        (openBlock(), createBlock(Teleport, {
+          defer: "",
+          to: "#page-nav-target"
+        }, [
           createBaseVNode("div", _hoisted_2, [
             _cache[26] || (_cache[26] = createBaseVNode("div", { class: "head-left" }, [
               createBaseVNode("h1", { class: "page-title" }, "事件中心")
@@ -591,7 +594,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
               title: "按趋势筛选",
               onChange: applyFilters
             }, [..._cache[36] || (_cache[36] = [
-              createStaticVNode('<option value="" data-v-93e7e736>全部趋势</option><option value="rising" data-v-93e7e736>↑ 升温</option><option value="stable" data-v-93e7e736>→ 平稳</option><option value="falling" data-v-93e7e736>↓ 下降</option><option value="unknown" data-v-93e7e736>未知</option>', 5)
+              createStaticVNode('<option value="" data-v-e87b0634>全部趋势</option><option value="rising" data-v-e87b0634>↑ 升温</option><option value="stable" data-v-e87b0634>→ 平稳</option><option value="falling" data-v-e87b0634>↓ 下降</option><option value="unknown" data-v-e87b0634>未知</option>', 5)
             ])], 544), [
               [vModelSelect, trendFilter.value]
             ]),
@@ -870,6 +873,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
   }
 });
 
-const Events = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-93e7e736"]]);
+const Events = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-e87b0634"]]);
 
 export { Events as default };

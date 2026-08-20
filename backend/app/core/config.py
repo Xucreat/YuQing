@@ -69,6 +69,21 @@ class Settings(BaseSettings):
     collector_default_interval_minutes: int = 30
     # per_source 模式下的 tick 间隔（秒）
     collector_tick_interval_seconds: int = 60
+    # ===== Phase 5：bb-browser 专用调度 lane（默认关闭，fail-closed）=====
+    # 独立于全局 scheduler，仅调度 bb_browser（allowlist 严格 = {"bb_browser"}）。
+    # 默认 false：未显式开启前绝不派发 bb_browser 自动采集。
+    bb_browser_schedule_enabled: bool = False
+    # bb-browser 专用调度的 source allowlist（CSV，必须恰好只含 bb_browser）。
+    bb_browser_schedule_allowlist: str = ""
+    # bb-browser 专用 lane 的 tick 间隔（秒）
+    bb_browser_tick_interval_seconds: int = 60
+    # ===== Phase 5 阶段四：百度平台级稳定性（保守默认，可配置）=====
+    # 这些参数当前仅用于退避/冷却计算与文档；all-or-nothing 下暂不接入完整熔断状态机。
+    baidu_max_attempts: int = 3                 # 单轮最大重试次数
+    baidu_backoff_seconds: int = 60             # 指数退避基数（秒）
+    baidu_cooldown_seconds: int = 600           # 上游阻断冷却窗口（秒，默认 10 分钟）
+    baidu_circuit_breaker_threshold: int = 5    # 连续 upstream_blocked 熔断阈值
+    baidu_circuit_breaker_recovery_seconds: int = 3600  # 熔断自动恢复时间（秒，默认 1 小时）
     # 监测关键词（兜底用）：keywords 表已成为采集过滤 + 预警匹配的唯一权威源
     # （见 app/services/keyword_service.py，表空时回退到此配置）。
     # 廊坊市全域视角（廊坊+大厂+三河+香河+固安）。现由 keywords 表驱动，此值仅作应急兜底。

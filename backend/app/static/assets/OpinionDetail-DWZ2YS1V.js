@@ -1,4 +1,4 @@
-import { d as defineComponent, z as usePermission, C as onMounted, w as withDirectives, c as createElementBlock, a as createBaseVNode, t as toDisplayString, s as createCommentVNode, n as normalizeClass, F as Fragment, i as renderList, k as normalizeStyle, e as createTextVNode, q as createBlock, j as computed, r as ref, g as api, E as ElMessage, Z as isPermissionDenied, B as resolveDirective, h as useRouter, o as openBlock, L as useRoute, y as resolveComponent, _ as _export_sfc } from './index-DEChr7so.js';
+import { d as defineComponent, z as usePermission, C as onMounted, w as withDirectives, c as createElementBlock, a as createBaseVNode, t as toDisplayString, s as createCommentVNode, n as normalizeClass, F as Fragment, i as renderList, k as normalizeStyle, e as createTextVNode, q as createBlock, j as computed, r as ref, g as api, E as ElMessage, Z as isPermissionDenied, B as resolveDirective, h as useRouter, o as openBlock, L as useRoute, y as resolveComponent, _ as _export_sfc } from './index-D56tKRkz.js';
 import { f as formatAdmissionHits } from './admission-DpEuIHXC.js';
 
 const _hoisted_1 = { class: "detail" };

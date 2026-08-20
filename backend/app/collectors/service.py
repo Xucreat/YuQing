@@ -22,6 +22,7 @@
 """
 from __future__ import annotations
 
+import inspect
 import logging
 import threading
 import uuid
@@ -36,6 +37,9 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from app.collectors.base import BaseCollector
+# Phase 3A §五-6：稳定错误码来源。bb_browser_runtime 是零依赖叶子模块
+#（只 import 标准库），不会与 service 形成循环 import。
+from app.collectors.bb_browser_runtime import CollectorError
 from app.collectors.government_collector import GovernmentCollector
 from app.collectors.mediacrawler_platform import MEDIACRAWLER_CAPABILITY
 from app.collectors.registry import resolve_collectors, resolve_collectors_verbose
@@ -99,6 +103,59 @@ def reset_gov_throttle() -> None:
     _GOV_LAST_RUN_AT = None
 
 
+def _force_mark_run_failed(
+    run_id: Optional[int],
+    error_msg: str,
+    *,
+    session_factory=None,
+) -> bool:
+    """用「独立 DB 会话」把指定 CollectorRun 强制标记为 failed（Phase 3A §五-8 兜底）。
+
+    调用场景：主 session 的 ``db.commit()`` 失败并 rollback 后，run 的 failed 状态
+    无法落盘，若不兜底该记录将永久停留 ``running``。
+
+    约束：
+    - 只在当前状态仍为 running 时改写（幂等，绝不覆盖已终结状态）；
+    - 任何异常只记日志，绝不再抛出（不得掩盖原始采集异常）；
+    - 不引入 Redis / Celery 等新组件，仅复用现有 session factory。
+    """
+    if not run_id:
+        return False
+    factory = session_factory
+    if factory is None:
+        try:
+            from app.db.session import SessionLocal
+
+            factory = SessionLocal
+        except Exception:
+            logger.error("强制回收 CollectorRun(%s) 失败：无可用 session factory", run_id)
+            return False
+    s = None
+    try:
+        s = factory()
+        row = s.get(CollectorRun, int(run_id))
+        if row is None:
+            return False
+        if row.status == "running":
+            row.status = "failed"
+            row.error_msg = (error_msg or "collector_error: forced_reclaim")[:2000]
+            row.end_time = datetime.now(timezone.utc)
+            s.commit()
+            logger.error(
+                "已用独立会话强制回收 CollectorRun(%s) → failed：%s", run_id, error_msg
+            )
+        return True
+    except Exception:
+        logger.exception("强制回收 CollectorRun(%s) 失败（已放弃，不影响原始异常）", run_id)
+        return False
+    finally:
+        if s is not None:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+
 def _update_media_crawler_metrics(collector: BaseCollector, **updates: int | str | None) -> None:
     """Best-effort batch metrics update scoped to MediaCrawler only."""
 
@@ -157,12 +214,20 @@ def get_collector_status() -> dict:
     return dict(_COLLECTOR_STATUS)
 
 
-def reclaim_zombie_runs(db: Session, *, timeout_minutes: Optional[int] = None) -> int:
-    """启动时对账：将超时仍 running 的历史 CollectorRun 回收为 failed。
+def reclaim_zombie_runs(
+    db: Session,
+    *,
+    timeout_minutes: Optional[int] = None,
+    batch_id: Optional[str] = None,
+    collector_name: Optional[str] = None,
+) -> int:
+    """回收超时仍 running 的 CollectorRun 为 failed（可靠兜底，绝不永久 running）。
 
-    - 仅回收「开始时间早于 now - timeout」的记录，避免误判刚启动/仍在途的任务
-      （应用启动时该进程内无任何采集在途，但阈值仍是安全保护）。
-    - timeout 复用配置 ``collector_run_zombie_timeout_minutes``（集中定义，禁止散落 magic number）。
+    - 默认：仅回收「开始时间早于 now - timeout_minutes」的记录（避免误判刚启动/在途任务）。
+      timeout 复用配置 ``collector_run_zombie_timeout_minutes``（集中定义，禁止散落 magic number）。
+    - ``batch_id`` 给定时，仅作用于该批次（覆盖「同进程 / 同批次任务卡死」场景）：
+      配合 ``timeout_minutes=0`` 可在每批采集结束后把本批内任何仍 running 的孤儿运行
+      （如后台线程异常退出未落库）强制回收为 failed，作为 finally 之外的第二道兜底。
     - 不引入 Redis / Celery / 数据库锁服务等新组件（Phase 6 纪律）。
     - 回收原因明确写入 error_msg，便于采集日志定位。
 
@@ -171,15 +236,23 @@ def reclaim_zombie_runs(db: Session, *, timeout_minutes: Optional[int] = None) -
     if timeout_minutes is None:
         timeout_minutes = settings.collector_run_zombie_timeout_minutes
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
-    rows = (
-        db.query(CollectorRun)
-        .filter(CollectorRun.status == "running", CollectorRun.start_time < cutoff)
-        .all()
-    )
+    q = db.query(CollectorRun).filter(CollectorRun.status == "running")
+    if batch_id is not None:
+        q = q.filter(CollectorRun.batch_id == batch_id)
+    if collector_name is not None:
+        q = q.filter(CollectorRun.collector_name == collector_name)
+    q = q.filter(CollectorRun.start_time < cutoff)
+    rows = q.all()
     for r in rows:
         r.status = "failed"
-        r.error_msg = "采集进程重启或异常中断，原运行状态已超时回收"
-        r.end_time = datetime.now(timezone.utc)
+        # 稳定错误码前缀 zombie_reclaim: 便于采集日志按错误码稳定检索（§五-6）。
+        r.error_msg = (
+            "zombie_reclaim: 采集运行超时/异常中断回收，"
+            f"batch_id={batch_id or 'n/a'}, collector={collector_name or 'n/a'}, "
+            f"started={r.start_time}"
+        )[:2000]
+        if r.end_time is None:
+            r.end_time = datetime.now(timezone.utc)
     if rows:
         db.commit()
     return len(rows)
@@ -200,6 +273,9 @@ class CollectorService:
         self.collector_type: str = (
             collector_type or settings.collector_type or "government"
         ).lower()
+        # Phase 3A §五：主 session 提交失败时的隔离兜底 session factory。
+        # None → 运行期回退 app.db.session.SessionLocal；测试可注入内存库 factory。
+        self.fallback_session_factory = None
         # 默认采集器：按 collector_type 选择（government / mock）。
         # 也可显式注入 collectors（测试用），此时 collector_type 仍用于返回标识。
         self._collectors_injected: bool = collectors is not None
@@ -513,6 +589,12 @@ class CollectorService:
         )
         db.add(run)
         db.commit()
+        # Phase 3A §五：提前固化 run_id。主 session 后续若提交失败并 rollback，
+        # ORM 实例会失效，必须靠这个纯 int 才能用独立会话兜底回收（防永久 running）。
+        try:
+            run_id_snapshot: Optional[int] = int(run.id)
+        except Exception:
+            run_id_snapshot = None
 
         is_weibo_consumer = getattr(collector, "data_source_key", None) == "weibo_octopus"
         duplicate_count = 0
@@ -521,6 +603,9 @@ class CollectorService:
         upstream_returned = 0
         c_created = c_analyzed = c_failed = 0
         admission_filtered = 0
+        comments_seen = 0
+        comments_skipped = 0
+        ack_reason = "-"
         mediacrawler_next_cursor: int | None = None
         try:
             # 向下兼容 keywords= 旧链路；region_kw/topic_kw 驱动地域前置过滤新链路。
@@ -755,7 +840,10 @@ class CollectorService:
                     )[:2000]
                     db.commit()
                 else:
-                    acknowledged = ack_pending_export()
+                    if "collector_run_id" in inspect.signature(ack_pending_export).parameters:
+                        acknowledged = ack_pending_export(collector_run_id=run.id)
+                    else:
+                        acknowledged = ack_pending_export()
                     if acknowledged:
                         run.ack_status = "success"
                         run.acknowledged = upstream_returned
@@ -834,10 +922,17 @@ class CollectorService:
             )
         except Exception as exc:
             # P1-1：采集器级异常（fetch / 区域解析 / 循环内未捕获异常）必须最终落为 failed，
-            # 不得让对应 CollectorRun 永久停留 running；error_msg 保留足够定位信息；
+            # 不得让对应 CollectorRun 永久停留 running；error_msg 必须包含稳定错误码
+            #（CollectorError 直接用其 code 前缀；其它异常统一归类为 collector_error:），
             # 不吞掉异常伪装成功——标记失败后重新抛出，原有调用方行为（异常上抛）不变。
             db.rollback()
             run.status = "failed"
+            if isinstance(exc, CollectorError):
+                code = exc.code
+                run.error_msg = f"{code}: {exc.detail}"[:2000]
+            else:
+                code = "collector_error"
+                run.error_msg = f"{code}: {type(exc).__name__}: {exc}"[:2000]
             if run.ack_status == "pending":
                 run.ack_status = "failed"
                 run.unconfirmed = max(
@@ -846,13 +941,19 @@ class CollectorService:
                 )
             run.failed = max(int(run.failed or 0), 1)
             run.duplicate = duplicate_count
-            run.error_msg = f"{type(exc).__name__}: {exc}"[:2000]
             run.end_time = datetime.now(timezone.utc)
             try:
                 db.add(run)
                 db.commit()
             except Exception:
                 db.rollback()
+                # Phase 3A §五-8：主 session 提交失败绝不能让 CollectorRun 永久 running，
+                # 改用独立会话强制回收为 failed（错误码保留，便于稳定检索）。
+                _force_mark_run_failed(
+                    run_id_snapshot,
+                    f"{code}: db_commit_failed（主会话提交失败，已隔离会话回收）",
+                    session_factory=self.fallback_session_factory,
+                )
             _update_media_crawler_metrics(
                 collector,
                 created=c_created,
@@ -953,6 +1054,28 @@ class CollectorService:
                 )
             finally:
                 cdb.close()
+                # 可靠 finally 兜底（§五-4/§五-8）：本采集器线程无论正常 return、抛异常、
+                # 还是在 except 分支提交失败，本批 + 本采集器名下若仍有 running 运行，
+                # 一律用独立会话回收为 failed。按 collector_name 精确限定，
+                # 绝不误杀同批其它仍在执行的采集器（含 MediaCrawler）。
+                try:
+                    rdb = session_factory()
+                    try:
+                        n = reclaim_zombie_runs(
+                            rdb,
+                            batch_id=batch_id,
+                            collector_name=getattr(collector, "source_name", None),
+                            timeout_minutes=0,
+                        )
+                        if n:
+                            logger.warning(
+                                "采集线程结束后仍有 running 运行，已回收：batch_id=%s collector=%s n=%d",
+                                batch_id, getattr(collector, "source_name", ""), n,
+                            )
+                    finally:
+                        rdb.close()
+                except Exception:
+                    logger.exception("采集线程级僵尸运行回收失败（不影响本次结果）")
 
         merged = CollectorRunResult(collector_type=self.collector_type)
         done = 0
@@ -999,5 +1122,19 @@ class CollectorService:
         # 政府网站采集成功后更新防抖时间戳（供下次 5 秒判断）。
         if self._uses_government():
             _GOV_LAST_RUN_AT = now
+
+        # 可靠兜底（§五）：本批所有 future 已结束时，若仍有任何本批 CollectorRun
+        # 停留 running（如后台线程异常退出未落库），强制回收为 failed，杜绝永久 running。
+        # timeout_minutes=0 表示「本批内立即回收所有仍 running 的运行」（仅限本 batch_id）。
+        try:
+            rb = session_factory()
+            try:
+                reclaimed = reclaim_zombie_runs(rb, batch_id=batch_id, timeout_minutes=0)
+                if reclaimed:
+                    logger.warning("本批僵尸运行回收：batch_id=%s reclaimed=%d", batch_id, reclaimed)
+            finally:
+                rb.close()
+        except Exception:
+            logger.exception("本批僵尸运行回收失败（不影响已合并结果）")
 
         return merged

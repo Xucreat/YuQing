@@ -14,8 +14,10 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -30,6 +32,14 @@ from app.collectors.mediacrawler_platform import (
 )
 from app.collectors.mediacrawler_runtime import MediaCrawlerRuntimeFactory
 from app.collectors.registry import import_class
+from app.collectors.bb_browser_collector import ALLOWED_PLATFORMS, REJECTED_PLATFORMS
+from app.collectors.bb_browser_runtime import probe_connectivity, verify_runtime_lock
+
+# Phase 2 §七/§八：bb-browser 运行时锁文件绝对路径（可由环境变量覆盖，便于测试）
+BB_RUNTIME_LOCK_PATH = os.environ.get(
+    "BB_RUNTIME_LOCK",
+    r"C:\Users\Administrator\Desktop\bb-browser 采集器\phase2_runtime_lock.json",
+)
 from app.collectors.source_config import STRATEGY_KEYS
 from app.collectors.source_config import (
     COLLECTION_MODES,
@@ -122,6 +132,9 @@ _TYPE_CLASS_PATH: dict = {
         "app.collectors.media_crawler_platform_collector."
         "MediaCrawlerPlatformCollector"
     ),
+    # bb-browser 聚合采集（百度/虎扑/头条/B站/YouTube），复用已验证 worker。
+    # 平台白名单在服务端强制收敛，禁止 weibo/xiaohongshu/zhihu/未知经 shell 透传。
+    "external_browser": "app.collectors.bb_browser_collector.BBBrowserCollector",
 }
 
 # —— 专用型 / 通用型 采集器区分与 config_json 校验（Phase 3 优化）——
@@ -236,6 +249,23 @@ def _is_foreign_source(ds: DataSource) -> bool:
 
 def _is_rss(class_path: str) -> bool:
     return (class_path or "") == RSS_CLASS_PATH
+
+
+def _is_external_browser(class_path: str) -> bool:
+    return (class_path or "") == "app.collectors.bb_browser_collector.BBBrowserCollector"
+
+
+def _schedule_enabled_default(class_path: str) -> bool:
+    """新建数据源时 schedule_enabled 的默认值（§七.1）。
+
+    MediaCrawler / foreign / external_browser 默认不自动调度（False）；
+    其它类型默认 True。
+    """
+    return not (
+        _is_mediacrawler(class_path)
+        or _is_foreign(class_path)
+        or _is_external_browser(class_path)
+    )
 
 
 RSS_URL_SCHEME_PREFIXES = ("http://", "https://")
@@ -388,6 +418,155 @@ def _validate_generic_config(cfg: dict) -> str | None:
     return None
 
 
+# bb-browser 聚合采集器 config_json 字段白名单（服务端强制收敛）。
+# 与 collector 内部 ALLOWED_PLATFORMS / REJECTED_PLATFORMS 双保险：管理端在
+# 落库前就拒绝 weibo/m_weibo/xiaohongshu/zhihu/未知平台，以及非法路径/不存在的 CLI。
+EXTERNAL_BROWSER_ALLOWED_KEYS = {
+    "platforms",
+    "control_root",
+    "exchange_root",
+    "bb_browser_cli",
+    "cdp_url",
+    "daemon_url",
+    "timeout_seconds",
+    "poll_interval_seconds",
+    "max_items_per_platform",
+    "manifest_version",
+    "allow_weibo",
+    "allow_xiaohongshu",
+    "collection_mode",
+}
+
+
+def _bb_lock() -> dict | None:
+    try:
+        with open(BB_RUNTIME_LOCK_PATH, encoding="utf-8") as fh:
+            return json.loads(fh.read())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _validate_external_browser_config(cfg: dict) -> str | None:
+    """校验 external_browser（bb-browser 聚合）数据源的 config_json。
+
+    返回首个错误字符串；无错误返回 None。
+    """
+    if not isinstance(cfg, dict) or not cfg:
+        return "bb-browser 聚合采集器必须提供 config_json"
+    unknown = [k for k in cfg if k not in EXTERNAL_BROWSER_ALLOWED_KEYS]
+    if unknown:
+        return (
+            f"config_json 包含不支持的字段：{', '.join(unknown)}"
+            f"（bb-browser 仅支持：{', '.join(sorted(EXTERNAL_BROWSER_ALLOWED_KEYS))}）"
+        )
+
+    # 平台白名单：显式拒绝 weibo / m_weibo / xiaohongshu / xhs / zhihu / 未知平台。
+    platforms = cfg.get("platforms")
+    if not isinstance(platforms, list) or not platforms:
+        return "platforms 必须为非空数组（如 [\"baidu\",\"hupu\",\"toutiao\",\"bilibili\",\"youtube\"]）"
+    for p in platforms:
+        if not isinstance(p, str) or not p:
+            return f"platforms 含非法项：{p!r}"
+        if p in REJECTED_PLATFORMS:
+            return f"平台 {p} 被禁止接入 bb-browser（由 MediaCrawler / 未登录源负责，不允许经 shell 透传）"
+        if p not in ALLOWED_PLATFORMS:
+            return f"平台 {p} 不在服务端白名单（允许：{', '.join(ALLOWED_PLATFORMS)}）；未知平台禁止接入"
+
+    # 路径：control_root / exchange_root 必须为绝对路径，禁止相对路径与目录穿越。
+    for field in ("control_root", "exchange_root"):
+        val = cfg.get(field)
+        if not isinstance(val, str) or not val.strip():
+            return f"{field} 必须为非空绝对路径字符串"
+        if not os.path.isabs(val):
+            return f"{field} 必须为绝对路径（禁止相对路径）：{val}"
+        # 原始值含 '..' 即视为目录穿越（normpath 会把 .. 吞掉，故直接查原始串）
+        if ".." in val:
+            return f"{field} 禁止包含目录穿越（..）：{val}"
+
+    # §七.6：control_root/exchange_root 必须存在，且为当前主交换根（与 runtime lock 一致）。
+    lock = _bb_lock()
+    if lock is None:
+        return "bb-browser 运行时锁（phase2_runtime_lock.json）缺失或不可读，拒绝创建/修改"
+    for field in ("control_root", "exchange_root"):
+        val = cfg.get(field)
+        if not os.path.isdir(val):
+            return f"{field} 目录不存在：{val}"
+        lock_root = lock.get(field)
+        if lock_root and os.path.normcase(os.path.normpath(val)) != os.path.normcase(os.path.normpath(lock_root)):
+            return f"{field} 必须是当前主交换根 {lock_root}，实际 {val}"
+
+    # bb_browser_cli：必须指向一个存在的可执行文件（禁止不存在的 CLI）。
+    cli = cfg.get("bb_browser_cli")
+    if not isinstance(cli, str) or not cli.strip():
+        return "bb_browser_cli 必须为非空字符串（CLI 可执行文件路径）"
+    if not os.path.isabs(cli):
+        return f"bb_browser_cli 必须为绝对路径：{cli}"
+    if not os.path.isfile(cli):
+        return f"bb_browser_cli 指向的文件不存在：{cli}"
+
+    # §七.5：CLI 必须是已锁定 CLI（路径/SHA256/版本 与 runtime lock 一致）
+    lock_cli = lock.get("node_cli")
+    if lock_cli and os.path.normcase(os.path.normpath(cli)) != os.path.normcase(os.path.normpath(lock_cli)):
+        return f"bb_browser_cli 必须是已锁定 CLI：{lock_cli}"
+    expect_sha = lock.get("node_cli_sha256")
+    if expect_sha and _sha256_file(cli) != expect_sha:
+        return "bb_browser_cli SHA256 与运行时锁不匹配（runtime drift）"
+    expect_ver = lock.get("bb_browser_version")
+    pkg = os.path.join(os.path.dirname(os.path.dirname(cli)), "package.json")
+    if expect_ver and os.path.isfile(pkg):
+        try:
+            with open(pkg, encoding="utf-8") as fh:
+                actual_ver = json.loads(fh.read()).get("version")
+        except (OSError, json.JSONDecodeError):
+            actual_ver = None
+        if actual_ver != expect_ver:
+            return f"bb-browser 版本 {actual_ver} 未锁定（应为 {expect_ver}）"
+
+    # 可选 URL 字段。
+    for field in ("cdp_url", "daemon_url"):
+        val = cfg.get(field)
+        if val is not None and (not isinstance(val, str) or not val.strip()):
+            return f"{field} 若存在必须为非空字符串"
+
+    # §七.7：cdp_url/daemon_url 安全连通性 preflight（不执行命令，仅 TCP 建连）
+    for field in ("cdp_url", "daemon_url"):
+        val = cfg.get(field)
+        if val and not probe_connectivity(val):
+            return f"{field} 连通性 preflight 失败（不可达）：{val}"
+
+    # 数值字段：正整数。
+    for field in ("timeout_seconds", "poll_interval_seconds", "max_items_per_platform"):
+        val = cfg.get(field)
+        if val is None:
+            continue
+        if not isinstance(val, int) or isinstance(val, bool) or val <= 0:
+            return f"{field} 必须为正整数"
+
+    # 布尔字段。
+    for field in ("allow_weibo", "allow_xiaohongshu"):
+        val = cfg.get(field)
+        if val is not None and not isinstance(val, bool):
+            return f"{field} 必须为布尔值"
+
+    # §七.3：external_browser 必须显式 collection_mode=national（缺失或其他值都拒绝）
+    if cfg.get("collection_mode") != "national":
+        return "external_browser 必须显式声明 collection_mode=\"national\"（缺失或其他值都拒绝）"
+
+    # collection_mode 语义组合校验（与通用型同源）。
+    cerr = _validate_collection_config(cfg)
+    if cerr:
+        return cerr
+    return None
+
+
 def _region_map(db: Session) -> dict:
     # 以全国省级行政区为基底，DB regions 表（如河北省/市/县）覆盖同名项，保证
     # 新建源选了全国省份时列表也能正确显示名称（而非回退成 code）。
@@ -396,6 +575,40 @@ def _region_map(db: Session) -> dict:
     for code, name in db.execute(select(Region.code, Region.name)).all():
         m[code] = name
     return m
+
+
+def _region_closure(db: Session, region_code: str) -> set[str]:
+    """返回使数据源"与 region_code 相关"的所有行政区划 code 集合：
+    该区域自身、其全部祖先、其全部后代。用于列表筛选时跨省/市/县层级精确匹配
+    （解决省码 LIKE 匹配不到市县叶子 code 的问题）。
+
+    - 若 region_code 不在目录中，回退为 {region_code}（仅精确 LIKE），保证安全。
+    - 不含"全国(空 scope)"源：空 scope 不会被任何 code 命中，故选中具体区域时全国源自然排除。
+    """
+    items = region_catalog_items(db)
+    by_code = {it["code"]: it for it in items}
+    if region_code not in by_code:
+        return {region_code}
+
+    # 祖先链
+    ancestors: set[str] = set()
+    cur = by_code[region_code].get("parent_code")
+    while cur and cur in by_code:
+        ancestors.add(cur)
+        cur = by_code[cur].get("parent_code")
+
+    # 后代子树
+    children = {code: it["parent_code"] for code, it in by_code.items()}
+    descendants: set[str] = set()
+    stack = [region_code]
+    while stack:
+        node = stack.pop()
+        for code, parent in children.items():
+            if parent == node:
+                descendants.add(code)
+                stack.append(code)
+
+    return {region_code} | ancestors | descendants
 
 
 def _scope_to_codes(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
@@ -618,7 +831,7 @@ def _serialize(
         "region_names": names,
         "scope_display": "外网" if _is_foreign(ds.class_path) else ("全国" if not codes else "、".join(names)),
         "config_json": ds.config_json,
-        "collector_kind": "foreign" if _is_foreign(ds.class_path) else ("generic" if _is_generic(ds.class_path) else "dedicated"),
+        "collector_kind": "foreign" if _is_foreign(ds.class_path) else ("external_browser" if _is_external_browser(ds.class_path) else ("generic" if _is_generic(ds.class_path) else "dedicated")),
         # 缓存列（当前未被采集流程写回，可能为空）
         "last_run_at": ds.last_run_at.isoformat() if ds.last_run_at else None,
         "last_status": ds.last_status,
@@ -836,6 +1049,14 @@ def _validate_create(body) -> str | None:
         if err:
             return err
         return _validate_mediacrawler_config(cfg, body.get("scope_region_codes"))
+    if _is_external_browser(class_path):
+        # 聚合型：不使用区域 scope（用 collection_mode=national 表达全国）。
+        if _scope_to_codes(body.get("scope_region_codes")):
+            return "external_browser data source must not use region scope（请改用 collection_mode=national）"
+        cfg, err = _parse_config_json(raw_cfg)
+        if err:
+            return err
+        return _validate_external_browser_config(cfg)
     if _is_rss(class_path):
         cfg, err = _parse_config_json(raw_cfg)
         if err:
@@ -886,13 +1107,10 @@ def list_data_sources(
         stmt = stmt.where(or_(DataSource.name.like(like), DataSource.key.like(like)))
     if enabled is not None:
         stmt = stmt.where(DataSource.enabled == enabled)
-    if region_code:  # 具体区域：命中该 code 或全国(空)源
+    if region_code:  # 具体区域：按行政层级闭包匹配（自身+祖先+后代），不含全国(空)源
+        closure = _region_closure(db, region_code)
         stmt = stmt.where(
-            or_(
-                DataSource.scope_region_codes.like(f"%{region_code}%"),
-                DataSource.scope_region_codes.is_(None),
-                DataSource.scope_region_codes == "",
-            )
+            or_(*[DataSource.scope_region_codes.like(f"%{c}%") for c in sorted(closure)])
         )
 
     offset = (page - 1) * size
@@ -1112,10 +1330,11 @@ def create_data_source(
     test = _build_test(class_path, cfg, data_source_key=key)
     media_crawler_source = _is_mediacrawler(class_path)
     foreign_source = _is_foreign(class_path)
+    external_browser_source = _is_external_browser(class_path)
     schedule_enabled = bool(
         body.get(
             "schedule_enabled",
-            False if media_crawler_source or foreign_source else True,
+            _schedule_enabled_default(class_path),
         )
     )
     schedule_interval_minutes = int(
@@ -1222,6 +1441,37 @@ def batch_update_schedule(
                     )
         db.commit()
     return {"affected_count": len(targets)}
+
+
+@admin_ds_router.post("/batch-toggle")
+def batch_toggle_data_sources(
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("sources:write")),
+):
+    """批量启用/停用数据源（按选中 id，sources:write）。
+
+    body: { ids: [int...], enabled: bool }
+    返回 { affected_count, skipped }：skipped 为未找到的 id 数。
+    """
+    ids = body.get("ids")
+    enabled = body.get("enabled")
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(status_code=422, detail="ids 必须为非空数组")
+    if not isinstance(enabled, bool):
+        raise HTTPException(status_code=422, detail="enabled 必须为布尔值")
+
+    targets = db.execute(select(DataSource).where(DataSource.id.in_(ids))).scalars().all()
+    with audit_write(
+        db, action="UPDATE", operator=current_user, request=request,
+        resource_type="data_source",
+        details={"enabled": enabled, "requested": len(ids), "affected": len(targets)},
+    ):
+        for ds in targets:
+            ds.enabled = enabled
+        db.commit()
+    return {"affected_count": len(targets), "skipped": len(ids) - len(targets)}
 
 
 @admin_ds_router.get("/schedule/summary")
@@ -1362,6 +1612,20 @@ def update_data_source(
                 rerr = _validate_rss_config(cfg)
                 if rerr:
                     raise HTTPException(status_code=422, detail=rerr)
+                ds.config_json = json.dumps(cfg, ensure_ascii=False)
+            elif _is_external_browser(ds.class_path):
+                # bb-browser 聚合采集：落库前做服务端白名单 / 路径 / CLI 校验。
+                if raw is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="bb-browser 聚合采集数据源不能清空 config_json",
+                    )
+                cfg, err = _parse_config_json(raw)
+                if err:
+                    raise HTTPException(status_code=422, detail=err)
+                eerr = _validate_external_browser_config(cfg)
+                if eerr:
+                    raise HTTPException(status_code=422, detail=eerr)
                 ds.config_json = json.dumps(cfg, ensure_ascii=False)
             elif _is_generic(ds.class_path):
                 # 通用型（GenericSiteCollector）：允许设置合法 config；禁止清空

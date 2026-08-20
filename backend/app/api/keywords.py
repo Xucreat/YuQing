@@ -169,6 +169,37 @@ def create_keyword(
     return kw
 
 
+@keywords_router.put("/batch-toggle", response_model=dict)
+def batch_toggle_keywords(
+    payload: KeywordBatchToggle,
+    request: Request,
+    current_user: User = Depends(require_permission("keywords:write")),
+    db: Session = Depends(get_db),
+):
+    """批量启用/停用关键词（按选中 id）。
+
+    - 系统内置敏感词仅允许运行时启停，禁止内容篡改；本接口只改 is_enabled，故受保护词亦可被批量启停。
+    - 返回 {updated, skipped}：skipped 为未找到/越权的 id 数。
+    """
+    updated = 0
+    skipped = 0
+    with audit_write(
+        db, action="BULK_UPDATE", operator=current_user, request=request,
+        resource_type="keyword", details=payload.model_dump(),
+    ):
+        for keyword_id in payload.ids:
+            kw = db.get(Keyword, keyword_id)
+            if kw is None:
+                skipped += 1
+                continue
+            kw.is_enabled = payload.is_enabled
+            kw.updated_at = datetime.now(timezone.utc)
+            updated += 1
+        db.commit()
+    clear_keyword_cache()
+    return {"updated": updated, "skipped": skipped}
+
+
 @keywords_router.put("/{keyword_id}", response_model=KeywordOut)
 def update_keyword(
     keyword_id: int,
@@ -227,37 +258,6 @@ def update_keyword(
     db.refresh(kw)
     clear_keyword_cache()
     return kw
-
-
-@keywords_router.put("/batch-toggle", response_model=dict)
-def batch_toggle_keywords(
-    payload: KeywordBatchToggle,
-    request: Request,
-    current_user: User = Depends(require_permission("keywords:write")),
-    db: Session = Depends(get_db),
-):
-    """批量启用/停用关键词（按选中 id）。
-
-    - 系统内置敏感词仅允许运行时启停，禁止内容篡改；本接口只改 is_enabled，故受保护词亦可被批量启停。
-    - 返回 {updated, skipped}：skipped 为未找到/越权的 id 数。
-    """
-    updated = 0
-    skipped = 0
-    with audit_write(
-        db, action="BULK_UPDATE", operator=current_user, request=request,
-        resource_type="keyword", details=payload.model_dump(),
-    ):
-        for keyword_id in payload.ids:
-            kw = db.get(Keyword, keyword_id)
-            if kw is None:
-                skipped += 1
-                continue
-            kw.is_enabled = payload.is_enabled
-            kw.updated_at = datetime.now(timezone.utc)
-            updated += 1
-        db.commit()
-    clear_keyword_cache()
-    return {"updated": updated, "skipped": skipped}
 
 
 @keywords_router.delete("/{keyword_id}", status_code=status.HTTP_200_OK)

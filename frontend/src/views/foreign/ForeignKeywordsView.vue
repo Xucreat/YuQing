@@ -3,7 +3,7 @@
     <div class="toolbar">
       <input v-model="keywordFilters.q" class="input" placeholder="搜索关键词" @keyup.enter="loadKeywords" />
       <select v-model="keywordFilters.category" class="input" @change="loadKeywords">
-        <option value="">全部主题</option>
+        <option value="">全部分类</option>
         <option v-for="item in keywordCategories" :key="item" :value="item">{{ categoryLabel(item) }}</option>
       </select>
       <select v-model="keywordFilters.type" class="input" @change="loadKeywords">
@@ -31,7 +31,7 @@
         <thead>
           <tr>
             <th style="width:44px"><input type="checkbox" class="row-check" :checked="pageAllSelected" @change="togglePageAll" /></th>
-            <th>关键词</th><th>主题</th><th>类型</th><th>来源</th><th>权重</th><th>风险权重</th><th>状态</th><th>操作</th>
+            <th>关键词</th><th>分类</th><th>类型</th><th>来源</th><th>权重</th><th>风险权重</th><th>状态</th><th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -45,7 +45,6 @@
             <td>{{ row.severity_weight ?? 0 }}</td>
             <td><span class="status" :class="{ on: row.is_enabled }">{{ row.is_enabled ? '启用' : '停用' }}</span></td>
             <td class="actions">
-              <button class="link-btn" :disabled="keywordSaving" @click="toggleKeyword(row)">{{ row.is_enabled ? '停用' : '启用' }}</button>
               <button class="link-btn" @click="editKeyword(row)">编辑</button>
               <button class="link-btn danger" @click="removeKeyword(row.id)">删除</button>
             </td>
@@ -59,17 +58,14 @@
     </div>
   <el-dialog v-model="keywordDialogVisible" :title="editingKeywordId ? '编辑关键词' : '新增关键词'" width="440px">
     <el-form :model="keywordDraft" label-width="80px">
-      <el-form-item label="关键词">
-        <el-input v-model="keywordDraft.word" placeholder="输入外网关键词" />
-      </el-form-item>
-      <el-form-item label="分类">
-        <el-input v-model="keywordDraft.category" placeholder="如 general" />
-      </el-form-item>
       <el-form-item label="类型">
         <el-select v-model="keywordDraft.type" placeholder="选择类型">
           <el-option label="监测词" value="monitoring" />
           <el-option label="敏感词" value="sensitive" />
         </el-select>
+      </el-form-item>
+      <el-form-item label="关键词">
+        <el-input v-model="keywordDraft.word" placeholder="输入外网关键词" />
       </el-form-item>
       <el-form-item label="权重">
         <el-input-number v-model="keywordDraft.weight" :min="0" :max="100" />
@@ -77,6 +73,11 @@
       <el-form-item label="风险权重">
         <el-input-number v-model="keywordDraft.severity_weight" :min="0" :max="100" />
         <span style="margin-left:8px;color:#86868b;font-size:12px;">敏感词命中后按此值累加风险分（监测词不参与评分）</span>
+      </el-form-item>
+      <el-form-item label="分类">
+        <el-select v-model="keywordDraft.category" filterable allow-create default-first-option placeholder="选择或输入分类">
+          <el-option v-for="c in keywordCategories" :key="c" :label="categoryLabel(c)" :value="c" />
+        </el-select>
       </el-form-item>
       <el-form-item label="启用">
         <el-switch v-model="keywordDraft.is_enabled" />
@@ -188,12 +189,6 @@ async function saveKeyword() {
     keywordDraft.word = ''
     await loadKeywords()
   } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网关键词保存失败') } finally { keywordSaving.value = false }
-}
-
-async function toggleKeyword(row: Keyword) {
-  if (keywordSaving.value) return
-  keywordSaving.value = true
-  try { await api.patch(`/foreign/keywords/${row.id}`, { is_enabled: !row.is_enabled }); await loadKeywords() } catch (err: any) { ElMessage.error(err?.response?.data?.detail || '外网关键词更新失败') } finally { keywordSaving.value = false }
 }
 
 async function removeKeyword(id: number) {

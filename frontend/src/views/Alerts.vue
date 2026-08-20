@@ -1,6 +1,6 @@
 <template>
   <div class="alerts" v-loading="loading">
-    <Teleport to="#page-nav-target">
+    <Teleport defer to="#page-nav-target">
     <div class="page-nav">
       <div class="head-left">
         <h1 class="page-title">预警中心</h1>

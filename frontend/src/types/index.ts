@@ -604,6 +604,7 @@ export interface DataSourceCreateRequest {
   config_json: string
   priority?: number
   enabled?: boolean
+  schedule_enabled?: boolean
 }
 
 export interface DataSourceTestResult {

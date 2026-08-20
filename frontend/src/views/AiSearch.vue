@@ -1,6 +1,6 @@
 <template>
   <div class="ai-search-shell">
-    <Teleport to="#page-nav-target">
+    <Teleport defer to="#page-nav-target">
     <div class="page-nav">
       <div class="head-left">
         <h1 class="page-title">AI检索</h1>

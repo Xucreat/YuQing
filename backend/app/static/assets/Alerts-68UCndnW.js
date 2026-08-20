@@ -1,6 +1,6 @@
-import { d as defineComponent, a2 as useAlertNotifier, z as usePermission, A as watch, C as onMounted, w as withDirectives, c as createElementBlock, q as createBlock, a as createBaseVNode, n as normalizeClass, Y as Teleport, F as Fragment, m as createVNode, p as withCtx, s as createCommentVNode, t as toDisplayString, r as ref, j as computed, y as resolveComponent, B as resolveDirective, L as useRoute, f as reactive, g as api, E as ElMessage, Z as isPermissionDenied, o as openBlock, e as createTextVNode, H as unref, a3 as riskTag, a4 as riskText, S as _sfc_main$1, b as withKeys, Q as ElMessageBox, _ as _export_sfc } from './index-DEChr7so.js';
-import { O as OpinionDetailModal } from './OpinionDetailModal-uaDd-Ds4.js';
-import { F as ForeignOpinionDetailModal } from './ForeignOpinionDetailModal-cL7pHRGV.js';
+import { d as defineComponent, a2 as useAlertNotifier, z as usePermission, A as watch, C as onMounted, w as withDirectives, c as createElementBlock, q as createBlock, a as createBaseVNode, n as normalizeClass, Y as Teleport, F as Fragment, m as createVNode, p as withCtx, s as createCommentVNode, t as toDisplayString, r as ref, j as computed, y as resolveComponent, B as resolveDirective, L as useRoute, f as reactive, g as api, E as ElMessage, Z as isPermissionDenied, o as openBlock, e as createTextVNode, H as unref, a3 as riskTag, a4 as riskText, S as _sfc_main$1, b as withKeys, Q as ElMessageBox, _ as _export_sfc } from './index-D56tKRkz.js';
+import { O as OpinionDetailModal } from './OpinionDetailModal-B5DYqKmD.js';
+import { F as ForeignOpinionDetailModal } from './ForeignOpinionDetailModal-C5KNOLyz.js';
 import './admission-DpEuIHXC.js';
 import './opinion-Cag9WtuS.js';
 
@@ -386,7 +386,10 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
       const _component_el_dialog = resolveComponent("el-dialog");
       const _directive_loading = resolveDirective("loading");
       return withDirectives((openBlock(), createElementBlock("div", _hoisted_1, [
-        (openBlock(), createBlock(Teleport, { to: "#page-nav-target" }, [
+        (openBlock(), createBlock(Teleport, {
+          defer: "",
+          to: "#page-nav-target"
+        }, [
           createBaseVNode("div", _hoisted_2, [
             createBaseVNode("div", _hoisted_3, [
               _cache[50] || (_cache[50] = createBaseVNode("h1", { class: "page-title" }, "预警中心", -1)),
@@ -1631,6 +1634,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
   }
 });
 
-const Alerts = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-57ec83f5"]]);
+const Alerts = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-04eebd37"]]);
 
 export { Alerts as default };

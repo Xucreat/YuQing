@@ -1,4 +1,4 @@
-import { V as defineStore, f as reactive, r as ref, A as watch, d as defineComponent, W as storeToRefs, C as onMounted, y as resolveComponent, B as resolveDirective, o as openBlock, c as createElementBlock, a as createBaseVNode, m as createVNode, p as withCtx, b as withKeys, H as unref, e as createTextVNode, P as withModifiers, t as toDisplayString, q as createBlock, s as createCommentVNode, w as withDirectives, F as Fragment, i as renderList, T as isRef, X as BochaDetailModal, j as computed, E as ElMessage, g as api, _ as _export_sfc, n as normalizeClass, Y as Teleport, L as useRoute, h as useRouter } from './index-DEChr7so.js';
+import { V as defineStore, f as reactive, r as ref, A as watch, d as defineComponent, W as storeToRefs, C as onMounted, y as resolveComponent, B as resolveDirective, o as openBlock, c as createElementBlock, a as createBaseVNode, m as createVNode, p as withCtx, b as withKeys, H as unref, e as createTextVNode, P as withModifiers, t as toDisplayString, q as createBlock, s as createCommentVNode, w as withDirectives, F as Fragment, i as renderList, T as isRef, X as BochaDetailModal, j as computed, E as ElMessage, g as api, _ as _export_sfc, n as normalizeClass, Y as Teleport, L as useRoute, h as useRouter } from './index-D56tKRkz.js';
 
 const STORAGE_KEY$2 = "bocha_search_state_v1";
 function loadStoredState() {
@@ -1819,7 +1819,10 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
     }
     return (_ctx, _cache) => {
       return openBlock(), createElementBlock("div", _hoisted_1, [
-        (openBlock(), createBlock(Teleport, { to: "#page-nav-target" }, [
+        (openBlock(), createBlock(Teleport, {
+          defer: "",
+          to: "#page-nav-target"
+        }, [
           createBaseVNode("div", _hoisted_2, [
             createBaseVNode("div", _hoisted_3, [
               _cache[3] || (_cache[3] = createBaseVNode("h1", { class: "page-title" }, "AI检索", -1)),
@@ -1855,6 +1858,6 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
   }
 });
 
-const AiSearch = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-70442404"]]);
+const AiSearch = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-60d28157"]]);
 
 export { AiSearch as default };

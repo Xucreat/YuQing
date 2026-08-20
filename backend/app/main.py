@@ -11,7 +11,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import api_router
 from app.core.config import settings
-from app.core.scheduler import start_scheduler, stop_scheduler
+from app.core.scheduler import (
+    start_bb_browser_scheduler,
+    start_scheduler,
+    stop_bb_browser_scheduler,
+    stop_scheduler,
+)
 from app.db.session import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -33,7 +38,11 @@ async def lifespan(app):
     except SQLAlchemyError:
         logger.exception("启动僵尸采集记录回收失败（不影响应用启动）")
     start_scheduler()
+    # Phase 5：bb-browser 专用调度 lane（fail-closed，默认 bb_browser_schedule_enabled=false
+    # 时不启动，未授权绝不派发 bb_browser 自动采集）。
+    start_bb_browser_scheduler()
     yield
+    stop_bb_browser_scheduler()
     stop_scheduler()
 
 

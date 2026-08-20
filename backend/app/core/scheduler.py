@@ -6,13 +6,14 @@ import os
 from copy import deepcopy
 from collections.abc import Collection
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy import bindparam, text
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from app.collectors.service import CollectorService, CollectorThrottled
+from app.collectors.service import CollectorService, CollectorThrottled, reclaim_zombie_runs
 from app.collectors.data_source_repository import (
     due_scheduled_sources,
     scheduled_enabled_sources,
@@ -46,6 +47,25 @@ SCHEDULER_ADVISORY_LOCK_KEY = (
 )
 _scheduler_lock_conn = None
 _scheduler_source_allowlist: frozenset[str] | None = None
+
+# ===== Phase 5：bb-browser 专用调度 lane（独立于全局 scheduler）=====
+# 独立的 PG advisory lock key，保证两个 bb-browser scheduler 不会同时运行，
+# 且与全局 SCHEDULER_ADVISORY_LOCK_KEY 互不冲突。
+BB_BROWSER_ADVISORY_LOCK_KEY = (
+    int.from_bytes(
+        hashlib.sha1(b"opinion-platform-bb-browser-scheduler-singleton").digest()[:8],
+        "big",
+    )
+    & 0x7FFFFFFFFFFFFFFF
+)
+# bb-browser 专用调度的 source allowlist：严格只允许 bb_browser 一个 key。
+BB_BROWSER_ALLOWLIST: frozenset[str] = frozenset({"bb_browser"})
+# 绝对禁止混入 bb-browser 专用调度的 MediaCrawler/微博/小红书 key。
+BB_BROWSER_FORBIDDEN_KEYS: frozenset[str] = frozenset(
+    {"weibo_mediacrawler", "xhs_mediacrawler", "weibo_octopus", "weibo", "m_weibo", "xiaohongshu", "xhs"}
+)
+_bb_browser_lock_conn = None
+_bb_browser_scheduler = None
 _foreign_schedule_state = {
     "enabled": False,
     "registered": False,
@@ -317,6 +337,14 @@ def _run_collector_tick(
         return
     db = SessionLocal()
     try:
+        # §五 可靠兜底：每次 tick 开始时先回收历史僵尸运行（覆盖跨 tick / 同进程卡死场景），
+        # 避免某次采集线程异常退出导致 CollectorRun 永久停留 running。
+        try:
+            reclaimed = reclaim_zombie_runs(db)
+            if reclaimed:
+                logger.warning("调度 tick 僵尸运行回收：reclaimed=%d", reclaimed)
+        except Exception:
+            logger.exception("调度 tick 僵尸运行回收失败（不影响本次派发）")
         source_allowlist = (
             _normalize_source_allowlist(include_data_source_keys)
             if include_data_source_keys is not None
@@ -545,3 +573,235 @@ def stop_scheduler():
     _foreign_schedule_state["registered"] = False
     _foreign_schedule_state["running"] = False
     logger.info("Scheduler stopped")
+
+
+# ======================================================================
+# Phase 5：bb-browser 专用调度 lane（独立 advisory lock + 严格 allowlist）
+# 默认关闭（bb_browser_schedule_enabled=false），fail-closed，未授权绝不派发。
+# 不修改 source 62 / source 40，不改变全局 scheduler 默认行为。
+# ======================================================================
+
+def _validate_bb_browser_allowlist(allowlist) -> str | None:
+    """校验 bb-browser 专用调度 allowlist（纯函数，可测试）。
+
+    返回错误描述；None 表示合法（恰好只含 bb_browser，无未知/禁止 key）。
+    """
+    keys = _normalize_source_allowlist(allowlist)
+    if keys is None or len(keys) == 0:
+        return "allowlist 为空或缺失（fail-closed，拒绝启动）"
+    if keys == BB_BROWSER_ALLOWLIST:
+        return None
+    forbidden = keys & BB_BROWSER_FORBIDDEN_KEYS
+    if forbidden:
+        return f"allowlist 混入禁止的 MediaCrawler/微博/小红书 key: {sorted(forbidden)}"
+    unknown = keys - BB_BROWSER_ALLOWLIST
+    if unknown:
+        return f"allowlist 含未知 source key: {sorted(unknown)}"
+    return f"allowlist 必须恰好只含 bb_browser，实际={sorted(keys)}"
+
+
+def _validate_bb_browser_scheduler(db) -> str | None:
+    """bb-browser lane 双钥匙门禁（Phase 6）。
+
+    第一把钥匙（config）：bb_browser_schedule_enabled=true + allowlist 恰好 bb_browser。
+    第二把钥匙（DB source 62 状态）：存在 / key==bb_browser / enabled==true /
+    schedule_enabled==true / collection_mode==national。
+
+    返回错误描述；None 表示通过。runtime lock/preflight 在 start_bb_browser_scheduler
+    中单独校验（见 _validate_bb_browser_runtime_lock）。
+    """
+    # 第一把钥匙：config
+    if not settings.bb_browser_schedule_enabled:
+        return "未启用（bb_browser_schedule_enabled != true）"
+    raw = (settings.bb_browser_schedule_allowlist or "").strip()
+    if not raw:
+        return "bb_browser_schedule_allowlist 缺失（fail-closed）"
+    err = _validate_bb_browser_allowlist(raw.split(","))
+    if err:
+        return err
+    # 第二把钥匙：DB source 62 状态
+    row = db.query(DataSource).filter(DataSource.id == 62).first()
+    if row is None:
+        return "source 62 不存在"
+    if row.key != "bb_browser":
+        return f"source 62 的 key 不是 bb_browser（实际={row.key}）"
+    if row.enabled is not True:
+        return "source 62 enabled != true（fail-closed）"
+    if row.schedule_enabled is not True:
+        return "source 62 schedule_enabled != true（lane 启动需 source 62 显式开启自动调度）"
+    try:
+        cfg = json.loads(row.config_json or "{}")
+    except (TypeError, ValueError):
+        return "source 62 config_json 无法解析"
+    if not isinstance(cfg, dict):
+        return "source 62 config_json 非对象"
+    if cfg.get("collection_mode") != "national":
+        return f"source 62 collection_mode != national（实际={cfg.get('collection_mode')!r}）"
+    return None
+
+
+def _validate_bb_browser_runtime_lock(cfg: dict) -> str | None:
+    """完整 runtime preflight（Phase 7 补强，第二把钥匙的一部分）。
+
+    verify_runtime_lock 已覆盖 worker SHA256 / node CLI SHA256 / 版本 /
+    platform registry SHA256 / bb-sites HEAD / exchange_root / control_root；
+    此处补充 CDP 可达 / daemon 可达 / Chrome profile 路径 / config_json 与
+    runtime lock 一致性。
+
+    cfg 为 source 62 的 config_json 解析结果。返回错误描述；None 表示全部通过。
+    """
+    control_root = cfg.get("control_root")
+    if not control_root:
+        return "source 62 config 缺 control_root"
+    try:
+        from app.collectors.bb_browser_runtime import probe_connectivity, verify_runtime_lock
+    except Exception as exc:  # noqa: BLE001
+        return f"无法导入 runtime lock 校验: {exc}"
+    lock_path = Path(control_root).parent / "phase2_runtime_lock.json"
+    try:
+        ok, diffs = verify_runtime_lock(lock_path)
+    except Exception as exc:  # noqa: BLE001
+        return f"runtime lock 校验异常: {exc}"
+    if not ok:
+        return f"runtime lock 校验失败: {diffs}"
+
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"runtime lock 无法读取: {exc}"
+
+    # config_json 与 runtime lock 一致性（关键字段逐项比对）
+    for field in ("cdp_url", "daemon_url", "exchange_root", "control_root"):
+        if cfg.get(field) != lock.get(field):
+            return (
+                f"config_json.{field} 与 runtime lock 不一致"
+                f"（config={cfg.get(field)!r}, lock={lock.get(field)!r}）"
+            )
+
+    # CDP 可达（TCP 建连，不执行命令）
+    cdp_url = cfg.get("cdp_url") or lock.get("cdp_url")
+    if not cdp_url:
+        return "缺 cdp_url（preflight_failed）"
+    if not probe_connectivity(cdp_url):
+        return "CDP 不可达（preflight_failed）"
+
+    # daemon 可达
+    daemon_url = cfg.get("daemon_url") or lock.get("daemon_url")
+    if not daemon_url:
+        return "缺 daemon_url（preflight_failed）"
+    if not probe_connectivity(daemon_url):
+        return "daemon 不可达（preflight_failed）"
+
+    # Chrome profile 路径
+    profile = lock.get("chrome_profile")
+    if not profile:
+        return "runtime lock 缺 chrome_profile"
+    if not Path(profile).exists():
+        return f"Chrome profile 缺失: {profile}"
+
+    return None
+
+
+def _try_acquire_bb_browser_lock() -> bool:
+    """获取 bb-browser 专用调度单例锁（独立于全局 scheduler 锁）。"""
+    global _bb_browser_lock_conn
+    try:
+        conn = engine.connect()
+        acquired = conn.execute(
+            text("SELECT pg_try_advisory_lock(:key)"),
+            {"key": BB_BROWSER_ADVISORY_LOCK_KEY},
+        ).scalar()
+        if acquired:
+            conn.commit()
+            _bb_browser_lock_conn = conn
+            return True
+        conn.close()
+        return False
+    except Exception:
+        logger.exception("获取 bb-browser 调度单例锁失败（保守跳过）")
+        return False
+
+
+def _release_bb_browser_lock() -> None:
+    global _bb_browser_lock_conn
+    conn = _bb_browser_lock_conn
+    _bb_browser_lock_conn = None
+    if conn is None:
+        return
+    try:
+        conn.execute(
+            text("SELECT pg_advisory_unlock(:key)"),
+            {"key": BB_BROWSER_ADVISORY_LOCK_KEY},
+        )
+        conn.commit()
+    except Exception:
+        logger.warning("释放 bb-browser 调度单例锁失败（进程退出后由 PG 自动回收）", exc_info=True)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _run_bb_browser_tick():
+    """bb-browser 专用 lane 的 tick：只派发 bb_browser（复用 claim-then-dispatch）。"""
+    logger.info("[bb-browser lane] tick allowlist=%s", sorted(BB_BROWSER_ALLOWLIST))
+    _run_collector_tick(include_data_source_keys=BB_BROWSER_ALLOWLIST)
+
+
+def start_bb_browser_scheduler():
+    """启动 bb-browser 专用调度 lane（双钥匙门禁，fail-closed，默认关闭）。
+
+    仅当两把钥匙全部通过（config + DB source 62 状态 + runtime lock/preflight）
+    才启动；独立 advisory lock。
+    """
+    global _bb_browser_scheduler
+    if _bb_browser_scheduler is not None:
+        return
+    if not settings.bb_browser_schedule_enabled:
+        logger.info("bb-browser 专用调度未启用（bb_browser_schedule_enabled=false）")
+        return
+    db = SessionLocal()
+    try:
+        err = _validate_bb_browser_scheduler(db)
+        if err is None:
+            row = db.query(DataSource).filter(DataSource.id == 62).first()
+            try:
+                cfg = json.loads(row.config_json or "{}") if row else {}
+            except (TypeError, ValueError):
+                cfg = {}
+            err = _validate_bb_browser_runtime_lock(cfg)
+    finally:
+        db.close()
+    if err:
+        logger.error("bb-browser 专用调度拒绝启动（fail-closed）：%s", err)
+        return
+    if not _try_acquire_bb_browser_lock():
+        logger.warning("bb-browser 调度单例锁已被其他进程持有，跳过启动")
+        return
+    _bb_browser_scheduler = AsyncIOScheduler()
+    _bb_browser_scheduler.add_job(
+        _run_bb_browser_tick,
+        trigger=IntervalTrigger(seconds=max(5, settings.bb_browser_tick_interval_seconds)),
+        id="bb_browser_tick",
+        name="bb-browser dedicated collector tick",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=30,
+        replace_existing=True,
+    )
+    _bb_browser_scheduler.start()
+    logger.info(
+        "bb-browser 专用调度已启动：allowlist=%s tick=%ds",
+        sorted(BB_BROWSER_ALLOWLIST),
+        settings.bb_browser_tick_interval_seconds,
+    )
+
+
+def stop_bb_browser_scheduler():
+    global _bb_browser_scheduler
+    _release_bb_browser_lock()
+    if _bb_browser_scheduler is not None:
+        _bb_browser_scheduler.shutdown(wait=False)
+        _bb_browser_scheduler = None
+    logger.info("bb-browser 专用调度已停止")
