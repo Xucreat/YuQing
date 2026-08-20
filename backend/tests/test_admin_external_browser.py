@@ -57,16 +57,16 @@ def test_validate_rejects_weibo_platform():
     assert err and "weibo" in err
 
 
-def test_validate_rejects_xiaohongshu():
+def test_validate_accepts_xiaohongshu():
     cfg = dict(VALID_CFG, platforms=["baidu", "xiaohongshu"])
     err = a._validate_external_browser_config(cfg)
-    assert err and "xiaohongshu" in err
+    assert err is None, err
 
 
-def test_validate_rejects_zhihu():
+def test_validate_accepts_zhihu():
     cfg = dict(VALID_CFG, platforms=["baidu", "zhihu"])
     err = a._validate_external_browser_config(cfg)
-    assert err and "zhihu" in err
+    assert err is None, err
 
 
 def test_validate_rejects_unknown_platform():
@@ -135,3 +135,24 @@ def test_collector_assembles_from_config():
     coll2 = BBBrowserCollector(platforms=["baidu", "weibo"], control_root="C:/x",
                                exchange_root="C:/y")
     assert "weibo" not in coll2.platforms
+
+
+def test_validate_dedupes_platforms(monkeypatch):
+    # 保存时平台去重并保持稳定顺序（不改写运行锁定字段）
+    monkeypatch.setattr(a, "probe_connectivity", lambda url: True)
+    cfg = dict(VALID_CFG, platforms=["baidu", "baidu", "youtube", "youtube", "hupu"])
+    err = a._validate_external_browser_config(cfg)
+    assert err is None
+    assert cfg["platforms"] == ["baidu", "youtube", "hupu"]
+
+
+def test_validate_empty_platforms_rejected():
+    cfg = dict(VALID_CFG, platforms=[])
+    err = a._validate_external_browser_config(cfg)
+    assert err and "非空数组" in err
+
+
+def test_validate_unknown_platform_rejected():
+    cfg = dict(VALID_CFG, platforms=["baidu", "tiktok"])
+    err = a._validate_external_browser_config(cfg)
+    assert err and ("tiktok" in err or "不在服务端白名单" in err)

@@ -334,6 +334,35 @@
         <button class="btn btn-ghost btn-mini" type="button" @click="addFeedEdit">+ 添加地址</button>
       </template>
 
+      <!-- bb-browser 聚合采集：平台选择（仅 external_browser） -->
+      <template v-if="currentSource && currentSource.collector_kind === 'external_browser'">
+        <div class="cf-divider"></div>
+        <p class="dlg-sub">采集平台（bb-browser）</p>
+        <div v-if="platformLoading" class="cf-hint">平台目录加载中…</div>
+        <div v-else class="platform-grid">
+          <label
+            v-for="p in platformCatalog"
+            :key="p.key"
+            class="platform-item"
+            :class="{ 'is-disabled': !isPlatformSelectable(p), 'is-checked': platformDraft.includes(p.key) }"
+          >
+            <input
+              type="checkbox"
+              :value="p.key"
+              :checked="platformDraft.includes(p.key)"
+              :disabled="!isPlatformSelectable(p)"
+              @change="onPlatformToggle(p.key, $event)"
+            />
+            <span class="platform-name">{{ p.name }}</span>
+            <span v-if="!isPlatformSelectable(p)" class="platform-tag tag-locked">{{ platformBlockReason(p) }}</span>
+          </label>
+        </div>
+        <div v-if="platformError" class="cfg-err">{{ platformError }}</div>
+        <div class="cf-hint">
+          勾选 bb-browser 要采集的平台；同一平台不得与已启用的 MediaCrawler 数据源同时开启。未勾选任何平台将禁止保存。
+        </div>
+      </template>
+
       <template v-if="!(currentSource && currentSource.collector_kind === 'dedicated')">
         <p class="dlg-sub">高级配置（config_json）</p>
         <el-input
@@ -429,6 +458,33 @@
           <label class="cf-label">调度模式</label>
           <el-switch v-model="form.schedule_enabled" active-text="自动" inactive-text="手动" />
           <div class="cf-hint">bb-browser 聚合采集默认「手动」。Phase 2 灰度期间必须保持手动（schedule_enabled=false），不得自动调度。</div>
+        </div>
+        <!-- 新建 bb-browser：平台选择 -->
+        <div class="cf-row" v-if="form.type === 'external_browser'">
+          <label class="cf-label">采集平台 <span class="req">*</span></label>
+          <div v-if="platformLoading" class="cf-hint">平台目录加载中…</div>
+          <div v-else class="platform-grid">
+            <label
+              v-for="p in platformCatalog"
+              :key="p.key"
+              class="platform-item"
+              :class="{ 'is-disabled': !isPlatformSelectable(p), 'is-checked': platformDraft.includes(p.key) }"
+            >
+              <input
+                type="checkbox"
+                :value="p.key"
+                :checked="platformDraft.includes(p.key)"
+                :disabled="!isPlatformSelectable(p)"
+                @change="onPlatformToggle(p.key, $event)"
+              />
+              <span class="platform-name">{{ p.name }}</span>
+              <span v-if="!isPlatformSelectable(p)" class="platform-tag tag-locked">{{ platformBlockReason(p) }}</span>
+            </label>
+          </div>
+          <div v-if="createConfigError && form.type === 'external_browser' && platformDraft.length === 0" class="cfg-err">{{ createConfigError }}</div>
+          <div class="cf-hint">
+            勾选 bb-browser 要采集的平台（也可在上方 config_json 中直接写 platforms 数组，二者保持一致即可）。同一平台不得与已启用的 MediaCrawler 数据源同时开启。
+          </div>
         </div>
         <div class="cf-row" v-if="form.type !== 'rss'">
           <label class="cf-label">配置 config_json <span class="req">*</span></label>
@@ -542,7 +598,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { usePermission } from '@/composables/usePermission'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
@@ -576,7 +632,20 @@ interface RegionTreeOption {
 interface Row extends DataSourceItem {
   _saving?: boolean
   _savingSchedule?: boolean
-  collector_kind?: 'generic' | 'dedicated'
+  collector_kind?: 'generic' | 'dedicated' | 'external_browser'
+}
+
+// 平台可用性（GET /admin/data-sources/platforms/availability）
+interface PlatformAvailability {
+  key: string
+  name: string
+  collectors: string[]
+  source_type: string
+  python_normalized: boolean
+  collect_type: string
+  selectable_for_bb: boolean
+  blocked_reason: string | null
+  current_owner: { id: number; name: string } | null
 }
 
 const DEFAULT_CONFIG = JSON.stringify(
@@ -736,6 +805,49 @@ const scopeRegionDraft = ref<string[]>([])
 const filterModeDraft = ref('')
 const keywordScopeDraft = ref('')
 const maxItemsDraft = ref(null)
+
+// —— bb-browser 平台选择（Phase：灵活选择平台）——
+const platformCatalog = ref<PlatformAvailability[]>([])
+const platformDraft = ref<string[]>([])
+const platformLoading = ref(false)
+const platformError = ref('')
+
+async function loadPlatformAvailability() {
+  platformLoading.value = true
+  try {
+    const { data } = await api.get<{ platforms: PlatformAvailability[] }>(
+      '/admin/data-sources/platforms/availability',
+    )
+    platformCatalog.value = data?.platforms || []
+  } catch {
+    platformCatalog.value = []
+  } finally {
+    platformLoading.value = false
+  }
+}
+
+// 仅当平台可选且未被其它已启用源占用时，才允许勾选
+function isPlatformSelectable(p: PlatformAvailability): boolean {
+  if (!p.selectable_for_bb) return false
+  if (p.current_owner && currentSource.value && p.current_owner.id !== currentSource.value.id) {
+    return false
+  }
+  return true
+}
+
+function platformBlockReason(p: PlatformAvailability): string {
+  if (p.current_owner && currentSource.value && p.current_owner.id !== currentSource.value.id) {
+    return `已被「${p.current_owner.name}」占用`
+  }
+  return p.blocked_reason || '当前不可选择'
+}
+
+function onPlatformToggle(key: string, ev: Event) {
+  const checked = (ev.target as HTMLInputElement).checked
+  const i = platformDraft.value.indexOf(key)
+  if (checked && i < 0) platformDraft.value.push(key)
+  if (!checked && i >= 0) platformDraft.value.splice(i, 1)
+}
 
 // —— 调度配置（单源 + 批量）——
 const scheduleVisible = ref(false)
@@ -998,11 +1110,28 @@ async function openHistory(row: Row) {
   }
 }
 
-function openConfig(row: Row) {
+async function openConfig(row: Row) {
   currentSource.value = row
   configError.value = ''
+  platformError.value = ''
   scopeRegionDraft.value = parseScopeCodes(row.scope_region_codes)
   loadRegionCatalog()
+  // bb-browser 聚合采集：加载平台目录并回显已选平台
+  if (row.collector_kind === 'external_browser') {
+    await loadPlatformAvailability()
+    let pcfg: any = {}
+    try {
+      const parsed = JSON.parse(row.config_json || '{}')
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) pcfg = parsed
+    } catch {
+      pcfg = {}
+    }
+    platformDraft.value = Array.isArray(pcfg.platforms)
+      ? pcfg.platforms.filter((x: any) => typeof x === 'string')
+      : []
+  } else {
+    platformDraft.value = []
+  }
   // 从现有 config_json 解析 filter_mode / keyword_scope 填入下拉（缺省回退「默认」）
   let cfg: any = {}
   try {
@@ -1092,6 +1221,14 @@ async function saveConfig() {
   else delete cfg.keyword_scope
   if (maxItemsDraft.value != null && maxItemsDraft.value >= 1) cfg.max_items = maxItemsDraft.value
   else delete cfg.max_items
+  // bb-browser 聚合采集：把勾选的平台写入 config_json.platforms（去重、保持顺序）
+  if (currentSource.value && currentSource.value.collector_kind === 'external_browser') {
+    if (platformDraft.value.length === 0) {
+      configError.value = '请至少选择一个采集平台'
+      return
+    }
+    cfg.platforms = [...new Set(platformDraft.value)]
+  }
   const payload = JSON.stringify(cfg)
   savingConfig.value = true
   try {
@@ -1189,14 +1326,28 @@ onMounted(reload)
 
 function openCreate() {
   createConfigError.value = ''
+  platformError.value = ''
   testMsg.value = ''
   testOk.value = false
   rssFeedError.value = ''
   feedList.value = ['']
+  platformDraft.value = []
   if (form) form.max_items = null
   createVisible.value = true
   loadRegionCatalog()
 }
+
+// 新建弹窗：类型切到 external_browser 时加载平台目录
+watch(
+  () => form.type,
+  (t) => {
+    if (t === 'external_browser') {
+      loadPlatformAvailability()
+    } else {
+      platformDraft.value = []
+    }
+  },
+)
 
 // —— 通用 RSS feeds 辅助（创建 / 编辑共用）——
 function addFeed() {
@@ -1288,6 +1439,10 @@ function buildPayload(): DataSourceCreateRequest {
   else delete cfgObj.keyword_scope
   if (form.max_items != null && form.max_items >= 1) cfgObj.max_items = form.max_items
   else delete cfgObj.max_items
+  // bb-browser 聚合采集：把勾选的平台写入 config_json.platforms
+  if (form.type === 'external_browser') {
+    cfgObj.platforms = [...new Set(platformDraft.value)]
+  }
   const payload: DataSourceCreateRequest = {
     name: form.name.trim(),
     key: form.key.trim(),
@@ -1325,6 +1480,11 @@ async function testCreate() {
       return
     }
     createConfigError.value = ''
+  }
+  // bb-browser 聚合采集：必须至少选择一个平台
+  if (form.type === 'external_browser' && platformDraft.value.length === 0) {
+    createConfigError.value = '请至少选择一个采集平台'
+    return
   }
   testing.value = true
   testMsg.value = ''
@@ -1381,6 +1541,11 @@ async function submitCreate() {
       return
     }
     createConfigError.value = ''
+  }
+  // bb-browser 聚合采集：必须至少选择一个平台
+  if (form.type === 'external_browser' && platformDraft.value.length === 0) {
+    createConfigError.value = '请至少选择一个采集平台'
+    return
   }
   creating.value = true
   try {
@@ -1571,6 +1736,29 @@ table.tbl tbody tr:last-child td { border-bottom: none; }
 }
 .status-on { color: #52c41a; font-weight: 500; }
 .status-off { color: #ff4d4f; font-weight: 500; }
+
+/* bb-browser 平台选择网格 */
+.platform-grid {
+  display: flex; flex-wrap: wrap; gap: 10px; width: 100%;
+}
+.platform-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border: 1px solid #e5e5ea; border-radius: 12px;
+  background: #fff; cursor: pointer; font-size: 13px; user-select: none;
+  transition: border-color .15s, background .15s;
+}
+.platform-item.is-checked {
+  border-color: #0071e3; background: #f0f7ff;
+}
+.platform-item.is-disabled {
+  cursor: not-allowed; opacity: .55; background: #f5f5f7;
+}
+.platform-item input { margin: 0; }
+.platform-name { font-weight: 500; color: #1d1d1f; }
+.platform-tag {
+  font-size: 11px; padding: 1px 7px; border-radius: 999px; line-height: 1.6;
+}
+.tag-locked { background: #fdecec; color: #c0392b; }
 </style>
 
 <style>

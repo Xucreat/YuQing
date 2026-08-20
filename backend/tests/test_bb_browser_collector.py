@@ -14,8 +14,10 @@ from app.collectors.bb_browser_collector import (
     BBBrowserCollector,
     ALLOWED_PLATFORMS,
     build_manifest,
+    expected_tasks_for_manifest,
     normalize_record,
     normalize_item,
+    parse_pub_time,
     parse_record_text,
     stable_external_id,
     unwrap_result,
@@ -190,17 +192,18 @@ def test_scan_only_matches_current_manifest(tmp_path):
 # ---------------------------------------------------------------------------
 # 12：m_weibo / xiaohongshu 不会被加入 manifest
 # ---------------------------------------------------------------------------
-def test_weibo_xhs_excluded_from_manifest():
+def test_weibo_excluded_but_xhs_zhihu_allowed():
     mid = "m123"
-    # 即使调用方传入 weibo/xhs，白名单也应剔除
-    m = build_manifest(mid, ["北三县"], ["baidu", "weibo", "xiaohongshu"])
+    # weibo 仍被白名单剔除；xiaohongshu/zhihu 现已开放（Python 已完成归一化）。
+    m = build_manifest(mid, ["北三县"], ["baidu", "weibo", "xiaohongshu", "zhihu"])
     assert "weibo" not in m
-    assert "xiaohongshu" not in m
+    assert "xiaohongshu" in m
+    assert "zhihu" in m
     assert "baidu" in m
 
-    coll = BBBrowserCollector(platforms=["baidu", "weibo", "xiaohongshu"],
+    coll = BBBrowserCollector(platforms=["baidu", "weibo", "xiaohongshu", "zhihu"],
                               control_root="x", exchange_root="y")
-    assert coll.platforms == ["baidu"]
+    assert coll.platforms == ["baidu", "xiaohongshu", "zhihu"]
 
 
 # ---------------------------------------------------------------------------
@@ -281,4 +284,92 @@ def test_ack_missing_file_returns_false(tmp_path):
 
 
 def test_allowed_platforms_constant():
-    assert set(ALLOWED_PLATFORMS) == {"baidu", "hupu", "toutiao", "bilibili", "youtube"}
+    assert set(ALLOWED_PLATFORMS) == {"baidu", "hupu", "toutiao", "bilibili", "youtube", "xiaohongshu", "zhihu"}
+
+
+# ---------------------------------------------------------------------------
+# 18：manifest 只生成用户选中的平台（未选中平台不进入规则 / expected tasks）
+# ---------------------------------------------------------------------------
+def test_manifest_only_selected_platforms():
+    mid = "sel1"
+    m = build_manifest(mid, ["关键词A"], ["baidu"])
+    assert "baidu" in m
+    for p in ("hupu", "toutiao", "bilibili", "youtube"):
+        assert p not in m
+    expected = expected_tasks_for_manifest(m)
+    # 1 关键词 × 1 搜索平台 => 1 个任务，且 source_key 必为选中的 baidu
+    assert len(expected) == 1
+    assert all(src == "baidu" for (_tid, src) in expected)
+
+
+def test_manifest_multi_select_scopes_expected_tasks():
+    mid = "sel2"
+    # 选中 baidu + hupu；未选 bilibili/youtube/toutiao
+    m = build_manifest(mid, ["kw1", "kw2"], ["baidu", "hupu"])
+    expected = expected_tasks_for_manifest(m)
+    srcs = {src for (_tid, src) in expected}
+    assert srcs == {"baidu", "hupu"}
+    assert "bilibili" not in srcs and "youtube" not in srcs and "toutiao" not in srcs
+    # 2 关键词 × baidu(搜索) + 1 条 hupu(热榜) = 3 个任务
+    assert len(expected) == 3
+
+
+# ---------------------------------------------------------------------------
+# 19：小红书（Node 返回 notes 数组）归一化
+# ---------------------------------------------------------------------------
+def test_xiaohongshu_normalize():
+    data = {"notes": [
+        {"note_id": "abc123", "title": "测评笔记",
+         "url": "https://www.xiaohongshu.com/explore/abc123",
+         "author": "小红薯", "likes": 128, "time": 1700000000},
+    ]}
+    items = normalize_record("xiaohongshu", data)
+    assert len(items) == 1
+    it = items[0]
+    assert it["source"] == "小红书"
+    assert it["source_type"] == "xiaohongshu_bb"
+    assert it["external_id"] == "xiaohongshu:abc123"
+    assert it["title"] == "测评笔记"
+    assert it["content"] == "测评笔记"          # 搜索结果仅标题，正文以标题为口径
+    assert it["author"] == "小红薯"
+    assert it["engagement"] == {"likes": 128}
+    assert it["url"] == "https://www.xiaohongshu.com/explore/abc123"
+    assert it["publish_time"] is not None        # 时间戳被解析为 naive UTC
+
+
+# ---------------------------------------------------------------------------
+# 20：知乎（Node 返回 results 数组）归一化
+# ---------------------------------------------------------------------------
+def test_zhihu_normalize():
+    data = {"results": [
+        {"id": "8899", "title": "什么是量子计算", "excerpt": "简要回答…",
+         "url": "https://www.zhihu.com/question/100/answer/8899",
+         "author": "知友A", "voteup_count": 256, "comment_count": 12,
+         "created_time": 1700000000},
+    ]}
+    items = normalize_record("zhihu", data)
+    assert len(items) == 1
+    it = items[0]
+    assert it["source"] == "知乎"
+    assert it["source_type"] == "zhihu_bb"
+    assert it["external_id"] == "zhihu:8899"
+    assert it["title"] == "什么是量子计算"
+    assert it["content"] == "简要回答…"
+    assert it["author"] == "知友A"
+    assert it["engagement"] == {"voteup": 256, "comments": 12}
+    assert it["publish_time"] is not None
+
+
+def test_unwrap_result_notes_key():
+    data = {"keyword": "x", "count": 1, "notes": [{"note_id": "n1"}]}
+    items, key = unwrap_result(data)
+    assert key == "notes"
+    assert len(items) == 1
+
+
+def test_parse_pub_time_unix_timestamp():
+    dt = parse_pub_time(1700000000)
+    assert dt is not None and dt.year == 2023
+    dt2 = parse_pub_time("1700000000000")        # 毫秒
+    assert dt2 is not None and dt2.year == 2023
+    assert parse_pub_time("12345") is None        # 过短，非时间戳

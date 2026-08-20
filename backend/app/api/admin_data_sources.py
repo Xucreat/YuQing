@@ -34,6 +34,13 @@ from app.collectors.mediacrawler_runtime import MediaCrawlerRuntimeFactory
 from app.collectors.registry import import_class
 from app.collectors.bb_browser_collector import ALLOWED_PLATFORMS, REJECTED_PLATFORMS
 from app.collectors.bb_browser_runtime import probe_connectivity, verify_runtime_lock
+from app.collectors.platform_catalog import (
+    PLATFORM_CATALOG,
+    bb_browser_selectable_platforms,
+    compute_owned_platforms,
+    dedupe_platforms,
+    detect_platform_conflict,
+)
 
 # Phase 2 §七/§八：bb-browser 运行时锁文件绝对路径（可由环境变量覆盖，便于测试）
 BB_RUNTIME_LOCK_PATH = os.environ.get(
@@ -480,6 +487,9 @@ def _validate_external_browser_config(cfg: dict) -> str | None:
         if p not in ALLOWED_PLATFORMS:
             return f"平台 {p} 不在服务端白名单（允许：{', '.join(ALLOWED_PLATFORMS)}）；未知平台禁止接入"
 
+    # 平台去重并保持稳定顺序（避免无意义配置变更；同时归一化别名）。
+    cfg["platforms"] = dedupe_platforms(platforms)
+
     # 路径：control_root / exchange_root 必须为绝对路径，禁止相对路径与目录穿越。
     for field in ("control_root", "exchange_root"):
         val = cfg.get(field)
@@ -565,6 +575,93 @@ def _validate_external_browser_config(cfg: dict) -> str | None:
     if cerr:
         return cerr
     return None
+
+
+# ---------------------------------------------------------------------------
+# 平台冲突校验（bb-browser ↔ MediaCrawler：同一平台不得被两个 enabled 源同时采集）
+# ---------------------------------------------------------------------------
+def _load_platform_owners(db: Session, exclude_id: int | None = None) -> list:
+    """返回用于平台冲突校验的其它源列表：[(id, name, class_path, enabled, config_json), ...]。
+
+    exclude_id 用于更新场景，排除当前正在改动的源自身。
+    """
+    stmt = select(DataSource)
+    if exclude_id is not None:
+        stmt = stmt.where(DataSource.id != exclude_id)
+    rows = db.execute(stmt).scalars().all()
+    out: list = []
+    for r in rows:
+        cfg, _ = _parse_config_json(r.config_json or "{}")
+        out.append((r.id, r.name, r.class_path, bool(r.enabled), cfg or {}))
+    return out
+
+
+def _raise_if_platform_conflict(
+    db: Session,
+    self_id: int | None,
+    self_class_path: str,
+    self_enabled: bool,
+    self_config: dict,
+    self_name: str,
+) -> None:
+    """若 self 与任一已启用其它源存在平台占用冲突，抛 HTTP 409（中文明确提示）。"""
+    others = _load_platform_owners(db, exclude_id=self_id)
+    conflict = detect_platform_conflict(
+        self_class_path, self_enabled, self_config or {}, self_name, others
+    )
+    if conflict is not None:
+        raise HTTPException(status_code=409, detail=conflict.message)
+
+
+@admin_ds_router.get("/platforms/availability")
+def platform_availability(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("sources:read")),
+):
+    """平台可用性目录（供前端平台选择 UI）。
+
+    返回每个平台的：
+      - key / name / collectors / source_type / python_normalized / collect_type
+      - selectable_for_bb：bb-browser 当前是否可选（Python 已归一化）
+      - blocked_reason：不可选原因
+      - current_owner：当前占用该平台的已启用数据源（id/name），无则 null
+    占用判定遵循：enabled=false 不占用；schedule_enabled 不影响；bb-browser 取 config_json.platforms，MediaCrawler 取 config_json.platform。
+    """
+    owners = _load_platform_owners(db)
+    ownership: dict[str, tuple[int, str]] = {}
+    for (_oid, oname, ocp, oen, ocfg) in owners:
+        if not oen:
+            continue
+        for p in compute_owned_platforms(ocp, ocfg, True):
+            ownership.setdefault(p, (_oid, oname))
+
+    selectable = bb_browser_selectable_platforms()
+    items: list[dict] = []
+    for p in PLATFORM_CATALOG:
+        owner = ownership.get(p.key)
+        if p.key in selectable:
+            sel = True
+            blocked = None
+        else:
+            sel = False
+            if "bb_browser" in p.collectors and not p.python_normalized:
+                blocked = "bb-browser 尚未完成该平台 Python 归一化，暂未开放"
+            elif "mediacrawler" in p.collectors and "bb_browser" not in p.collectors:
+                blocked = "该平台由 MediaCrawler 管理"
+            else:
+                blocked = "当前不可经 bb-browser 选择"
+        items.append({
+            "key": p.key,
+            "name": p.name,
+            "collectors": list(p.collectors),
+            "source_type": p.source_type,
+            "python_normalized": p.python_normalized,
+            "collect_type": p.collect_type,
+            "selectable_for_bb": sel,
+            "blocked_reason": blocked,
+            "current_owner": ({"id": owner[0], "name": owner[1]} if owner else None),
+        })
+    return {"platforms": items}
 
 
 def _region_map(db: Session) -> dict:
@@ -1326,6 +1423,11 @@ def create_data_source(
     class_path = body.get("class_path") or _TYPE_CLASS_PATH.get(type_, _TYPE_CLASS_PATH["generic_site"])
     cfg, _ = _parse_config_json(body.get("config_json"))
 
+    # —— 平台冲突校验（新建源不得与任一已启用源同平台）——
+    # enabled 默认值：foreign 默认 False，其余默认 True（与下方 DataSource 构造一致）。
+    _prospective_enabled = bool(body.get("enabled", False if foreign_source else True))
+    _raise_if_platform_conflict(db, None, class_path, _prospective_enabled, cfg or {}, key)
+
     # —— 保存前的真实抓取校验（核心需求）——
     test = _build_test(class_path, cfg, data_source_key=key)
     media_crawler_source = _is_mediacrawler(class_path)
@@ -1561,6 +1663,22 @@ def update_data_source(
                 ds.priority = int(body["priority"])
             except (TypeError, ValueError):
                 raise HTTPException(status_code=422, detail="priority 必须为整数")
+
+        # —— 平台冲突校验（仅当本次改动可能影响平台归属时）——
+        # 同一平台不得被两个 enabled=true 的数据源（bb-browser 与 MediaCrawler 之间）同时采集。
+        # enabled=false 不占用平台；schedule_enabled 不影响占用判断。
+        if "enabled" in body or "config_json" in body:
+            _prospective_enabled = (
+                bool(body["enabled"]) if body.get("enabled") is not None else ds.enabled
+            )
+            if "config_json" in body:
+                _pcfg, _perr = _parse_config_json(body["config_json"])
+            else:
+                _pcfg, _perr = _parse_config_json(ds.config_json or "{}")
+            _raise_if_platform_conflict(
+                db, ds.id, ds.class_path, bool(_prospective_enabled), _pcfg or {}, ds.name
+            )
+
         if "config_json" in body:
             raw = body["config_json"]
             if _is_mediacrawler(ds.class_path):

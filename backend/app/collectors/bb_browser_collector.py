@@ -8,9 +8,9 @@
     bb-browser 聚合采集
 
 它通过「当前已经验证的」bb-browser worker（collector_exchange_runtime）来采集
-以下平台：baidu / hupu / toutiao / bilibili / youtube。
-（zhihu 当前 C:\\cdp-profile 未登录 → 401，本阶段排除；
-  m_weibo / xiaohongshu 仍由 MediaCrawler 负责，禁止接入。）
+以下平台：baidu / hupu / toutiao / bilibili / youtube / xiaohongshu / zhihu。
+（xiaohongshu / zhihu 为搜索型，已具备 Node 搜索 action 与 Python 归一化，本阶段放开；
+  weibo / m_weibo 仍暂未开放——bb-browser 侧无关键词搜索 action，继续由 MediaCrawler 负责。）
 
 工作方式（与已验证 worker 严格对齐）
 --------------------------------------
@@ -80,7 +80,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # 平台白名单（Phase 1A/1B 允许采集的平台）
 # ---------------------------------------------------------------------------
-SEARCH_PLATFORMS = ("baidu", "bilibili", "youtube")   # 按关键词采集
+SEARCH_PLATFORMS = ("baidu", "bilibili", "youtube", "xiaohongshu", "zhihu")   # 按关键词采集
 HOT_PLATFORMS = ("hupu", "toutiao")                    # 热榜型，不消耗关键词
 
 # 服务端平台白名单：fetch() 只会把命中本集合的平台写进 manifest 的 sources=。
@@ -88,8 +88,10 @@ HOT_PLATFORMS = ("hupu", "toutiao")                    # 热榜型，不消耗�
 ALLOWED_PLATFORMS = SEARCH_PLATFORMS + HOT_PLATFORMS
 
 # 管理端校验显式拒绝的平台（白名单补集）。
+# weibo/m_weibo 仍暂未开放（bb-browser 侧无关键词搜索 action，待确认）；
+# xiaohongshu/zhihu 已具备 Node 搜索 action 与 Python 归一化，故从拒绝集移除。
 REJECTED_PLATFORMS = {
-    "weibo", "m_weibo", "xiaohongshu", "xhs", "zhihu",
+    "weibo", "m_weibo",
 }
 
 # 平台展示元数据（source / source_type 必须稳定，供去重与前端展示）
@@ -99,6 +101,8 @@ PLATFORM_META = {
     "youtube":   {"source": "YouTube",   "source_type": "youtube_video", "array": "videos",  "kind": "search"},
     "hupu":      {"source": "虎扑",      "source_type": "hupu_post",     "array": "items",   "kind": "hot"},
     "toutiao":   {"source": "今日头条",  "source_type": "toutiao_item",  "array": "items",   "kind": "hot"},
+    "xiaohongshu": {"source": "小红书",  "source_type": "xiaohongshu_bb", "array": "notes",   "kind": "search"},
+    "zhihu":     {"source": "知乎",      "source_type": "zhihu_bb",      "array": "results", "kind": "search"},
 }
 
 DEFAULT_PLATFORMS = list(ALLOWED_PLATFORMS)
@@ -192,6 +196,16 @@ def _native_id(platform: str, item: dict, url: Optional[str]) -> Optional[str]:
         if vid:
             return f"youtube:{vid}"
         return None
+    if platform == "xiaohongshu":
+        nid = (item.get("note_id") or "").strip()
+        if nid:
+            return f"xiaohongshu:{nid}"
+        return None
+    if platform == "zhihu":
+        zid = (item.get("id") or "").strip()
+        if zid:
+            return f"zhihu:{zid}"
+        return None
     return None
 
 
@@ -246,6 +260,15 @@ def parse_pub_time(value: Any) -> Optional[datetime.datetime]:
     s = str(value).strip()
     if re.search(r"[\u4e00-\u9fff]", s) and any(k in s for k in ("前", "分钟", "小时", "天", "周", "月", "年")):
         return None
+    # Unix 时间戳（秒 10 位 / 毫秒 13 位）；知乎 created_time、小红书 time 等常用。
+    if re.fullmatch(r"\d{10,13}", s):
+        try:
+            ts = int(s)
+            if ts > 10_000_000_000:  # 毫秒
+                ts = ts / 1000.0
+            return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).replace(tzinfo=None)
+        except (ValueError, OSError, OverflowError):
+            pass
     try:
         txt = s.replace("Z", "+00:00")
         dt = datetime.datetime.fromisoformat(txt)
@@ -333,12 +356,12 @@ def unwrap_result(data: Any) -> Tuple[Optional[list], Optional[str]]:
     if isinstance(res, list):
         return res, "result"
     if isinstance(res, dict):
-        for key in ("results", "items", "videos", "data", "list", "posts", "news"):
+        for key in ("results", "items", "videos", "data", "list", "posts", "news", "notes"):
             arr = res.get(key)
             if isinstance(arr, list):
                 return arr, key
         return [], None
-    for key in ("results", "items", "videos", "data", "list", "posts", "news"):
+    for key in ("results", "items", "videos", "data", "list", "posts", "news", "notes"):
         arr = data.get(key)
         if isinstance(arr, list):
             return arr, key
@@ -400,6 +423,21 @@ def normalize_item(platform: str, item: dict) -> Optional[dict]:
         pub = parse_pub_time(item.get("publishedTime"))
         engagement = {"views": item.get("views")}
         author = (item.get("channel") or "").strip() or None
+    elif platform == "xiaohongshu":
+        title = (item.get("title") or "").strip()
+        # 小红书搜索结果仅含标题，正文在详情页；以标题作为内容口径。
+        content = (item.get("title") or "").strip()
+        external_id = stable_external_id(platform, item, url)
+        pub = parse_pub_time(item.get("time"))
+        engagement = {"likes": item.get("likes")}
+        author = (item.get("author") or "").strip() or None
+    elif platform == "zhihu":
+        title = (item.get("title") or "").strip()
+        content = (item.get("excerpt") or "").strip()
+        external_id = stable_external_id(platform, item, url)
+        pub = parse_pub_time(item.get("created_time"))
+        engagement = {"voteup": item.get("voteup_count"), "comments": item.get("comment_count")}
+        author = (item.get("author") or "").strip() or None
     else:
         title = str(item.get("title") or item.get("text") or "")
         content = str(item.get("content") or title)
@@ -594,15 +632,11 @@ class BBBrowserCollector(BaseCollector):
         test_mode: bool = False,
         **kwargs,
     ) -> None:
-        # 平台白名单：强制收敛到服务端允许集合，剔除任何 weibo/xhs/zhihu/未知。
+        # 平台白名单：以 ALLOWED_PLATFORMS 为唯一开放事实来源，REJECTED_PLATFORMS 为双保险。
+        # （历史预留开关 allow_weibo/allow_xiaohongshu 不再参与硬剔除；开放与否由上面两张表决定：
+        #  xiaohongshu/zhihu 已加入 ALLOWED 即从 BB 放开，weibo/m_weibo 仍在 REJECTED 故保持禁用。）
         requested = list(platforms or DEFAULT_PLATFORMS)
         self.platforms = [p for p in requested if p in ALLOWED_PLATFORMS]
-        if not allow_weibo:
-            self.platforms = [p for p in self.platforms if p != "m_weibo" and p != "weibo"]
-        if not allow_xiaohongshu:
-            self.platforms = [
-                p for p in self.platforms if p != "xiaohongshu" and p != "xhs"
-            ]
         # 双保险：显式拒绝列表
         self.platforms = [p for p in self.platforms if p not in REJECTED_PLATFORMS]
 
