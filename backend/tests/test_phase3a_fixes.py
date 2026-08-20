@@ -267,9 +267,10 @@ def test_fetch_前置调用recover_prior_runs(tmp_path, monkeypatch):
         coll, "recover_prior_runs",
         lambda **kw: calls.append(kw) or [],
     )
-    with pytest.raises(Exception):
-        # 无 worker 消费 → 超时失败；此处只验证 recovery 已被前置调用
-        coll.fetch(keywords=["水污染"])
+    items = coll.fetch(keywords=["水污染"])  # 新语义：超时不再抛异常，回收空结果（partial）
+    assert items == [], "超时无 worker 消费 → 应回收 0 条"
+    assert coll.logical_status == "failed"
+    assert coll.collection_failed is True
     assert calls, "fetch() 未调用 recover_prior_runs（recovery 未接入真实流程）"
     assert calls[0].get("reason") == "pre_create_recovery"
 
