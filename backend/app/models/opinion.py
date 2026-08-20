@@ -19,7 +19,8 @@ class Opinion(Base):
     title: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     source: Mapped[str] = mapped_column(String(128), nullable=False, default="")
-    url: Mapped[str] = mapped_column(String(1024), nullable=False, default="")
+    # Phase BBBrowser URL Length Fix: VARCHAR(1024) -> TEXT 以消除超长 URL 入库阻断。
+    url: Mapped[str] = mapped_column(Text, nullable=False, default="")
     publish_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     region_id: Mapped[int] = mapped_column(
         ForeignKey("regions.id"), index=True, nullable=False
