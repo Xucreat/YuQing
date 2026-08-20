@@ -1,0 +1,107 @@
+/* 统一的页面一级横向导航样式（对齐「舆情列表」）
+   用法：
+   <div class="page-nav">
+     <div class="head-left">
+       <h1 class="page-title">标题</h1>
+       <div class="view-tabs">
+         <button class="view-tab" :class="{active}">标签</button>
+       </div>
+     </div>
+     <div class="head-divider"></div>
+     <div class="scope-switch">
+       <button class="scope-btn" :class="{active}">国内</button>
+       <button class="scope-btn" :class="{active}">外网</button>
+     </div>
+     <CollectMenu class="head-collect" />
+   </div>
+*/
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.page-nav .head-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.page-nav .page-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1d1d1f;
+  line-height: 1.2;
+}
+.page-nav .view-tabs {
+  display: flex;
+  gap: 4px;
+}
+.page-nav .view-tab {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #515154;
+  border-radius: 10px;
+  padding: 9px 15px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.page-nav .view-tab:hover {
+  color: #1d1d1f;
+  background: #f5f5f7;
+}
+.page-nav .view-tab.active {
+  color: #0071e3;
+  border-color: #cde2f8;
+  background: #eef6ff;
+  font-weight: 600;
+}
+.page-nav .head-divider {
+  width: 1px;
+  height: 22px;
+  background: #d2d2d7;
+  margin: 0 4px;
+}
+.page-nav .scope-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.page-nav .scope-btn {
+  border: none;
+  background: transparent;
+  color: #515154;
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.page-nav .scope-btn:hover {
+  color: #1d1d1f;
+  background: #f5f5f7;
+}
+.page-nav .scope-btn.active {
+  color: #0071e3;
+  background: #eef6ff;
+  font-weight: 500;
+}
+.page-nav .head-collect {
+  margin-left: auto;
+}
+@media (max-width: 760px) {
+  .page-nav {
+    flex-wrap: wrap;
+  }
+  .page-nav .head-left {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .page-nav .head-collect {
+    margin-left: 0;
+  }
+}

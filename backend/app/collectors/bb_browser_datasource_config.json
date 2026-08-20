@@ -1,0 +1,21 @@
+{
+  "platforms": [
+    "baidu",
+    "hupu",
+    "toutiao",
+    "bilibili",
+    "youtube"
+  ],
+  "control_root": "C:\\Users\\Administrator\\Desktop\\bb-browser 采集器\\collector_control",
+  "exchange_root": "C:\\Users\\Administrator\\Desktop\\bb-browser 采集器\\collector_data",
+  "bb_browser_cli": "C:\\Users\\Administrator\\Desktop\\bb-browser 采集器\\bb-browser\\dist\\cli.js",
+  "cdp_url": "http://127.0.0.1:9222",
+  "daemon_url": "http://127.0.0.1:19824",
+  "timeout_seconds": 240,
+  "poll_interval_seconds": 2,
+  "max_items_per_platform": 20,
+  "manifest_version": 2,
+  "allow_weibo": false,
+  "allow_xiaohongshu": false,
+  "collection_mode": "national"
+}
