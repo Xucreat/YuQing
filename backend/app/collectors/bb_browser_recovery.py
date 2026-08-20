@@ -26,6 +26,7 @@ from app.collectors.bb_browser_runtime import (
     CollectorError,
     LockInfo,
     ERR_REJECTED,
+    is_manifest_cancelled,
     pid_alive,
 )
 
@@ -39,6 +40,7 @@ S_ARCHIVED = "archived"
 S_STALE = "stale"
 S_ACK_PENDING = "ack_pending"
 S_ACK_CONFIRMED = "ack_confirmed"
+S_CANCELLED = "cancelled"  # Phase 2：已取消（超时），终端态，不再重试/续采
 
 # incoming 头部标记（与 collector 一致）
 HEADER_TASK_MANIFEST_ID = "task_manifest_id"
@@ -192,6 +194,13 @@ class ManifestRecovery:
 
     # -- 核心 ---------------------------------------------------------------
     def inspect(self, manifest_id: str) -> ManifestStatus:
+        # Phase 2：已取消（超时）manifest 为终端态，recovery 不再重试/续采。
+        if is_manifest_cancelled(self.control_root, manifest_id):
+            return ManifestStatus(
+                manifest_id=manifest_id,
+                state=S_CANCELLED,
+                reason="cancelled",
+            )
         expected = self._expected_tasks(manifest_id)
         present = self._present_tasks(manifest_id)
         ack_confirmed = not present and bool(expected) and self._all_in_processed(manifest_id, expected)

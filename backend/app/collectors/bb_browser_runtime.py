@@ -488,3 +488,60 @@ class OutgoingMutex:
     @property
     def lock_info(self) -> Optional[LockInfo]:
         return self._info
+
+
+# ---------------------------------------------------------------------------
+# Manifest cancellation contract（Phase 2：Worker Cancellation & Orphan Prevention）
+# ---------------------------------------------------------------------------
+MANIFEST_CANCELLED_EXT = ".cancelled"
+
+
+def _cancelled_marker_locations(control_root: Union[str, Path], manifest_id: str) -> List[Path]:
+    root = Path(control_root)
+    return [
+        root / "outgoing" / f"{manifest_id}{MANIFEST_CANCELLED_EXT}",
+        root / "stale" / f"{manifest_id}{MANIFEST_CANCELLED_EXT}",
+        root / "cancelled" / f"{manifest_id}{MANIFEST_CANCELLED_EXT}",
+    ]
+
+
+def mark_manifest_cancelled(
+    control_root: Union[str, Path],
+    manifest_id: str,
+    reason: str = "",
+) -> Optional[Path]:
+    """将 manifest 标记为已取消（幂等，绝不删除任何数据）。
+
+    在 outgoing/ 下写入 <manifest_id>.cancelled sidecar；worker 在处理每个
+    source/rule 前应调用 is_manifest_cancelled() 检查，已取消则不再启动新采集。
+    若标记已存在则直接返回既有路径（幂等）。
+    """
+    root = Path(control_root)
+    marker = root / "outgoing" / f"{manifest_id}{MANIFEST_CANCELLED_EXT}"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    if not marker.exists():
+        payload = {
+            "manifest_id": manifest_id,
+            "cancelled_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "reason": reason or "batch_timeout",
+        }
+        marker.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return marker
+
+
+def is_manifest_cancelled(control_root: Union[str, Path], manifest_id: str) -> bool:
+    """判定 manifest 是否已被取消（worker 停止未来工作的依据）。
+
+    在 outgoing/stale/cancelled 下查找 <manifest_id>.cancelled sidecar。
+    """
+    return any(p.exists() for p in _cancelled_marker_locations(control_root, manifest_id))
+
+
+def clear_manifest_cancelled(control_root: Union[str, Path], manifest_id: str) -> None:
+    """移除 cancellation marker（幂等；不影响任何 incoming/manifest 数据）。"""
+    for p in _cancelled_marker_locations(control_root, manifest_id):
+        try:
+            p.unlink()
+        except OSError:
+            pass
+

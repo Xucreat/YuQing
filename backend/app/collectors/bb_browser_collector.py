@@ -68,6 +68,7 @@ from app.collectors.bb_browser_runtime import (
     OutgoingMutex,
     classify_adapter_error,
     verify_runtime_lock,
+    mark_manifest_cancelled,
     ERR_ADAPTER_ERROR,
     ERR_EMPTY_RESULT,
     ERR_LOGIN_REQUIRED,
@@ -109,6 +110,27 @@ DEFAULT_PLATFORMS = list(ALLOWED_PLATFORMS)
 
 RECORD_VERSION = 1
 MANIFEST_VERSION = 2
+
+# 动态关键词批处理（Phase1b）：运行启动时一次性快照监控关键词，按固定大小切片成多个
+# manifest 批次，每批独立 240s 超时（per-batch 语义）并独立回收 ready 结果，避免 all-or-nothing。
+DEFAULT_BB_BROWSER_BATCH_SIZE = 8
+
+
+def split_keywords(snapshot, batch_size: int = DEFAULT_BB_BROWSER_BATCH_SIZE):
+    """将「一次性快照」的关键词列表按固定大小切成批次（纯函数，无副作用）。
+
+    - batch_size <= 0 视为整批（单批）。
+    - 支持任意 N：0 → [[]]（空批次，调用方据此跳过，不写空搜索 manifest）；
+      1/3/8/9/57/100 等均按 ceil(N/batch_size) 切分。
+    返回 list[list[str]]，顺序稳定（不重排、不去重），供逐批生成 manifest。
+    """
+    if batch_size is None or batch_size <= 0:
+        batch_size = len(snapshot) or 1
+    seq = list(snapshot)
+    if not seq:
+        return [[]]
+    return [seq[i : i + batch_size] for i in range(0, len(seq), batch_size)]
+
 
 # incoming 记录文件头部标记（worker 写入，fetch() 据此过滤本次任务文件）
 HEADER_TASK_MANIFEST_ID = "task_manifest_id"
@@ -672,6 +694,16 @@ class BBBrowserCollector(BaseCollector):
         self._current_manifest_id: Optional[str] = None
         self._mutex = None  # 跨进程互斥锁（§三），fetch 期间持有
 
+        # Phase1b 动态批处理 / 部分结果状态（每次 fetch() 重新初始化）
+        self._keyword_snapshot: list = []
+        self._batches: list = []                  # 每批元数据（manifest_id, keywords, status, ready, expected）
+        self._partial_missing: list = []          # 跨批次累计的未就绪 (task_id, source_key)
+        self.collection_partial: bool = False
+        self.collection_failed: bool = False
+        self.collection_skipped: bool = False
+        self.logical_status: str = "success"
+        self._partial_mode: bool = False  # fetch() 期间置 True：_wait_for_results 走 per-batch 部分结果语义
+
         # §八：运行时锁 preflight 路径（control_root 的父目录 / phase2_runtime_lock.json）
         self.runtime_lock_path: Optional[Path] = None
         self.bb_sites_dir = Path.home() / ".bb-browser" / "bb-sites"
@@ -730,22 +762,30 @@ class BBBrowserCollector(BaseCollector):
         return found
 
     def _wait_for_results(
-        self, manifest_id: str, expected: List[Tuple[str, str]]
+        self, manifest_id: str, expected: List[Tuple[str, str]], partial: Optional[bool] = None
     ) -> List[PendingFile]:
         """轮询 incoming，直到所有期望 (task_id, source_key) 出现且大小连续两次一致。
 
         expected 来自 manifest 实际生成的规则（含多关键词多文件）。
-        超时或任一任务始终缺失 → 抛 RuntimeError（all-or-nothing）。
+        - partial=True（Phase1b 批处理，fetch() 默认开启）：超时亦返回已稳定就绪的 PendingFile 子集，
+          并将未就绪项记入 self._partial_missing，不抛异常（per-batch 部分结果回收）。
+        - partial=False（向后兼容 / 单测显式）：超时或任一任务始终缺失 → 抛 CollectorError(ERR_TIMEOUT)（all-or-nothing）。
+        - partial=None：跟随 self._partial_mode（fetch() 期间为 True）。
         """
+        if partial is None:
+            partial = self._partial_mode
         expected_set = set(expected)
         deadline = time.time() + self.timeout_seconds
         last_seen: dict = {}
         stable: set = set()
+        by_key_last: dict = {}
         while time.time() < deadline:
             files = self._scan_manifest_files(manifest_id)
             present: dict = {}
             for pf in files:
                 present[(pf.task_id, pf.source_key)] = pf.file_size
+            by_key = {(pf.task_id, pf.source_key): pf for pf in files}
+            by_key_last = by_key
             for key in expected_set:
                 if key in present:
                     if last_seen.get(key) == present[key]:
@@ -756,12 +796,22 @@ class BBBrowserCollector(BaseCollector):
                     stable.discard(key)
             last_seen = present
             if expected_set.issubset(stable):
-                by_key = {(pf.task_id, pf.source_key): pf for pf in files}
                 return [by_key[k] for k in expected]
             # 心跳：延长锁的 last_seen，避免等待期间被误判 stale
             if self._mutex is not None:
                 self._mutex.heartbeat()
             time.sleep(self.poll_interval_seconds)
+        # 超时
+        if partial:
+            self._partial_missing = sorted(
+                set(self._partial_missing) | (expected_set - stable)
+            )
+            ready = [by_key_last[k] for k in stable if k in by_key_last]
+            logger.warning(
+                "batch partial timeout（manifest_id=%s）：ready=%s，missing=%s",
+                manifest_id, sorted(stable), sorted(expected_set - stable),
+            )
+            return ready
         raise CollectorError(
             ERR_TIMEOUT,
             f"等待 bb-browser worker 产出结果超时（manifest_id={manifest_id}）；"
@@ -883,11 +933,30 @@ class BBBrowserCollector(BaseCollector):
         topic_kw: Optional[list[str]] = None,
         **kwargs,
     ) -> list[dict]:
-        """生成 manifest → 交给运行中 worker → 读取并归一化本次结果。
+        """生成 manifest（按动态快照分批次）→ 交给运行中 worker → 读取并归一化本次结果。
 
         不直连 Node CLI、不直写 DB。仅返回标准化 Opinion dict 列表。
-        任一平台失败（超时/401/缺结果）→ 抛异常，不返回空列表、不伪装成功。
+
+        Phase1b 动态批处理 + 部分结果：
+        - 运行启动一次性快照监控关键词（snapshot），按固定大小切片成多个 manifest 批次；
+        - 每批独立 240s 超时（timeout_seconds，per-batch 语义），独立回收 ready 结果；
+        - 超时不再 all-or-nothing 抛异常，而是回收已就绪（大小稳定）的结果，记录未就绪项；
+        - 聚合 logical_status：success / partial_success / failed / skipped。
         """
+        # 重置本次运行态（每次 fetch 重新初始化）
+        self._keyword_snapshot = []
+        self._batches = []
+        self._partial_missing = []
+        self.collection_partial = False
+        self.collection_failed = False
+        self.collection_skipped = False
+        self.logical_status = "success"
+        self._partial_mode = True  # 全程 per-batch 部分结果语义（超时回收 ready，不抛）
+        self._pending_files = []
+        self.last_fetched_raw = 0
+        self.normalized_count = 0
+        self.last_not_exported_returned = 0
+
         if self.control_root is None or self.exchange_root is None:
             raise RuntimeError("control_root / exchange_root 未配置，BBBrowserCollector 无法运行")
         if not self.platforms:
@@ -902,20 +971,9 @@ class BBBrowserCollector(BaseCollector):
                 f"运行时漂移，已阻断并生成差异报告：{diffs}",
             )
 
-        search_plats = [p for p in self.platforms if PLATFORM_META[p]["kind"] == "search"]
-        hot_plats = [p for p in self.platforms if PLATFORM_META[p]["kind"] == "hot"]
-        keywords = [str(k).strip() for k in (keywords or []) if str(k).strip()]
-        if search_plats and not keywords:
-            raise RuntimeError(
-                f"搜索型平台 {search_plats} 需要至少一个关键词，但本次关键词为空；"
-                f"无法生成 search rule（manifest 要求 match_terms 非空）。"
-            )
-
-        manifest_id = uuid.uuid4().hex
-        self._current_manifest_id = manifest_id
-
         # ---- 新任务创建前：优先恢复 stale/partial 既有 manifest（§四/§五）----
         # 只重试未完成的 (task_id, source_key)，不误消费旧 manifest（按 manifest_id 精确匹配）。
+        # 放在快照/跳过判断之前，确保即便本次监控关键词为空也会先尝试回收既有残留。
         try:
             recovery_actions = self.recover_prior_runs(reason="pre_create_recovery")
             if recovery_actions:
@@ -923,72 +981,135 @@ class BBBrowserCollector(BaseCollector):
         except Exception:
             logger.exception("recover_prior_runs 异常（不影响本次新任务创建）")
 
+        search_plats = [p for p in self.platforms if PLATFORM_META[p]["kind"] == "search"]
+        hot_plats = [p for p in self.platforms if PLATFORM_META[p]["kind"] == "hot"]
+        snapshot = [str(k).strip() for k in (keywords or []) if str(k).strip()]
+        self._keyword_snapshot = list(snapshot)
+
+        # 0 关键词 + 有搜索型平台 → 跳过（不写空搜索 manifest，避免 worker 无意义空跑）
+        if not snapshot and search_plats:
+            self.collection_skipped = True
+            self.logical_status = "skipped"
+            logger.info("BBBrowserCollector 监控关键词为空（搜索型平台=%s）→ 跳过本次采集", search_plats)
+            return []
+
+        batch_size = int(
+            kwargs.get("batch_size")
+            or os.getenv("BB_BROWSER_BATCH_SIZE", str(DEFAULT_BB_BROWSER_BATCH_SIZE))
+        )
+        batches = split_keywords(snapshot, batch_size)
+
         # ---- outgoing 跨进程原子互斥（§三，替代旧 Plan A TOCTOU）----
         # 原子 O_EXCL 创建锁文件；已有活跃锁 → 抛 worker_busy（§五）；
         # 已有 stale 锁 → 回收孤儿 manifest 到 stale/ 后继续。绝不删除他人 manifest。
+        # 整个逻辑运行（多批次）持有同一把锁，batch_id == 逻辑运行标识。
         outgoing = self.control_root / "outgoing"
         mutex = OutgoingMutex(outgoing, stale_dir=self.control_root / "stale")
         self._mutex = mutex
-        mutex.acquire(manifest_id)  # 持有失败（活跃锁）会抛 OutgoingLockError(worker_busy)
+        run_id = uuid.uuid4().hex
+        mutex.acquire(run_id)  # 持有失败（活跃锁）会抛 OutgoingLockError(worker_busy)
 
+        items: list[dict] = []
+        batch_meta: list[dict] = []
         try:
-            # 1) 原子写入 manifest
-            text = build_manifest(
-                manifest_id,
-                keywords,
-                self.platforms,
-                keyword_config_version="1",
-                policy_version="1",
-            )
-            write_manifest_atomic(outgoing, manifest_id, text)
-            logger.info("BBBrowserCollector 已写入 manifest=%s 到 outgoing（关键词=%s）",
-                        manifest_id, keywords)
+            for batch_idx, batch_kw in enumerate(batches):
+                batch_kw = [str(k).strip() for k in batch_kw if str(k).strip()]
+                # 搜索型平台要求关键词非空；空批次（如纯 hot 批）仍允许（仅 hot 规则）
+                if not batch_kw and search_plats:
+                    # 理论不会触发（split_keywords 非空快照不产生空批），防御性跳过
+                    continue
 
-            # 2) 等待本次结果（按 manifest 实际规则计算期望任务集合）
-            expected = expected_tasks_for_manifest(text)
-            files = self._wait_for_results(manifest_id, expected)
+                manifest_id = uuid.uuid4().hex
+                self._current_manifest_id = manifest_id
 
-            # 3) 解析 + 逐条归一化（同一平台多文件全部计入，不丢失）
-            items: list[dict] = []
-            raw_total = 0
-            normalized_total = 0
-            per_platform: dict[str, int] = {}
-            for pf in files:
-                rec = parse_record_text(pf.path.read_text(encoding="utf-8", errors="ignore"))
-                if rec["error"] is not None:
-                    code = classify_adapter_error(rec["error"], pf.source_key)
-                    raise CollectorError(
-                        code,
-                        f"平台 {pf.source_key} adapter 返回错误（manifest_id={manifest_id} "
-                        f"task_id={pf.task_id}）：{rec['error']}",
-                    )
-                if rec["content"] is None:
-                    raise CollectorError(
-                        ERR_ADAPTER_ERROR,
-                        f"平台 {pf.source_key} 结果无法解析（manifest_id={manifest_id}，"
-                        f"文件={pf.path.name}）",
-                    )
-                raw_total += raw_item_count(pf.source_key, rec["content"])
-                norm = normalize_record(pf.source_key, rec["content"], self.max_items_per_platform)
-                normalized_total += len(norm)
-                per_platform[pf.source_key] = per_platform.get(pf.source_key, 0) + len(norm)
-                items.extend(norm)
+                # 1) 原子写入本批 manifest
+                text = build_manifest(
+                    manifest_id,
+                    batch_kw,
+                    self.platforms,
+                    keyword_config_version="1",
+                    policy_version="1",
+                )
+                write_manifest_atomic(outgoing, manifest_id, text)
+                logger.info("BBBrowserCollector 已写入 manifest=%s（批次=%d/%d，关键词=%s）",
+                            manifest_id, batch_idx + 1, len(batches), batch_kw)
 
-            if not items:
-                raise CollectorError(
-                    ERR_EMPTY_RESULT,
-                    f"bb-browser 本次采集返回 0 条有效条目（manifest_id={manifest_id}），"
-                    f"各平台条数={per_platform}。不伪装成功。",
+                # 2) 等待本批结果（per-batch 部分结果：超时不抛，回收 ready）
+                expected = expected_tasks_for_manifest(text)
+                ready_files = self._wait_for_results(manifest_id, expected)
+
+                # 3) 解析 + 逐条归一化（同一平台多文件全部计入，不丢失）
+                batch_items: list[dict] = []
+                batch_ready = 0
+                for pf in ready_files:
+                    rec = parse_record_text(pf.path.read_text(encoding="utf-8", errors="ignore"))
+                    if rec["error"] is not None:
+                        code = classify_adapter_error(rec["error"], pf.source_key)
+                        logger.warning(
+                            "平台 %s adapter 返回错误（manifest_id=%s task_id=%s）：%s（按部分结果跳过）",
+                            pf.source_key, manifest_id, pf.task_id, rec["error"],
+                        )
+                        self._partial_missing.append((pf.task_id, pf.source_key))
+                        continue
+                    if rec["content"] is None:
+                        logger.warning(
+                            "平台 %s 结果无法解析（manifest_id=%s 文件=%s）（按部分结果跳过）",
+                            pf.source_key, manifest_id, pf.path.name,
+                        )
+                        self._partial_missing.append((pf.task_id, pf.source_key))
+                        continue
+                    self.last_fetched_raw += raw_item_count(pf.source_key, rec["content"])
+                    norm = normalize_record(pf.source_key, rec["content"], self.max_items_per_platform)
+                    self.normalized_count += len(norm)
+                    batch_items.extend(norm)
+                    batch_ready += 1
+                    self._pending_files.append(pf.path)
+
+                items.extend(batch_items)
+                # Phase 2 Worker Cancellation & Orphan Prevention：
+                # batch 未在 240s 内完整完成（partial/failed）→ 标记 manifest 取消，
+                # 阻止 worker 继续为已超时 manifest 执行未完成 source（避免孤儿续采）。
+                if batch_ready < len(expected):
+                    try:
+                        mark_manifest_cancelled(self.control_root, manifest_id, reason="batch_timeout")
+                    except Exception:
+                        logger.warning("写入 cancellation marker 失败（不影响已回收结果）：%s", manifest_id)
+                if batch_ready == 0:
+                    bstatus = "failed"
+                elif batch_ready >= len(expected):
+                    bstatus = "success"
+                else:
+                    bstatus = "partial"
+                batch_meta.append({
+                    "manifest_id": manifest_id,
+                    "keywords": batch_kw,
+                    "expected": len(expected),
+                    "ready": batch_ready,
+                    "status": bstatus,
+                })
+                logger.info(
+                    "BBBrowserCollector 批次 %d/%d 完成：status=%s ready=%d/%d 返回=%d",
+                    batch_idx + 1, len(batches), bstatus, batch_ready, len(expected), len(batch_items),
                 )
 
-            # 口径：last_fetched_raw=上游原始（截断前）；returned=len(items)（截断后）
-            self.last_fetched_raw = raw_total
-            self.normalized_count = normalized_total
+            # 聚合 logical_status
+            total_expected = sum(b["expected"] for b in batch_meta)
+            total_ready = sum(b["ready"] for b in batch_meta)
+            if total_ready == 0:
+                self.collection_failed = True
+                self.logical_status = "failed"
+            elif total_ready >= total_expected:
+                self.logical_status = "success"
+            else:
+                self.collection_partial = True
+                self.logical_status = "partial_success"
+            self._batches = batch_meta
+
             self.last_not_exported_returned = len(items)
-            self._pending_files = [pf.path for pf in files]
             logger.info(
-                "BBBrowserCollector 归一化完成 manifest=%s 平台=%s 原始=%d 归一化=%d 返回=%d",
-                manifest_id, per_platform, raw_total, normalized_total, len(items),
+                "BBBrowserCollector 全部批次完成：logical_status=%s 批次数=%d 原始=%d 归一化=%d 返回=%d",
+                self.logical_status, len(batch_meta), self.last_fetched_raw,
+                self.normalized_count, len(items),
             )
             return items
         finally:

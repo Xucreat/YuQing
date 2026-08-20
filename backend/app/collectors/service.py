@@ -561,6 +561,7 @@ class CollectorService:
             logger.warning("读取大厂 rule_config 失败，使用内置 DEFAULT_RULE 兜底")
         return KeywordFilterService.default()
 
+
     def _process_collector(
         self,
         db: Session,
@@ -805,15 +806,18 @@ class CollectorService:
             run.comments_seen = comments_seen
             run.comments_skipped = comments_skipped
             run.admission_filtered = admission_filtered
-            run.status = "success" if c_failed == 0 else "partial"
             # 配置异常标注：地域关键词为空 → fail-safe 已拦截全部数据，
-            # 在运行记录中显式标记，避免被误读为「普通零数据」。
+            # 在运行记录中显式标记，避免被误读为「普通零数据」（优先级最高）。
             if region_kw is not None and not region_kw:
                 run.status = "warning"
                 run.error_msg = (
                     "配置异常：地域关键词(region_kw)为空，已启用 fail-safe "
                     "拦截无地域数据（非普通零数据，请检查 keywords 表 category='地域' 是否启用）"
                 )
+            else:
+                # Phase1b：采集器内部批处理聚合状态推导运行态
+                # （仅当采集阶段本身 partial/failed/skipped；分析失败由 analysis_failed 决定）
+                run.status = resolve_bb_browser_run_status(collector, c_failed > 0)
             self._persist_mediacrawler_cursor(
                 db, collector, mediacrawler_next_cursor
             )
@@ -1138,3 +1142,23 @@ class CollectorService:
             logger.exception("本批僵尸运行回收失败（不影响已合并结果）")
 
         return merged
+
+
+def resolve_bb_browser_run_status(collector, analysis_failed: bool) -> str:
+    """Phase1b：根据采集器批处理聚合状态推导 CollectorRun.status。
+
+    规则：
+    - collection_skipped → "skipped"（无监控关键词，未发起采集）
+    - 采集阶段整体 failed（0 ready）→ "failed"
+    - 采集阶段 partial（部分 ready）→ "partial_success"
+    - 采集全部成功 → 维持分析层结论：analysis_failed 则 "partial"，否则 "success"
+    """
+    coll_logical = getattr(collector, "logical_status", None)
+    if coll_logical in ("skipped", "partial_success", "failed", "success"):
+        if getattr(collector, "collection_skipped", False):
+            return "skipped"
+        if coll_logical == "failed":
+            return "failed"
+        if coll_logical == "partial_success":
+            return "partial_success"
+    return "partial" if analysis_failed else "success"
