@@ -1,6 +1,6 @@
-import { d as defineComponent, a2 as useAlertNotifier, z as usePermission, A as watch, C as onMounted, w as withDirectives, c as createElementBlock, q as createBlock, a as createBaseVNode, n as normalizeClass, Y as Teleport, F as Fragment, m as createVNode, p as withCtx, s as createCommentVNode, t as toDisplayString, r as ref, j as computed, y as resolveComponent, B as resolveDirective, L as useRoute, f as reactive, g as api, E as ElMessage, Z as isPermissionDenied, o as openBlock, e as createTextVNode, H as unref, a3 as riskTag, a4 as riskText, S as _sfc_main$1, b as withKeys, Q as ElMessageBox, _ as _export_sfc } from './index-D56tKRkz.js';
-import { O as OpinionDetailModal } from './OpinionDetailModal-B5DYqKmD.js';
-import { F as ForeignOpinionDetailModal } from './ForeignOpinionDetailModal-C5KNOLyz.js';
+import { d as defineComponent, a2 as useAlertNotifier, z as usePermission, A as watch, C as onMounted, w as withDirectives, c as createElementBlock, q as createBlock, a as createBaseVNode, n as normalizeClass, Y as Teleport, F as Fragment, m as createVNode, p as withCtx, s as createCommentVNode, t as toDisplayString, r as ref, j as computed, y as resolveComponent, B as resolveDirective, L as useRoute, f as reactive, g as api, E as ElMessage, Z as isPermissionDenied, o as openBlock, e as createTextVNode, H as unref, a3 as riskTag, a4 as riskText, S as _sfc_main$1, b as withKeys, Q as ElMessageBox, _ as _export_sfc } from './index-GDyWXHX0.js';
+import { O as OpinionDetailModal } from './OpinionDetailModal-BOOmVilN.js';
+import { F as ForeignOpinionDetailModal } from './ForeignOpinionDetailModal-D036gI8d.js';
 import './admission-DpEuIHXC.js';
 import './opinion-Cag9WtuS.js';
 

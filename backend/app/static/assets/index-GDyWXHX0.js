@@ -81618,74 +81618,114 @@ const _hoisted_69 = {
 const _hoisted_70 = { class: "feed-list" };
 const _hoisted_71 = ["disabled", "onClick"];
 const _hoisted_72 = {
-  key: 5,
+  key: 0,
+  class: "cf-hint"
+};
+const _hoisted_73 = {
+  key: 1,
+  class: "platform-grid"
+};
+const _hoisted_74 = ["value", "checked", "disabled", "onChange"];
+const _hoisted_75 = { class: "platform-name" };
+const _hoisted_76 = {
+  key: 0,
+  class: "platform-tag tag-locked"
+};
+const _hoisted_77 = {
+  key: 2,
+  class: "cfg-err"
+};
+const _hoisted_78 = {
+  key: 6,
   class: "cfg-note"
 };
-const _hoisted_73 = { class: "dlg-foot" };
-const _hoisted_74 = {
+const _hoisted_79 = { class: "dlg-foot" };
+const _hoisted_80 = {
   key: 0,
   class: "cfg-err"
 };
-const _hoisted_75 = ["disabled"];
-const _hoisted_76 = { class: "create-form" };
-const _hoisted_77 = { class: "cf-row" };
-const _hoisted_78 = { class: "cf-row" };
-const _hoisted_79 = { class: "cf-row" };
-const _hoisted_80 = { class: "cf-row" };
-const _hoisted_81 = { class: "cf-row cf-row-2" };
-const _hoisted_82 = { class: "cf-col" };
-const _hoisted_83 = { class: "cf-col" };
-const _hoisted_84 = {
-  key: 0,
-  class: "cf-row"
-};
-const _hoisted_85 = { class: "feed-list" };
-const _hoisted_86 = ["disabled", "onClick"];
-const _hoisted_87 = {
-  key: 0,
-  class: "cfg-err"
-};
-const _hoisted_88 = {
-  key: 1,
-  class: "cf-row"
-};
-const _hoisted_89 = {
-  key: 2,
-  class: "cf-row"
-};
+const _hoisted_81 = ["disabled"];
+const _hoisted_82 = { class: "create-form" };
+const _hoisted_83 = { class: "cf-row" };
+const _hoisted_84 = { class: "cf-row" };
+const _hoisted_85 = { class: "cf-row" };
+const _hoisted_86 = { class: "cf-row" };
+const _hoisted_87 = { class: "cf-row cf-row-2" };
+const _hoisted_88 = { class: "cf-col" };
+const _hoisted_89 = { class: "cf-col" };
 const _hoisted_90 = {
   key: 0,
-  class: "cfg-err"
+  class: "cf-row"
 };
-const _hoisted_91 = {
-  key: 1,
-  class: "cf-hint"
-};
-const _hoisted_92 = {
-  key: 2,
-  class: "cf-hint"
-};
-const _hoisted_93 = { class: "cf-row" };
-const _hoisted_94 = { class: "filter-row" };
-const _hoisted_95 = {
+const _hoisted_91 = { class: "feed-list" };
+const _hoisted_92 = ["disabled", "onClick"];
+const _hoisted_93 = {
   key: 0,
   class: "cfg-err"
 };
-const _hoisted_96 = { class: "cf-row" };
-const _hoisted_97 = { class: "dlg-foot" };
-const _hoisted_98 = ["disabled"];
-const _hoisted_99 = ["disabled"];
-const _hoisted_100 = { class: "schedule-form" };
-const _hoisted_101 = { class: "cf-row" };
-const _hoisted_102 = { class: "cf-row" };
-const _hoisted_103 = { class: "dlg-foot" };
-const _hoisted_104 = ["disabled"];
-const _hoisted_105 = { class: "schedule-form" };
+const _hoisted_94 = {
+  key: 1,
+  class: "cf-row"
+};
+const _hoisted_95 = {
+  key: 2,
+  class: "cf-row"
+};
+const _hoisted_96 = {
+  key: 0,
+  class: "cf-hint"
+};
+const _hoisted_97 = {
+  key: 1,
+  class: "platform-grid"
+};
+const _hoisted_98 = ["value", "checked", "disabled", "onChange"];
+const _hoisted_99 = { class: "platform-name" };
+const _hoisted_100 = {
+  key: 0,
+  class: "platform-tag tag-locked"
+};
+const _hoisted_101 = {
+  key: 2,
+  class: "cfg-err"
+};
+const _hoisted_102 = {
+  key: 3,
+  class: "cf-row"
+};
+const _hoisted_103 = {
+  key: 0,
+  class: "cfg-err"
+};
+const _hoisted_104 = {
+  key: 1,
+  class: "cf-hint"
+};
+const _hoisted_105 = {
+  key: 2,
+  class: "cf-hint"
+};
 const _hoisted_106 = { class: "cf-row" };
-const _hoisted_107 = { class: "cf-row" };
-const _hoisted_108 = { class: "cf-row" };
-const _hoisted_109 = { class: "dlg-foot" };
-const _hoisted_110 = ["disabled"];
+const _hoisted_107 = { class: "filter-row" };
+const _hoisted_108 = {
+  key: 0,
+  class: "cfg-err"
+};
+const _hoisted_109 = { class: "cf-row" };
+const _hoisted_110 = { class: "dlg-foot" };
+const _hoisted_111 = ["disabled"];
+const _hoisted_112 = ["disabled"];
+const _hoisted_113 = { class: "schedule-form" };
+const _hoisted_114 = { class: "cf-row" };
+const _hoisted_115 = { class: "cf-row" };
+const _hoisted_116 = { class: "dlg-foot" };
+const _hoisted_117 = ["disabled"];
+const _hoisted_118 = { class: "schedule-form" };
+const _hoisted_119 = { class: "cf-row" };
+const _hoisted_120 = { class: "cf-row" };
+const _hoisted_121 = { class: "cf-row" };
+const _hoisted_122 = { class: "dlg-foot" };
+const _hoisted_123 = ["disabled"];
 const FILTER_MODE_DEFAULT_LABEL = "默认（不指定，按采集器默认）";
 const KEYWORD_SCOPE_DEFAULT_LABEL = "默认（不指定，按采集器默认）";
 const _sfc_main$7 = /* @__PURE__ */ defineComponent({
@@ -81833,6 +81873,42 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
     const filterModeDraft = ref("");
     const keywordScopeDraft = ref("");
     const maxItemsDraft = ref(null);
+    const platformCatalog = ref([]);
+    const platformDraft = ref([]);
+    const platformLoading = ref(false);
+    const platformError = ref("");
+    async function loadPlatformAvailability() {
+      platformLoading.value = true;
+      try {
+        const { data } = await api.get(
+          "/admin/data-sources/platforms/availability"
+        );
+        platformCatalog.value = data?.platforms || [];
+      } catch {
+        platformCatalog.value = [];
+      } finally {
+        platformLoading.value = false;
+      }
+    }
+    function isPlatformSelectable(p) {
+      if (!p.selectable_for_bb) return false;
+      if (p.current_owner && currentSource.value && p.current_owner.id !== currentSource.value.id) {
+        return false;
+      }
+      return true;
+    }
+    function platformBlockReason(p) {
+      if (p.current_owner && currentSource.value && p.current_owner.id !== currentSource.value.id) {
+        return `已被「${p.current_owner.name}」占用`;
+      }
+      return p.blocked_reason || "当前不可选择";
+    }
+    function onPlatformToggle(key, ev) {
+      const checked = ev.target.checked;
+      const i = platformDraft.value.indexOf(key);
+      if (checked && i < 0) platformDraft.value.push(key);
+      if (!checked && i >= 0) platformDraft.value.splice(i, 1);
+    }
     const scheduleVisible = ref(false);
     const savingSchedule = ref(false);
     const scheduleDraft = reactive({ schedule_enabled: true, schedule_interval_minutes: 30 });
@@ -82074,11 +82150,25 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
         historyLoading.value = false;
       }
     }
-    function openConfig(row) {
+    async function openConfig(row) {
       currentSource.value = row;
       configError.value = "";
+      platformError.value = "";
       scopeRegionDraft.value = parseScopeCodes(row.scope_region_codes);
       loadRegionCatalog();
+      if (row.collector_kind === "external_browser") {
+        await loadPlatformAvailability();
+        let pcfg = {};
+        try {
+          const parsed = JSON.parse(row.config_json || "{}");
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) pcfg = parsed;
+        } catch {
+          pcfg = {};
+        }
+        platformDraft.value = Array.isArray(pcfg.platforms) ? pcfg.platforms.filter((x) => typeof x === "string") : [];
+      } else {
+        platformDraft.value = [];
+      }
       let cfg = {};
       try {
         const parsed = JSON.parse(row.config_json || "{}");
@@ -82157,6 +82247,13 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
       else delete cfg.keyword_scope;
       if (maxItemsDraft.value != null && maxItemsDraft.value >= 1) cfg.max_items = maxItemsDraft.value;
       else delete cfg.max_items;
+      if (currentSource.value && currentSource.value.collector_kind === "external_browser") {
+        if (platformDraft.value.length === 0) {
+          configError.value = "请至少选择一个采集平台";
+          return;
+        }
+        cfg.platforms = [...new Set(platformDraft.value)];
+      }
       const payload = JSON.stringify(cfg);
       savingConfig.value = true;
       try {
@@ -82247,14 +82344,26 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
     onMounted(reload);
     function openCreate() {
       createConfigError.value = "";
+      platformError.value = "";
       testMsg.value = "";
       testOk.value = false;
       rssFeedError.value = "";
       feedList.value = [""];
+      platformDraft.value = [];
       if (form) form.max_items = null;
       createVisible.value = true;
       loadRegionCatalog();
     }
+    watch(
+      () => form.type,
+      (t) => {
+        if (t === "external_browser") {
+          loadPlatformAvailability();
+        } else {
+          platformDraft.value = [];
+        }
+      }
+    );
     function addFeed() {
       feedList.value.push("");
     }
@@ -82337,6 +82446,9 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
       else delete cfgObj.keyword_scope;
       if (form.max_items != null && form.max_items >= 1) cfgObj.max_items = form.max_items;
       else delete cfgObj.max_items;
+      if (form.type === "external_browser") {
+        cfgObj.platforms = [...new Set(platformDraft.value)];
+      }
       const payload = {
         name: form.name.trim(),
         key: form.key.trim(),
@@ -82373,6 +82485,10 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
           return;
         }
         createConfigError.value = "";
+      }
+      if (form.type === "external_browser" && platformDraft.value.length === 0) {
+        createConfigError.value = "请至少选择一个采集平台";
+        return;
       }
       testing.value = true;
       testMsg.value = "";
@@ -82426,6 +82542,10 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
           return;
         }
         createConfigError.value = "";
+      }
+      if (form.type === "external_browser" && platformDraft.value.length === 0) {
+        createConfigError.value = "请至少选择一个采集平台";
+        return;
       }
       creating.value = true;
       try {
@@ -82831,8 +82951,8 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
           "modal-class": "apple-modal"
         }, {
           footer: withCtx(() => [
-            createBaseVNode("span", _hoisted_73, [
-              configError.value ? (openBlock(), createElementBlock("span", _hoisted_74, toDisplayString(configError.value), 1)) : createCommentVNode("", true),
+            createBaseVNode("span", _hoisted_79, [
+              configError.value ? (openBlock(), createElementBlock("span", _hoisted_80, toDisplayString(configError.value), 1)) : createCommentVNode("", true),
               createBaseVNode("button", {
                 class: "btn btn-ghost",
                 onClick: _cache[18] || (_cache[18] = ($event) => configVisible.value = false)
@@ -82841,11 +82961,11 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                 class: "btn btn-primary",
                 disabled: savingConfig.value,
                 onClick: saveConfig
-              }, "保存配置", 8, _hoisted_75)
+              }, "保存配置", 8, _hoisted_81)
             ])
           ]),
           default: withCtx(() => [
-            _cache[80] || (_cache[80] = createBaseVNode("p", { class: "dlg-sub" }, "区域范围", -1)),
+            _cache[83] || (_cache[83] = createBaseVNode("p", { class: "dlg-sub" }, "区域范围", -1)),
             createBaseVNode("div", _hoisted_59, [
               _cache[71] || (_cache[71] = createBaseVNode("label", { class: "cf-label" }, "区域（不选 = 全国）", -1)),
               createVNode(_component_el_cascader, {
@@ -82864,8 +82984,8 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
               }, null, 8, ["modelValue", "options", "loading", "disabled"]),
               _cache[72] || (_cache[72] = createBaseVNode("div", { class: "cf-hint" }, "可逐级选择省、市、县、乡镇/街道，选到任一级即可；保存后仍可修改。", -1))
             ]),
-            _cache[81] || (_cache[81] = createBaseVNode("div", { class: "cf-divider" }, null, -1)),
-            _cache[82] || (_cache[82] = createBaseVNode("p", { class: "dlg-sub" }, "过滤策略（filter_mode / keyword_scope）", -1)),
+            _cache[84] || (_cache[84] = createBaseVNode("div", { class: "cf-divider" }, null, -1)),
+            _cache[85] || (_cache[85] = createBaseVNode("p", { class: "dlg-sub" }, "过滤策略（filter_mode / keyword_scope）", -1)),
             createBaseVNode("div", _hoisted_60, [
               _cache[73] || (_cache[73] = createBaseVNode("label", { class: "cf-label" }, "过滤模式 filter_mode", -1)),
               createVNode(_component_el_select, {
@@ -82917,7 +83037,7 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                 "controls-position": "right"
               }, null, 8, ["modelValue"])
             ]),
-            _cache[83] || (_cache[83] = createBaseVNode("div", { class: "cfg-hint" }, "留空（默认）即按采集器内置上限；设置后单次最多抓取该条数。", -1)),
+            _cache[86] || (_cache[86] = createBaseVNode("div", { class: "cfg-hint" }, "留空（默认）即按采集器内置上限；设置后单次最多抓取该条数。", -1)),
             illegalComboError(filterModeDraft.value, keywordScopeDraft.value) ? (openBlock(), createElementBlock("div", _hoisted_63, toDisplayString(illegalComboError(filterModeDraft.value, keywordScopeDraft.value)), 1)) : createCommentVNode("", true),
             createBaseVNode("div", _hoisted_64, [
               _cache[76] || (_cache[76] = createBaseVNode("div", { class: "strategy-preview-title" }, "当前生效策略预览", -1)),
@@ -82931,7 +83051,7 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
             ]),
             filterModeDraft.value === "topic_only" ? (openBlock(), createElementBlock("div", _hoisted_68, " ⚠ 该策略将降低地域限定能力，可能扩大采集范围，请确认。 ")) : createCommentVNode("", true),
             filterModeDraft.value === "region_only" ? (openBlock(), createElementBlock("div", _hoisted_69, " 该策略仅关注区域相关内容。 ")) : createCommentVNode("", true),
-            _cache[84] || (_cache[84] = createBaseVNode("div", { class: "cf-divider" }, null, -1)),
+            _cache[87] || (_cache[87] = createBaseVNode("div", { class: "cf-divider" }, null, -1)),
             currentSource.value && currentSource.value.type === "rss" ? (openBlock(), createElementBlock(Fragment, { key: 3 }, [
               _cache[77] || (_cache[77] = createBaseVNode("p", { class: "dlg-sub" }, "RSS 地址", -1)),
               createBaseVNode("div", _hoisted_70, [
@@ -82960,8 +83080,32 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                 onClick: addFeedEdit
               }, "+ 添加地址")
             ], 64)) : createCommentVNode("", true),
-            !(currentSource.value && currentSource.value.collector_kind === "dedicated") ? (openBlock(), createElementBlock(Fragment, { key: 4 }, [
-              _cache[78] || (_cache[78] = createBaseVNode("p", { class: "dlg-sub" }, "高级配置（config_json）", -1)),
+            currentSource.value && currentSource.value.collector_kind === "external_browser" ? (openBlock(), createElementBlock(Fragment, { key: 4 }, [
+              _cache[78] || (_cache[78] = createBaseVNode("div", { class: "cf-divider" }, null, -1)),
+              _cache[79] || (_cache[79] = createBaseVNode("p", { class: "dlg-sub" }, "采集平台（bb-browser）", -1)),
+              platformLoading.value ? (openBlock(), createElementBlock("div", _hoisted_72, "平台目录加载中…")) : (openBlock(), createElementBlock("div", _hoisted_73, [
+                (openBlock(true), createElementBlock(Fragment, null, renderList(platformCatalog.value, (p) => {
+                  return openBlock(), createElementBlock("label", {
+                    key: p.key,
+                    class: normalizeClass(["platform-item", { "is-disabled": !isPlatformSelectable(p), "is-checked": platformDraft.value.includes(p.key) }])
+                  }, [
+                    createBaseVNode("input", {
+                      type: "checkbox",
+                      value: p.key,
+                      checked: platformDraft.value.includes(p.key),
+                      disabled: !isPlatformSelectable(p),
+                      onChange: ($event) => onPlatformToggle(p.key, $event)
+                    }, null, 40, _hoisted_74),
+                    createBaseVNode("span", _hoisted_75, toDisplayString(p.name), 1),
+                    !isPlatformSelectable(p) ? (openBlock(), createElementBlock("span", _hoisted_76, toDisplayString(platformBlockReason(p)), 1)) : createCommentVNode("", true)
+                  ], 2);
+                }), 128))
+              ])),
+              platformError.value ? (openBlock(), createElementBlock("div", _hoisted_77, toDisplayString(platformError.value), 1)) : createCommentVNode("", true),
+              _cache[80] || (_cache[80] = createBaseVNode("div", { class: "cf-hint" }, " 勾选 bb-browser 要采集的平台；同一平台不得与已启用的 MediaCrawler 数据源同时开启。未勾选任何平台将禁止保存。 ", -1))
+            ], 64)) : createCommentVNode("", true),
+            !(currentSource.value && currentSource.value.collector_kind === "dedicated") ? (openBlock(), createElementBlock(Fragment, { key: 5 }, [
+              _cache[81] || (_cache[81] = createBaseVNode("p", { class: "dlg-sub" }, "高级配置（config_json）", -1)),
               createVNode(_component_el_input, {
                 modelValue: configDraft.value,
                 "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => configDraft.value = $event),
@@ -82969,7 +83113,7 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                 rows: 10,
                 placeholder: '如 {"keywords":"河北,石家庄"}'
               }, null, 8, ["modelValue"])
-            ], 64)) : !(currentSource.value && currentSource.value.type === "rss") ? (openBlock(), createElementBlock("div", _hoisted_72, [..._cache[79] || (_cache[79] = [
+            ], 64)) : !(currentSource.value && currentSource.value.type === "rss") ? (openBlock(), createElementBlock("div", _hoisted_78, [..._cache[82] || (_cache[82] = [
               createTextVNode(" 当前采集器为", -1),
               createBaseVNode("strong", null, "专用型", -1),
               createTextVNode("，使用系统内置采集逻辑。除上方「过滤策略」外无需填写其他自定义配置；其余配置保持为空（", -1),
@@ -82989,7 +83133,7 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
           "modal-class": "apple-modal"
         }, {
           footer: withCtx(() => [
-            createBaseVNode("span", _hoisted_97, [
+            createBaseVNode("span", _hoisted_110, [
               testMsg.value ? (openBlock(), createElementBlock("span", {
                 key: 0,
                 class: normalizeClass(["test-msg", testOk.value ? "ok" : "bad"])
@@ -82998,7 +83142,7 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                 class: "btn btn-ghost",
                 disabled: testing.value,
                 onClick: testCreate
-              }, "测试连接", 8, _hoisted_98),
+              }, "测试连接", 8, _hoisted_111),
               createBaseVNode("button", {
                 class: "btn btn-ghost",
                 onClick: _cache[31] || (_cache[31] = ($event) => createVisible.value = false)
@@ -83007,13 +83151,13 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                 class: "btn btn-primary",
                 disabled: creating.value || testing.value,
                 onClick: submitCreate
-              }, "保存", 8, _hoisted_99)
+              }, "保存", 8, _hoisted_112)
             ])
           ]),
           default: withCtx(() => [
-            withDirectives((openBlock(), createElementBlock("div", _hoisted_76, [
-              createBaseVNode("div", _hoisted_77, [
-                _cache[85] || (_cache[85] = createBaseVNode("label", { class: "cf-label" }, [
+            withDirectives((openBlock(), createElementBlock("div", _hoisted_82, [
+              createBaseVNode("div", _hoisted_83, [
+                _cache[88] || (_cache[88] = createBaseVNode("label", { class: "cf-label" }, [
                   createTextVNode("名称 "),
                   createBaseVNode("span", { class: "req" }, "*")
                 ], -1)),
@@ -83023,8 +83167,8 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                   placeholder: "如 石家庄市政府网"
                 }, null, 8, ["modelValue"])
               ]),
-              createBaseVNode("div", _hoisted_78, [
-                _cache[86] || (_cache[86] = createBaseVNode("label", { class: "cf-label" }, [
+              createBaseVNode("div", _hoisted_84, [
+                _cache[89] || (_cache[89] = createBaseVNode("label", { class: "cf-label" }, [
                   createTextVNode("标识 key "),
                   createBaseVNode("span", { class: "req" }, "*")
                 ], -1)),
@@ -83034,8 +83178,8 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                   placeholder: "如 shijiazhuang_gov（字母/数字/下划线，唯一）"
                 }, null, 8, ["modelValue"])
               ]),
-              createBaseVNode("div", _hoisted_79, [
-                _cache[87] || (_cache[87] = createBaseVNode("label", { class: "cf-label" }, "类型", -1)),
+              createBaseVNode("div", _hoisted_85, [
+                _cache[90] || (_cache[90] = createBaseVNode("label", { class: "cf-label" }, "类型", -1)),
                 createVNode(_component_el_select, {
                   modelValue: form.type,
                   "onUpdate:modelValue": _cache[22] || (_cache[22] = ($event) => form.type = $event),
@@ -83070,8 +83214,8 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                   _: 1
                 }, 8, ["modelValue"])
               ]),
-              createBaseVNode("div", _hoisted_80, [
-                _cache[88] || (_cache[88] = createBaseVNode("label", { class: "cf-label" }, "区域（不选 = 全国）", -1)),
+              createBaseVNode("div", _hoisted_86, [
+                _cache[91] || (_cache[91] = createBaseVNode("label", { class: "cf-label" }, "区域（不选 = 全国）", -1)),
                 createVNode(_component_el_cascader, {
                   modelValue: form.scope_region_codes,
                   "onUpdate:modelValue": _cache[23] || (_cache[23] = ($event) => form.scope_region_codes = $event),
@@ -83086,11 +83230,11 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                   placeholder: "不选 = 全国",
                   class: "cf-full"
                 }, null, 8, ["modelValue", "options", "loading", "disabled"]),
-                _cache[89] || (_cache[89] = createBaseVNode("div", { class: "cf-hint" }, "可逐级选择省、市、县、乡镇/街道，选到任一级即可；支持多区域选择。", -1))
+                _cache[92] || (_cache[92] = createBaseVNode("div", { class: "cf-hint" }, "可逐级选择省、市、县、乡镇/街道，选到任一级即可；支持多区域选择。", -1))
               ]),
-              createBaseVNode("div", _hoisted_81, [
-                createBaseVNode("div", _hoisted_82, [
-                  _cache[90] || (_cache[90] = createBaseVNode("label", { class: "cf-label" }, "优先级", -1)),
+              createBaseVNode("div", _hoisted_87, [
+                createBaseVNode("div", _hoisted_88, [
+                  _cache[93] || (_cache[93] = createBaseVNode("label", { class: "cf-label" }, "优先级", -1)),
                   createVNode(_component_el_input_number, {
                     modelValue: form.priority,
                     "onUpdate:modelValue": _cache[24] || (_cache[24] = ($event) => form.priority = $event),
@@ -83100,20 +83244,20 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                     "controls-position": "right"
                   }, null, 8, ["modelValue"])
                 ]),
-                createBaseVNode("div", _hoisted_83, [
-                  _cache[91] || (_cache[91] = createBaseVNode("label", { class: "cf-label" }, "启用", -1)),
+                createBaseVNode("div", _hoisted_89, [
+                  _cache[94] || (_cache[94] = createBaseVNode("label", { class: "cf-label" }, "启用", -1)),
                   createVNode(_component_el_switch, {
                     modelValue: form.enabled,
                     "onUpdate:modelValue": _cache[25] || (_cache[25] = ($event) => form.enabled = $event)
                   }, null, 8, ["modelValue"])
                 ])
               ]),
-              form.type === "rss" ? (openBlock(), createElementBlock("div", _hoisted_84, [
-                _cache[92] || (_cache[92] = createBaseVNode("label", { class: "cf-label" }, [
+              form.type === "rss" ? (openBlock(), createElementBlock("div", _hoisted_90, [
+                _cache[95] || (_cache[95] = createBaseVNode("label", { class: "cf-label" }, [
                   createTextVNode("RSS 地址 "),
                   createBaseVNode("span", { class: "req" }, "*")
                 ], -1)),
-                createBaseVNode("div", _hoisted_85, [
+                createBaseVNode("div", _hoisted_91, [
                   (openBlock(true), createElementBlock(Fragment, null, renderList(feedList.value, (u, i) => {
                     return openBlock(), createElementBlock("div", {
                       class: "feed-item",
@@ -83129,7 +83273,7 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                         type: "button",
                         disabled: feedList.value.length <= 1,
                         onClick: ($event) => removeFeed(i)
-                      }, "删除", 8, _hoisted_86)
+                      }, "删除", 8, _hoisted_92)
                     ]);
                   }), 128))
                 ]),
@@ -83138,21 +83282,47 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                   type: "button",
                   onClick: addFeed
                 }, "+ 添加地址"),
-                rssFeedError.value ? (openBlock(), createElementBlock("div", _hoisted_87, toDisplayString(rssFeedError.value), 1)) : createCommentVNode("", true),
-                _cache[93] || (_cache[93] = createBaseVNode("div", { class: "cf-hint" }, "填写一个或多个 RSS/Atom 地址（仅支持 http/https）。保存时会用真实抓取校验。", -1))
+                rssFeedError.value ? (openBlock(), createElementBlock("div", _hoisted_93, toDisplayString(rssFeedError.value), 1)) : createCommentVNode("", true),
+                _cache[96] || (_cache[96] = createBaseVNode("div", { class: "cf-hint" }, "填写一个或多个 RSS/Atom 地址（仅支持 http/https）。保存时会用真实抓取校验。", -1))
               ])) : createCommentVNode("", true),
-              form.type === "external_browser" ? (openBlock(), createElementBlock("div", _hoisted_88, [
-                _cache[94] || (_cache[94] = createBaseVNode("label", { class: "cf-label" }, "调度模式", -1)),
+              form.type === "external_browser" ? (openBlock(), createElementBlock("div", _hoisted_94, [
+                _cache[97] || (_cache[97] = createBaseVNode("label", { class: "cf-label" }, "调度模式", -1)),
                 createVNode(_component_el_switch, {
                   modelValue: form.schedule_enabled,
                   "onUpdate:modelValue": _cache[26] || (_cache[26] = ($event) => form.schedule_enabled = $event),
                   "active-text": "自动",
                   "inactive-text": "手动"
                 }, null, 8, ["modelValue"]),
-                _cache[95] || (_cache[95] = createBaseVNode("div", { class: "cf-hint" }, "bb-browser 聚合采集默认「手动」。Phase 2 灰度期间必须保持手动（schedule_enabled=false），不得自动调度。", -1))
+                _cache[98] || (_cache[98] = createBaseVNode("div", { class: "cf-hint" }, "bb-browser 聚合采集默认「手动」。Phase 2 灰度期间必须保持手动（schedule_enabled=false），不得自动调度。", -1))
               ])) : createCommentVNode("", true),
-              form.type !== "rss" ? (openBlock(), createElementBlock("div", _hoisted_89, [
-                _cache[98] || (_cache[98] = createBaseVNode("label", { class: "cf-label" }, [
+              form.type === "external_browser" ? (openBlock(), createElementBlock("div", _hoisted_95, [
+                _cache[99] || (_cache[99] = createBaseVNode("label", { class: "cf-label" }, [
+                  createTextVNode("采集平台 "),
+                  createBaseVNode("span", { class: "req" }, "*")
+                ], -1)),
+                platformLoading.value ? (openBlock(), createElementBlock("div", _hoisted_96, "平台目录加载中…")) : (openBlock(), createElementBlock("div", _hoisted_97, [
+                  (openBlock(true), createElementBlock(Fragment, null, renderList(platformCatalog.value, (p) => {
+                    return openBlock(), createElementBlock("label", {
+                      key: p.key,
+                      class: normalizeClass(["platform-item", { "is-disabled": !isPlatformSelectable(p), "is-checked": platformDraft.value.includes(p.key) }])
+                    }, [
+                      createBaseVNode("input", {
+                        type: "checkbox",
+                        value: p.key,
+                        checked: platformDraft.value.includes(p.key),
+                        disabled: !isPlatformSelectable(p),
+                        onChange: ($event) => onPlatformToggle(p.key, $event)
+                      }, null, 40, _hoisted_98),
+                      createBaseVNode("span", _hoisted_99, toDisplayString(p.name), 1),
+                      !isPlatformSelectable(p) ? (openBlock(), createElementBlock("span", _hoisted_100, toDisplayString(platformBlockReason(p)), 1)) : createCommentVNode("", true)
+                    ], 2);
+                  }), 128))
+                ])),
+                createConfigError.value && form.type === "external_browser" && platformDraft.value.length === 0 ? (openBlock(), createElementBlock("div", _hoisted_101, toDisplayString(createConfigError.value), 1)) : createCommentVNode("", true),
+                _cache[100] || (_cache[100] = createBaseVNode("div", { class: "cf-hint" }, " 勾选 bb-browser 要采集的平台（也可在上方 config_json 中直接写 platforms 数组，二者保持一致即可）。同一平台不得与已启用的 MediaCrawler 数据源同时开启。 ", -1))
+              ])) : createCommentVNode("", true),
+              form.type !== "rss" ? (openBlock(), createElementBlock("div", _hoisted_102, [
+                _cache[103] || (_cache[103] = createBaseVNode("label", { class: "cf-label" }, [
                   createTextVNode("配置 config_json "),
                   createBaseVNode("span", { class: "req" }, "*")
                 ], -1)),
@@ -83163,8 +83333,8 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                   rows: 13,
                   placeholder: "JSON 配置"
                 }, null, 8, ["modelValue"]),
-                createConfigError.value ? (openBlock(), createElementBlock("div", _hoisted_90, toDisplayString(createConfigError.value), 1)) : createCommentVNode("", true),
-                form.type === "external_browser" ? (openBlock(), createElementBlock("div", _hoisted_91, [..._cache[96] || (_cache[96] = [
+                createConfigError.value ? (openBlock(), createElementBlock("div", _hoisted_103, toDisplayString(createConfigError.value), 1)) : createCommentVNode("", true),
+                form.type === "external_browser" ? (openBlock(), createElementBlock("div", _hoisted_104, [..._cache[101] || (_cache[101] = [
                   createTextVNode(" bb-browser 聚合采集：填写 config_json（JSON），至少含 ", -1),
                   createBaseVNode("code", null, "platforms", -1),
                   createTextVNode("、", -1),
@@ -83174,15 +83344,15 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                   createTextVNode("、", -1),
                   createBaseVNode("code", null, "bb_browser_cli", -1),
                   createTextVNode("； 平台白名单仅允许 baidu/hupu/toutiao/bilibili/youtube，禁止 weibo/xiaohongshu/zhihu。保存时仅做结构校验，不会触发实时抓取。 ", -1)
-                ])])) : (openBlock(), createElementBlock("div", _hoisted_92, [..._cache[97] || (_cache[97] = [
+                ])])) : (openBlock(), createElementBlock("div", _hoisted_105, [..._cache[102] || (_cache[102] = [
                   createTextVNode("新建的数据源将使用", -1),
                   createBaseVNode("strong", null, "通用型采集器（配置驱动）", -1),
                   createTextVNode("，需填写 config_json（至少含 list_urls）；保存时会用真实抓取校验：能取到正文才创建成功。", -1)
                 ])]))
               ])) : createCommentVNode("", true),
-              createBaseVNode("div", _hoisted_93, [
-                _cache[100] || (_cache[100] = createBaseVNode("label", { class: "cf-label" }, "过滤策略（可选）", -1)),
-                createBaseVNode("div", _hoisted_94, [
+              createBaseVNode("div", _hoisted_106, [
+                _cache[105] || (_cache[105] = createBaseVNode("label", { class: "cf-label" }, "过滤策略（可选）", -1)),
+                createBaseVNode("div", _hoisted_107, [
                   createVNode(_component_el_select, {
                     modelValue: form.filter_mode,
                     "onUpdate:modelValue": _cache[28] || (_cache[28] = ($event) => form.filter_mode = $event),
@@ -83220,10 +83390,10 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                     _: 1
                   }, 8, ["modelValue"])
                 ]),
-                illegalComboError(form.filter_mode, form.keyword_scope) ? (openBlock(), createElementBlock("div", _hoisted_95, toDisplayString(illegalComboError(form.filter_mode, form.keyword_scope)), 1)) : createCommentVNode("", true),
-                _cache[101] || (_cache[101] = createBaseVNode("div", { class: "cf-hint" }, "留空（默认）即按采集器内置默认过滤策略；专用型源可在下拉中指定过滤模式与关键词范围。", -1)),
-                createBaseVNode("div", _hoisted_96, [
-                  _cache[99] || (_cache[99] = createBaseVNode("label", { class: "cf-label" }, "单次抓取条数 max_items（可选）", -1)),
+                illegalComboError(form.filter_mode, form.keyword_scope) ? (openBlock(), createElementBlock("div", _hoisted_108, toDisplayString(illegalComboError(form.filter_mode, form.keyword_scope)), 1)) : createCommentVNode("", true),
+                _cache[106] || (_cache[106] = createBaseVNode("div", { class: "cf-hint" }, "留空（默认）即按采集器内置默认过滤策略；专用型源可在下拉中指定过滤模式与关键词范围。", -1)),
+                createBaseVNode("div", _hoisted_109, [
+                  _cache[104] || (_cache[104] = createBaseVNode("label", { class: "cf-label" }, "单次抓取条数 max_items（可选）", -1)),
                   createVNode(_component_el_input_number, {
                     modelValue: form.max_items,
                     "onUpdate:modelValue": _cache[30] || (_cache[30] = ($event) => form.max_items = $event),
@@ -83250,7 +83420,7 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
           "modal-class": "apple-modal"
         }, {
           footer: withCtx(() => [
-            createBaseVNode("span", _hoisted_103, [
+            createBaseVNode("span", _hoisted_116, [
               createBaseVNode("button", {
                 class: "btn btn-ghost",
                 onClick: _cache[35] || (_cache[35] = ($event) => scheduleVisible.value = false)
@@ -83259,20 +83429,20 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                 class: "btn btn-primary",
                 disabled: savingSchedule.value,
                 onClick: saveSchedule
-              }, "保存", 8, _hoisted_104)
+              }, "保存", 8, _hoisted_117)
             ])
           ]),
           default: withCtx(() => [
-            withDirectives((openBlock(), createElementBlock("div", _hoisted_100, [
-              createBaseVNode("div", _hoisted_101, [
-                _cache[102] || (_cache[102] = createBaseVNode("label", { class: "cf-label" }, "自动采集", -1)),
+            withDirectives((openBlock(), createElementBlock("div", _hoisted_113, [
+              createBaseVNode("div", _hoisted_114, [
+                _cache[107] || (_cache[107] = createBaseVNode("label", { class: "cf-label" }, "自动采集", -1)),
                 createVNode(_component_el_switch, {
                   modelValue: scheduleDraft.schedule_enabled,
                   "onUpdate:modelValue": _cache[33] || (_cache[33] = ($event) => scheduleDraft.schedule_enabled = $event)
                 }, null, 8, ["modelValue"])
               ]),
-              createBaseVNode("div", _hoisted_102, [
-                _cache[103] || (_cache[103] = createBaseVNode("label", { class: "cf-label" }, "采集周期（分钟）", -1)),
+              createBaseVNode("div", _hoisted_115, [
+                _cache[108] || (_cache[108] = createBaseVNode("label", { class: "cf-label" }, "采集周期（分钟）", -1)),
                 createVNode(_component_el_input_number, {
                   modelValue: scheduleDraft.schedule_interval_minutes,
                   "onUpdate:modelValue": _cache[34] || (_cache[34] = ($event) => scheduleDraft.schedule_interval_minutes = $event),
@@ -83282,7 +83452,7 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                   "controls-position": "right"
                 }, null, 8, ["modelValue"])
               ]),
-              _cache[104] || (_cache[104] = createBaseVNode("div", { class: "cf-hint" }, "最小周期 5 分钟（与后端校验一致）。保存后立即按新周期参与调度。", -1))
+              _cache[109] || (_cache[109] = createBaseVNode("div", { class: "cf-hint" }, "最小周期 5 分钟（与后端校验一致）。保存后立即按新周期参与调度。", -1))
             ])), [
               [_directive_loading, savingSchedule.value]
             ])
@@ -83299,7 +83469,7 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
           "modal-class": "apple-modal"
         }, {
           footer: withCtx(() => [
-            createBaseVNode("span", _hoisted_109, [
+            createBaseVNode("span", _hoisted_122, [
               batchMessage.value ? (openBlock(), createElementBlock("span", {
                 key: 0,
                 class: normalizeClass(["test-msg", batchOk.value ? "ok" : "bad"])
@@ -83312,13 +83482,13 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                 class: "btn btn-primary",
                 disabled: batchSaving.value,
                 onClick: saveBatchSchedule
-              }, "保存", 8, _hoisted_110)
+              }, "保存", 8, _hoisted_123)
             ])
           ]),
           default: withCtx(() => [
-            withDirectives((openBlock(), createElementBlock("div", _hoisted_105, [
-              createBaseVNode("div", _hoisted_106, [
-                _cache[105] || (_cache[105] = createBaseVNode("label", { class: "cf-label" }, "范围", -1)),
+            withDirectives((openBlock(), createElementBlock("div", _hoisted_118, [
+              createBaseVNode("div", _hoisted_119, [
+                _cache[110] || (_cache[110] = createBaseVNode("label", { class: "cf-label" }, "范围", -1)),
                 createVNode(_component_el_select, {
                   modelValue: batchForm.scope,
                   "onUpdate:modelValue": _cache[37] || (_cache[37] = ($event) => batchForm.scope = $event),
@@ -83337,15 +83507,15 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
                   _: 1
                 }, 8, ["modelValue"])
               ]),
-              createBaseVNode("div", _hoisted_107, [
-                _cache[106] || (_cache[106] = createBaseVNode("label", { class: "cf-label" }, "自动采集", -1)),
+              createBaseVNode("div", _hoisted_120, [
+                _cache[111] || (_cache[111] = createBaseVNode("label", { class: "cf-label" }, "自动采集", -1)),
                 createVNode(_component_el_switch, {
                   modelValue: batchForm.schedule_enabled,
                   "onUpdate:modelValue": _cache[38] || (_cache[38] = ($event) => batchForm.schedule_enabled = $event)
                 }, null, 8, ["modelValue"])
               ]),
-              createBaseVNode("div", _hoisted_108, [
-                _cache[107] || (_cache[107] = createBaseVNode("label", { class: "cf-label" }, "采集周期（分钟）", -1)),
+              createBaseVNode("div", _hoisted_121, [
+                _cache[112] || (_cache[112] = createBaseVNode("label", { class: "cf-label" }, "采集周期（分钟）", -1)),
                 createVNode(_component_el_input_number, {
                   modelValue: batchForm.interval_minutes,
                   "onUpdate:modelValue": _cache[39] || (_cache[39] = ($event) => batchForm.interval_minutes = $event),
@@ -83368,7 +83538,7 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
   }
 });
 
-const SourcesView = /* @__PURE__ */ _export_sfc(_sfc_main$7, [["__scopeId", "data-v-1fcca914"]]);
+const SourcesView = /* @__PURE__ */ _export_sfc(_sfc_main$7, [["__scopeId", "data-v-f271e33f"]]);
 
 const _hoisted_1$6 = { class: "cl-page" };
 const _hoisted_2$6 = {
@@ -86990,25 +87160,25 @@ const router = createRouter({
     {
       path: "/login",
       name: "login",
-      component: () => __vitePreload(() => import('./Login-DXKgVXUP.js'),true?__vite__mapDeps([0]):void 0),
+      component: () => __vitePreload(() => import('./Login-qjoGeELs.js'),true?__vite__mapDeps([0]):void 0),
       meta: { requiresAuth: false }
     },
     {
       path: "/dashboard",
       name: "dashboard",
-      component: () => __vitePreload(() => import('./Dashboard-DyU8l2F9.js'),true?__vite__mapDeps([1,2,3,4,5,6,7]):void 0),
+      component: () => __vitePreload(() => import('./Dashboard-DnbvMvpD.js'),true?__vite__mapDeps([1,2,3,4,5,6,7]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/opinions",
       name: "opinions",
-      component: () => __vitePreload(() => import('./Opinions-B54O_-Hj.js'),true?__vite__mapDeps([6,1,2,8]):void 0),
+      component: () => __vitePreload(() => import('./Opinions-Dyx2zoJG.js'),true?__vite__mapDeps([6,1,2,8]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/foreign",
       name: "foreign",
-      component: () => __vitePreload(() => import('./ForeignWorkspace-C0IVbiUW.js'),true?__vite__mapDeps([1,2,3,4,5]):void 0),
+      component: () => __vitePreload(() => import('./ForeignWorkspace-CwdzL9ZX.js'),true?__vite__mapDeps([1,2,3,4,5]):void 0),
       meta: { requiresAuth: true, module: ["keywords", "sources", "foreign"] }
     },
     { path: "/foreign/alerts", redirect: { path: "/alerts", query: { tab: "records", scope: "foreign" } } },
@@ -87017,55 +87187,55 @@ const router = createRouter({
     {
       path: "/ai-search",
       name: "ai-search",
-      component: () => __vitePreload(() => import('./AiSearch-Mt_AS75j.js'),true?__vite__mapDeps([9]):void 0),
+      component: () => __vitePreload(() => import('./AiSearch-GybtJ2nO.js'),true?__vite__mapDeps([9]):void 0),
       meta: { requiresAuth: true, permission: "ai:search" }
     },
     {
       path: "/ai-search/web",
       name: "ai-search-web",
-      component: () => __vitePreload(() => import('./AiSearch-Mt_AS75j.js'),true?__vite__mapDeps([9]):void 0),
+      component: () => __vitePreload(() => import('./AiSearch-GybtJ2nO.js'),true?__vite__mapDeps([9]):void 0),
       meta: { requiresAuth: true, permission: "ai:search" }
     },
     {
       path: "/ai-search/ai",
       name: "ai-search-ai",
-      component: () => __vitePreload(() => import('./AiSearch-Mt_AS75j.js'),true?__vite__mapDeps([9]):void 0),
+      component: () => __vitePreload(() => import('./AiSearch-GybtJ2nO.js'),true?__vite__mapDeps([9]):void 0),
       meta: { requiresAuth: true, permission: "ai:search" }
     },
     {
       path: "/ai-search/anspire",
       name: "ai-search-anspire",
-      component: () => __vitePreload(() => import('./AiSearch-Mt_AS75j.js'),true?__vite__mapDeps([9]):void 0),
+      component: () => __vitePreload(() => import('./AiSearch-GybtJ2nO.js'),true?__vite__mapDeps([9]):void 0),
       meta: { requiresAuth: true, permission: "ai:search" }
     },
     {
       path: "/opinion/:id",
       name: "opinion-detail",
-      component: () => __vitePreload(() => import('./OpinionDetail-DWZ2YS1V.js'),true?__vite__mapDeps([10]):void 0),
+      component: () => __vitePreload(() => import('./OpinionDetail-CJgDSn_V.js'),true?__vite__mapDeps([10]):void 0),
       meta: { requiresAuth: true }
     },
     {
       path: "/events",
       name: "events",
-      component: () => __vitePreload(() => import('./Events-Dty6coWP.js'),true?__vite__mapDeps([3,4,11]):void 0),
+      component: () => __vitePreload(() => import('./Events-CHZWdbeO.js'),true?__vite__mapDeps([3,4,11]):void 0),
       meta: { requiresAuth: true, permission: "events:read" }
     },
     {
       path: "/event/:id",
       name: "event-detail",
-      component: () => __vitePreload(() => import('./EventDetail-BkTAW8PI.js'),true?__vite__mapDeps([6,3,12]):void 0),
+      component: () => __vitePreload(() => import('./EventDetail-BkIo2yS3.js'),true?__vite__mapDeps([6,3,12]):void 0),
       meta: { requiresAuth: true, permission: "events:read" }
     },
     {
       path: "/foreign/event/:id",
       name: "foreign-event-detail",
-      component: () => __vitePreload(() => import('./ForeignEventDetail-CW8RTxzS.js'),true?__vite__mapDeps([3,1,13]):void 0),
+      component: () => __vitePreload(() => import('./ForeignEventDetail-DgShi_lk.js'),true?__vite__mapDeps([3,1,13]):void 0),
       meta: { requiresAuth: true, permission: "foreign:events:read" }
     },
     {
       path: "/alerts",
       name: "alerts",
-      component: () => __vitePreload(() => import('./Alerts-68UCndnW.js'),true?__vite__mapDeps([6,1,14]):void 0),
+      component: () => __vitePreload(() => import('./Alerts-CzxM4inS.js'),true?__vite__mapDeps([6,1,14]):void 0),
       meta: { requiresAuth: true, permission: "alerts:read" }
     },
     // 数据管理聚合页：进入门槛放宽为「关键词/数据源/采集 任一模块权限」即可（module 门禁）。
@@ -87085,7 +87255,7 @@ const router = createRouter({
     {
       path: "/system",
       name: "system",
-      component: () => __vitePreload(() => import('./SystemAdmin-DxnFO_c5.js'),true?__vite__mapDeps([15]):void 0),
+      component: () => __vitePreload(() => import('./SystemAdmin-DauqBREd.js'),true?__vite__mapDeps([15]):void 0),
       meta: { requiresAuth: true },
       // 进入系统时按权限分流到首个可见子页；无系统权限则回退首页。
       redirect: (to) => {
@@ -87100,25 +87270,25 @@ const router = createRouter({
         {
           path: "users",
           name: "users",
-          component: () => __vitePreload(() => import('./Users-DUtMShYT.js'),true?__vite__mapDeps([16]):void 0),
+          component: () => __vitePreload(() => import('./Users-BMebyQqb.js'),true?__vite__mapDeps([16]):void 0),
           meta: { requiresAuth: true, module: "users" }
         },
         {
           path: "roles",
           name: "roles",
-          component: () => __vitePreload(() => import('./Roles-BYiMXUx-.js'),true?__vite__mapDeps([17]):void 0),
+          component: () => __vitePreload(() => import('./Roles-DaAMnUg0.js'),true?__vite__mapDeps([17]):void 0),
           meta: { requiresAuth: true, module: "roles" }
         },
         {
           path: "login-logs",
           name: "login-logs",
-          component: () => __vitePreload(() => import('./LoginLogs-UZW9wGOI.js'),true?__vite__mapDeps([18]):void 0),
+          component: () => __vitePreload(() => import('./LoginLogs-JkRkRuL6.js'),true?__vite__mapDeps([18]):void 0),
           meta: { requiresAuth: true, module: "login_logs" }
         },
         {
           path: "operation-logs",
           name: "operation-logs",
-          component: () => __vitePreload(() => import('./OperationLogs-w3rSG8RQ.js'),true?__vite__mapDeps([19]):void 0),
+          component: () => __vitePreload(() => import('./OperationLogs-CYlV08ft.js'),true?__vite__mapDeps([19]):void 0),
           meta: { requiresAuth: true, module: "audit_logs" }
         }
       ]
@@ -87131,14 +87301,14 @@ const router = createRouter({
     {
       path: "/propagation",
       name: "propagation",
-      component: () => __vitePreload(() => import('./Propagation-g29aV5k_.js'),true?__vite__mapDeps([20]):void 0),
+      component: () => __vitePreload(() => import('./Propagation-BQeUvIlu.js'),true?__vite__mapDeps([20]):void 0),
       meta: { requiresAuth: true, permission: "propagation:read" }
     },
     {
       // 指挥大屏：独立全屏布局（不套 AppLayout 侧边栏），复用现有认证机制
       path: "/command-screen",
       name: "command-screen",
-      component: () => __vitePreload(() => import('./CommandScreen-CD64cCvY.js'),true?__vite__mapDeps([21]):void 0),
+      component: () => __vitePreload(() => import('./CommandScreen-BZVEP046.js'),true?__vite__mapDeps([21]):void 0),
       meta: { requiresAuth: true, layout: "fullscreen" }
     }
   ]
