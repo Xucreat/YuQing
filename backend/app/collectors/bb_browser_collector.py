@@ -197,13 +197,13 @@ def _native_id(platform: str, item: dict, url: Optional[str]) -> Optional[str]:
             return f"youtube:{vid}"
         return None
     if platform == "xiaohongshu":
-        nid = (item.get("note_id") or "").strip()
-        if nid:
+        nid = item.get("note_id")
+        if nid is not None:
             return f"xiaohongshu:{nid}"
         return None
     if platform == "zhihu":
-        zid = (item.get("id") or "").strip()
-        if zid:
+        zid = item.get("id")
+        if zid is not None:
             return f"zhihu:{zid}"
         return None
     return None

@@ -22,6 +22,7 @@ from app.collectors.bb_browser_collector import (
     stable_external_id,
     unwrap_result,
     write_manifest_atomic,
+    _native_id,
 )
 
 
@@ -156,6 +157,17 @@ def test_native_id_dedup():
     assert a == b
     c = stable_external_id("hupu", {}, "https://bbs.hupu.com/12345.html")
     assert c == hid
+
+
+def test_native_id_accepts_int_id():
+    # 真实知乎搜索返回的 id 是整数（如 2073342342912795100），
+    # _native_id 必须能正确转字符串，不得对 int 调 .strip() 崩溃。
+    assert _native_id("zhihu", {"id": 2073342342912795100}, None) == "zhihu:2073342342912795100"
+    # 小红书 note_id 同样可能为 int
+    assert _native_id("xiaohongshu", {"note_id": 1234567890}, None) == "xiaohongshu:1234567890"
+    # id=0 这类 falsy 整数不应被误判为缺失
+    assert _native_id("zhihu", {"id": 0}, None) == "zhihu:0"
+    assert _native_id("zhihu", {}, None) is None
 
 
 # ---------------------------------------------------------------------------
