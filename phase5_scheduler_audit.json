@@ -1,0 +1,64 @@
+{
+  "generated_at": "2026-08-19T15:50:00+08:00",
+  "phase": "5-阶段1",
+  "scope": "scheduler 只读复核",
+
+  "answers": {
+    "1_include_data_source_keys_whitelist_supported": {
+      "value": true,
+      "evidence": "scheduler.py `_run_collector_tick(include_data_source_keys=None)` 参数存在；经 `_normalize_source_allowlist` 归一化后传入 `due_scheduled_sources(db, include_keys=...)`"
+    },
+    "2_whitelist_used_in_production_startup": {
+      "value": false,
+      "detail": "机制存在但当前未启用：start_scheduler() 默认 source_allowlist=None → 回退 `_configured_source_allowlist()` 读环境变量 SCHEDULER_SOURCE_ALLOWLIST（当前未设置，返回 None）→ 全源模式",
+      "env_var": "SCHEDULER_SOURCE_ALLOWLIST",
+      "env_current": null
+    },
+    "3_allowlist_source": {
+      "value": "os.getenv('SCHEDULER_SOURCE_ALLOWLIST') 逗号分隔 CSV，经 _configured_source_allowlist → _normalize_source_allowlist 转为 frozenset"
+    },
+    "4_due_scheduled_sources_filter_by_key": {
+      "value": true,
+      "evidence": "data_source_repository.py due_scheduled_sources(include_keys=None) → 非 None 时追加 `AND key IN :include_keys`（bindparam expanding）"
+    },
+    "5_claim_sql_allowlist_constrained": {
+      "value": true,
+      "evidence": "scheduler.py _run_collector_tick 中 source_allowlist 非 None 时 claim_statement 追加 `AND key IN :include_keys`"
+    },
+    "6_collector_service_merged_dispatch": {
+      "value": true,
+      "evidence": "_run_collector_tick 将 due_keys 合并为一次 `CollectorService(include_data_source_keys=set(due_keys), exclude_data_source_keys=set())`，单次调用并发执行所有 due 源"
+    },
+    "7_source40_source62_same_tick_condition": {
+      "value": "两者同时满足 enabled=true AND schedule_enabled=true AND (next_collect_time IS NULL OR <= now())",
+      "current": {
+        "source_62": {"schedule_enabled": false, "dispatched": false},
+        "source_40": {"schedule_enabled": true, "dispatched_if_due": true}
+      },
+      "risk": "若 source 62 开启 schedule_enabled=true 且 due，会与 #40 weibo_mediacrawler 同 tick 合并派发（due_scheduled_sources 不排除 weibo_mediacrawler，仅排除 weibo_octopus）"
+    },
+    "8_dedicated_bb_browser_scheduler_entry": {
+      "value": false,
+      "detail": "当前无独立 bb-browser 调度 lane；只有全局 _run_collector_tick（全源 per_source）与 _run_collector_job（cron 全源，exclude 仅 weibo_octopus）。需新增独立 lane 才能隔离。"
+    }
+  },
+
+  "key_code_facts": {
+    "due_scheduled_sources_excludes": ["weibo_octopus"],
+    "due_scheduled_sources_NOT_excludes": ["weibo_mediacrawler", "xhs_mediacrawler"],
+    "collector_tick_exclude_data_source_keys": [],
+    "collector_job_cron_exclude_data_source_keys": ["weibo_octopus"],
+    "new_datasource_schedule_default": {
+      "mediacrawler/foreign/external_browser": false,
+      "others_including_bb_browser": true,
+      "note": "admin_data_sources.py _schedule_enabled_default；source 62 现有 schedule_enabled=false 为 Phase 3A 手动设置，非该默认值"
+    }
+  },
+
+  "current_runtime": {
+    "collector_schedule_enabled": true,
+    "collector_schedule_mode": "per_source",
+    "collector_tick_interval_seconds": 60,
+    "scheduler_advisory_lock_held_by": "生产 uvicorn 进程（pg_try_advisory_lock 返回 false）"
+  }
+}

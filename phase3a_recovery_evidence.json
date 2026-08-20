@@ -1,0 +1,129 @@
+{
+  "generated_at": "2026-08-19T14:20:00+08:00",
+  "phase": "3A",
+  "scope": "bb-browser 聚合采集器缺陷修复 + 百度恢复 + 灰度准备",
+
+  "collector_run_stuck_recovery": {
+    "conclusion": "21118/21126 卡 running 已被启动对账 reclaim_zombie_runs 回收为 failed，根因链已修复",
+    "runs": [
+      {
+        "id": 21118,
+        "before": "status=running, end_time=NULL, error_msg=NULL",
+        "after": "status=failed",
+        "error_code": "zombie_reclaim",
+        "reclaimed_at": "2026-08-19T14:17:58+08:00",
+        "root_cause": "旧后端进程(39740)在 11:46:39 被 restart_backend 强制终止，fetch 线程被中断，旧代码 except 分支 db.commit 失败时静默 rollback，failed 状态未落盘；且启动对账只回收超30分钟记录，该运行仅14分钟未被覆盖"
+      },
+      {
+        "id": 21126,
+        "before": "status=running, end_time=NULL, error_msg=NULL",
+        "after": "status=failed",
+        "error_code": "zombie_reclaim",
+        "reclaimed_at": "2026-08-19T14:17:58+08:00",
+        "root_cause": "旧代码（后端 11:46:39 启动时加载）等待 worker 结果超时后，except 分支 db.commit 静默失败并 rollback，run 永久停留在 running；worker 已把 manifest 6a6c7f2e 移入 rejected"
+      }
+    ],
+    "fixes": [
+      "service.py 补 import CollectorError（旧代码 except 分支 isinstance 引用未导入类，异常会在标记 failed 前逃逸为 NameError）",
+      "service.py 新增 _force_mark_run_failed：主会话 commit 失败时用独立会话兜底回收",
+      "service.py collect_and_analyze_concurrent 增加线程级 finally 兜底（按 batch_id+collector_name 精确回收）",
+      "service.py collect_and_analyze_concurrent 批次结束后全批 reclaim（timeout_minutes=0）",
+      "main.py 启动对账保留（回收超30分钟历史 running）"
+    ]
+  },
+
+  "baidu_upstream_diagnosis": {
+    "conclusion": "百度为间歇性上游风控（IP 限流/安全验证），非 CDP/daemon/profile/adapter 代码缺陷；当前已恢复",
+    "adapter_raw_error": "TypeError: Failed to fetch\\n    at window.fetch (https://www.baidu.com/s?wd=%E5%85%AC%E5%AE%89%E5%B1%80:9103:10)",
+    "source": "collector_control/rejected/{0b41b983,0b637f17,6a6c7f2e}*.reason",
+    "affected_platforms": ["baidu"],
+    "unaffected_platforms": ["bilibili", "youtube", "hupu", "toutiao"],
+    "evidence": {
+      "cdp_9222": {"status": "healthy", "browser": "Chrome/151.0.7922.138", "targets": 35},
+      "daemon_19824": {"status": "healthy", "running": true, "cdpConnected": true, "uptime_seconds": 160609},
+      "chrome_profile": {"path": "C:\\cdp-profile", "status": "active"},
+      "baidu_tab_dom": {"title": "社会_百度搜索", "n_result": 10, "has_verify": false},
+      "baidu_tab_fetch_now": {"status": 200, "len": 1124466, "csp_meta": "NO_META_CSP"},
+      "server_side_direct": {"result": "百度安全验证 网络不给力", "note": "无 cookie 的裸请求仍被风控拦截"}
+    },
+    "timeline": [
+      {"time": "09:39", "run": 21045, "result": "baidu fetch 失败 -> 超时 -> RuntimeError(failed)"},
+      {"time": "09:46", "run": 21050, "result": "成功 raw=225（含 baidu）"},
+      {"time": "11:32-11:47", "run": "21118/21126/21127", "result": "baidu fetch 失败 -> 卡 running / worker_busy"},
+      {"time": "14:11", "probe": "cdp_dom", "result": "baidu fetch 恢复 OK 200"}
+    ]
+  },
+
+  "runtime_lock": {
+    "lock_path": "C:\\Users\\Administrator\\Desktop\\bb-browser 采集器\\phase2_runtime_lock.json",
+    "verify_ok": true,
+    "diffs": [],
+    "bb_sites_head": "3984c849a0a4ccb6e7d22b5f343faddf22b97f05"
+  },
+
+  "schedule_enabled": {
+    "data_source_key": "bb_browser",
+    "id": 62,
+    "schedule_enabled": false,
+    "verified_at": "2026-08-19T14:18:00+08:00"
+  },
+
+  "tests": {
+    "phase3a_new": 50,
+    "phase3a_fixes": 35,
+    "phase3a_collector_run": 15,
+    "phase2_baseline_core": 70,
+    "total_verified_passed": 120,
+    "command": ".venv/Scripts/python.exe -m pytest tests/test_bb_browser_collector.py tests/test_bb_browser_phase1b.py tests/test_phase2_ack_recovery.py tests/test_phase2_outgoing_mutex.py tests/test_phase2_platform_contract.py tests/test_phase2_recovery.py tests/test_phase2_runtime_lock.py tests/test_phase3a_fixes.py tests/test_phase3a_collector_run.py -q --noconftest"
+  },
+
+  "gray_run_final": {
+    "conclusion": "五平台全成功，§十 全部 10 条件满足",
+    "success_run": {
+      "id": 21292,
+      "status": "success",
+      "ack_status": "success",
+      "fetched_raw": 224,
+      "upstream_returned": 184,
+      "created": 178,
+      "analyzed": 178,
+      "failed": 0,
+      "acknowledged": 184,
+      "unconfirmed": 0,
+      "keywords": ["霸州", "通山县", "慈口乡"]
+    },
+    "per_platform_opinions": {
+      "baidu_result": 28,
+      "bilibili_video": 60,
+      "youtube_video": 56,
+      "hupu_post": 18,
+      "toutiao_item": 16
+    },
+    "mediacrawler_runs": [
+      {"id": 21291, "status": "success"},
+      {"id": 21247, "status": "success"},
+      {"id": 21272, "status": "warning", "note": "fail-safe 拦截（临时 region_kw 空，非链路异常）"}
+    ],
+    "dirs_after": {"outgoing": 0, "stale": 0, "ack_pending": 0},
+    "attempts": [
+      {"run": 21248, "result": "timeout failed", "note": "42 关键词→128 任务超时；百度已恢复(39 baidu)"},
+      {"run": 21273, "result": "collector_error 关键词空", "note": "monitoring 57 全禁"},
+      {"run": 21292, "result": "success", "note": "3 地域关键词→11 任务五平台全成功"}
+    ]
+  },
+
+  "security_cleanup": {
+    "gray_run_script": "backend/scripts/_phase2_gray_run.py",
+    "hardcoded_password_removed": true,
+    "env_var": "YQ_ADMIN_PASSWORD",
+    "credential_in_git": false,
+    "rotation_required": true,
+    "quarantined": [
+      "backend/tests/quarantine/_tmp_delete_probe.py",
+      "backend/tests/quarantine/_tmp_probe_clean.py",
+      "backend/tests/quarantine/_tmp_probe_realistic.py",
+      "backend/tests/quarantine/_cdp_dom_probe.mjs",
+      "backend/tests/quarantine/_poll_run.py"
+    ]
+  }
+}

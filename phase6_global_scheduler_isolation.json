@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-08-19T16:36:00+08:00",
+  "phase": "6-阶段4",
+  "scope": "全局 scheduler 与 source 40 关系审计",
+
+  "source_40": {
+    "id": 40,
+    "key": "weibo_mediacrawler",
+    "schedule_enabled": true,
+    "schedule_interval_minutes": 360,
+    "next_collect_time": "2026-08-19T16:46:30+08:00",
+    "last_collect_time": "2026-08-19T10:46:30+08:00"
+  },
+
+  "answers": {
+    "global_scheduler_discovers_source40": {
+      "value": true,
+      "reason": "enabled=true + schedule_enabled=true；due_scheduled_sources 仅排除 weibo_octopus，不排除 weibo_mediacrawler"
+    },
+    "source40_due_time": "2026-08-19T16:46:30+08:00（每 360 分钟一次）",
+    "source40_overlap_with_bb_browser_gray": {
+      "value": false,
+      "reason": "source 62 schedule_enabled=false，bb-browser lane 未开启，不存在灰度时间重叠。若未来开启，source 40 每 6 小时 due 一次，存在理论重叠可能，但 bb-browser lane 只 claim bb_browser，互不影响"
+    },
+    "bb_browser_lane_isolates_own_dispatch": {
+      "value": true,
+      "reason": "allowlist 严格 = {\"bb_browser\"}，_run_collector_tick(include_data_source_keys={\"bb_browser\"})"
+    },
+    "need_temporarily_disable_source40": {
+      "value": false,
+      "reason": "bb-browser 未开启灰度；bb-browser lane 不 claim source 40，无需关闭"
+    },
+    "process_level_allowlist_isolation": {
+      "value": true,
+      "reason": "bb-browser lane 通过独立 BB_BROWSER_ALLOWLIST 隔离，全局 scheduler 不受影响"
+    },
+    "need_separate_scheduler_process": {
+      "value": false,
+      "reason": "独立 advisory lock（BB_BROWSER_ADVISORY_LOCK_KEY）已足够，无需独立进程"
+    }
+  }
+}

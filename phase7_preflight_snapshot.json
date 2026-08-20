@@ -1,0 +1,64 @@
+{
+  "generated_at": "2026-08-19T17:05:00+08:00",
+  "phase": "7-阶段1",
+  "scope": "只读前置审计",
+
+  "data_sources": {
+    "source_62": {"id": 62, "key": "bb_browser", "enabled": true, "schedule_enabled": false, "collection_mode": "national"},
+    "source_40": {"id": 40, "key": "weibo_mediacrawler", "enabled": true, "schedule_enabled": true}
+  },
+
+  "scheduler_runtime": {
+    "global_scheduler_running": true,
+    "global_scheduler_lock_held_by_other": true,
+    "bb_browser_lane_running": false,
+    "bb_browser_lane_lock_held_by_other": false,
+    "collector_schedule_enabled": true,
+    "collector_schedule_mode": "per_source",
+    "collector_tick_interval_seconds": 60,
+    "bb_browser_schedule_enabled": false,
+    "bb_browser_schedule_allowlist": ""
+  },
+
+  "runtime": {
+    "python_worker_sha256_match": true,
+    "node_cli_sha256_match": true,
+    "bb_browser_version": "0.14.2",
+    "bb_sites_head_match": true,
+    "bb_sites_head": "3984c849a0a4ccb6e7d22b5f343faddf22b97f05",
+    "cdp_http": 200,
+    "daemon_http": "401（需 token，正常）",
+    "cdp_tcp": true,
+    "daemon_tcp": true,
+    "chrome_profile": "C:\\cdp-profile",
+    "exchange_root": "C:\\Users\\Administrator\\Desktop\\bb-browser 采集器\\collector_data",
+    "control_root": "C:\\Users\\Administrator\\Desktop\\bb-browser 采集器\\collector_control"
+  },
+
+  "keywords_enabled": 3,
+
+  "directories": {
+    "incoming": 287,
+    "processed": 43,
+    "outgoing": 2,
+    "rejected": 6,
+    "stale": 0,
+    "ack_pending": -1,
+    "archive": 8
+  },
+
+  "recent_runs": {
+    "bb_browser": [
+      {"id": 21292, "status": "success", "ack": "success"},
+      {"id": 21273, "status": "failed", "ack": "not_applicable"},
+      {"id": 21248, "status": "failed", "ack": "not_applicable"}
+    ],
+    "mediacrawler": [
+      {"id": 21364, "status": "failed", "trigger": "scheduled", "start": "2026-08-19T16:46:58"},
+      {"id": 21291, "status": "success", "trigger": "manual"},
+      {"id": 21272, "status": "warning", "trigger": "manual"}
+    ]
+  },
+
+  "key_observation": "全局 scheduler 仍在运行（lock 被持有）并持续调度 source 40（#21364 scheduled 采集于 16:46:58 触发且 failed，属既有行为）；bb-browser lane 未启动（lock 未持有，默认关闭）。"
+}

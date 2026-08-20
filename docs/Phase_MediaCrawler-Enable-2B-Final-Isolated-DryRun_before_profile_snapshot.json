@@ -1,0 +1,4029 @@
+{
+  "captured_at": "2026-08-05T08:56:20.075916+00:00",
+  "directories": [
+    "ActorSafetyLists",
+    "AmountExtractionHeuristicRegexes",
+    "BrowserMetrics",
+    "CaptchaProviders",
+    "CertificateRevocation",
+    "component_crx_cache",
+    "Crashpad",
+    "Crashpad\\attachments",
+    "Crashpad\\reports",
+    "Crowd Deny",
+    "Default",
+    "Default\\AutofillAiModelCache",
+    "Default\\AutofillStrikeDatabase",
+    "Default\\blob_storage",
+    "Default\\blob_storage\\c2beb9ea-1c16-4268-aa9b-6b2526c36653",
+    "Default\\BudgetDatabase",
+    "Default\\Cache",
+    "Default\\Cache\\Cache_Data",
+    "Default\\Cache\\No_Vary_Search",
+    "Default\\chrome_cart_db",
+    "Default\\ClientCertificates",
+    "Default\\Code Cache",
+    "Default\\Code Cache\\js",
+    "Default\\Code Cache\\js\\index-dir",
+    "Default\\Code Cache\\wasm",
+    "Default\\Code Cache\\wasm\\index-dir",
+    "Default\\Collaboration",
+    "Default\\commerce_subscription_db",
+    "Default\\DataSharing",
+    "Default\\DawnGraphiteCache",
+    "Default\\DawnWebGPUCache",
+    "Default\\discount_infos_db",
+    "Default\\discounts_db",
+    "Default\\Download Service",
+    "Default\\Download Service\\EntryDB",
+    "Default\\Download Service\\Files",
+    "Default\\Extension Rules",
+    "Default\\Extension Scripts",
+    "Default\\Extension State",
+    "Default\\Extensions",
+    "Default\\Feature Engagement Tracker",
+    "Default\\Feature Engagement Tracker\\AvailabilityDB",
+    "Default\\Feature Engagement Tracker\\EventDB",
+    "Default\\GCM Store",
+    "Default\\GCM Store\\Encryption",
+    "Default\\GPUCache",
+    "Default\\IndexedDB",
+    "Default\\IndexedDB\\https_m.weibo.cn_0.indexeddb.leveldb",
+    "Default\\IndexedDB\\https_passport.weibo.com_0.indexeddb.leveldb",
+    "Default\\Local Storage",
+    "Default\\Local Storage\\leveldb",
+    "Default\\Network",
+    "Default\\optimization_guide_hint_cache_store",
+    "Default\\parcel_tracking_db",
+    "Default\\PersistentOriginTrials",
+    "Default\\Safe Browsing Network",
+    "Default\\Segmentation Platform",
+    "Default\\Segmentation Platform\\SegmentInfoDB",
+    "Default\\Segmentation Platform\\SignalDB",
+    "Default\\Segmentation Platform\\SignalStorageConfigDB",
+    "Default\\Service Worker",
+    "Default\\Service Worker\\CacheStorage",
+    "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82",
+    "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\884437e9-7091-4093-ae5a-c11e748c64e9",
+    "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\884437e9-7091-4093-ae5a-c11e748c64e9\\index-dir",
+    "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45",
+    "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\index-dir",
+    "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\f48555df-100c-417d-bbd8-aed2ec6b894e",
+    "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\f48555df-100c-417d-bbd8-aed2ec6b894e\\index-dir",
+    "Default\\Service Worker\\Database",
+    "Default\\Service Worker\\ScriptCache",
+    "Default\\Service Worker\\ScriptCache\\index-dir",
+    "Default\\Session Storage",
+    "Default\\Sessions",
+    "Default\\Shared Dictionary",
+    "Default\\Shared Dictionary\\cache",
+    "Default\\Shared Dictionary\\cache\\index-dir",
+    "Default\\shared_proto_db",
+    "Default\\shared_proto_db\\metadata",
+    "Default\\Site Characteristics Database",
+    "Default\\Storage",
+    "Default\\Storage\\ext",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Cache",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Cache\\Cache_Data",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Cache\\No_Vary_Search",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Code Cache",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Code Cache\\js",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Code Cache\\js\\index-dir",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Code Cache\\wasm",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Code Cache\\wasm\\index-dir",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnGraphiteCache",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnWebGPUCache",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\GPUCache",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Local Storage",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Local Storage\\leveldb",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Network",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Session Storage",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Shared Dictionary",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Shared Dictionary\\cache",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Shared Dictionary\\cache\\index-dir",
+    "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\WebStorage",
+    "Default\\Sync App Settings",
+    "Default\\Sync Data",
+    "Default\\Sync Data\\LevelDB",
+    "Default\\Sync Extension Settings",
+    "Default\\VideoDecodeStats",
+    "Default\\Web Applications",
+    "Default\\Web Applications\\Manifest Resources",
+    "Default\\Web Applications\\Temp",
+    "Default\\WebStorage",
+    "extensions_crx_cache",
+    "FileTypePolicies",
+    "FirstPartySetsPreloaded",
+    "GPUPersistentCache",
+    "GPUPersistentCache\\DawnGraphiteCache",
+    "GPUPersistentCache\\DawnGraphiteCache\\WRJTYMYAB73RC6HTXXLKRS2FEZVUG6PP",
+    "GrShaderCache",
+    "hyphen-data",
+    "MEIPreload",
+    "OnDeviceHeadSuggestModel",
+    "optimization_guide_model_store",
+    "optimization_guide_model_store\\15",
+    "optimization_guide_model_store\\15\\63922A0C010C80A5",
+    "optimization_guide_model_store\\15\\63922A0C010C80A5\\CFABA02A07CC949B",
+    "optimization_guide_model_store\\2",
+    "optimization_guide_model_store\\2\\63922A0C010C80A5",
+    "optimization_guide_model_store\\2\\63922A0C010C80A5\\26CC9E610523BDF1",
+    "optimization_guide_model_store\\20",
+    "optimization_guide_model_store\\20\\63922A0C010C80A5",
+    "optimization_guide_model_store\\20\\63922A0C010C80A5\\0B8CAA46A57D6730",
+    "optimization_guide_model_store\\25",
+    "optimization_guide_model_store\\25\\63922A0C010C80A5",
+    "optimization_guide_model_store\\25\\63922A0C010C80A5\\B6D76E9765EBC797",
+    "optimization_guide_model_store\\26",
+    "optimization_guide_model_store\\26\\63922A0C010C80A5",
+    "optimization_guide_model_store\\26\\63922A0C010C80A5\\1C9B1E48E8D21E22",
+    "optimization_guide_model_store\\45",
+    "optimization_guide_model_store\\45\\63922A0C010C80A5",
+    "optimization_guide_model_store\\45\\63922A0C010C80A5\\79769F668A56E3B2",
+    "optimization_guide_model_store\\9",
+    "optimization_guide_model_store\\9\\63922A0C010C80A5",
+    "optimization_guide_model_store\\9\\63922A0C010C80A5\\CB2FDA2E192FB524",
+    "OptimizationGuideModelsManifest",
+    "OptimizationGuideModelsManifest\\1.20260804.1",
+    "OptimizationGuideModelsManifest\\1.20260804.1\\_metadata",
+    "OptimizationHints",
+    "OriginTrials",
+    "PKIMetadata",
+    "PrivacySandboxAttestationsPreloaded",
+    "RecoveryImproved",
+    "Safe Browsing",
+    "SafetyTips",
+    "segmentation_platform",
+    "ShaderCache",
+    "SSLErrorAssistant",
+    "Subresource Filter",
+    "Subresource Filter\\Unindexed Rules",
+    "TrustTokenKeyCommitments",
+    "WasmTtsEngine",
+    "WidevineCdm",
+    "ZxcvbnData"
+  ],
+  "directory_count": 163,
+  "file_count": 549,
+  "files": [
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912659718300,
+      "path": "BrowserMetrics\\BrowserMetrics-6A72D298-4718.pma",
+      "sha256": "93cbb3d4e98c80e379b0e5595104897d18876b00b5d9cd1705f13b47d04427a1",
+      "size": 4194304
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335101031200,
+      "path": "BrowserMetrics\\BrowserMetrics-6A72D43F-80E4.pma",
+      "sha256": "91d979010c7c43ce72d9ed62876e265aa0dbf21ed0986a1cf1befe73038ab852",
+      "size": 4194304
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910377802969000,
+      "path": "BrowserMetrics\\BrowserMetrics-6A72D469-7AAC.pma",
+      "sha256": "ee46138ae5765e354c05a3a969dde31b5e7e4a0ee86b49c21fa78ba300875a1e",
+      "size": 4194304
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910617002515800,
+      "path": "BrowserMetrics\\BrowserMetrics-6A72D559-1DA0.pma",
+      "sha256": "fab476eea8ca787af1eced81050273b05f3149ed2de841688db84a90df6749e2",
+      "size": 4194304
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785911017780336100,
+      "path": "BrowserMetrics\\BrowserMetrics-6A72D6E9-B4B8.pma",
+      "sha256": "7b830d0b802825bd18a195f1639086ceb67645d9bd46a6bf6eaaef6cc1313d02",
+      "size": 4194304
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718010629600,
+      "path": "BrowserMetrics\\BrowserMetrics-6A72E946-61C8.pma",
+      "sha256": "2c475be804a036018b56960365e702787fd9440847142cfa505bf29ee27134d7",
+      "size": 4194304
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121640613600,
+      "path": "BrowserMetrics\\BrowserMetrics-6A72F691-1D10.pma",
+      "sha256": "a7666fce80f1de8cea62c5d28f68d4a97419c81728a4725a6d8758a04a241963",
+      "size": 4194304
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919131733982600,
+      "path": "component_crx_cache\\metadata.json",
+      "sha256": "2771d13c637c267132afff9db67537bef95708534b79ae8d954254c4e64e4e0f",
+      "size": 13
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912549210200,
+      "path": "Crashpad\\metadata",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121555108400,
+      "path": "Crashpad\\settings.dat",
+      "sha256": "1a082ce49cc686ab23511d6b74d2aa955ec98d057ff7788c6b7192d2f8c341e1",
+      "size": 40
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125047143100,
+      "path": "CrashpadMetrics-active.pma",
+      "sha256": "57621605f66e10124818f1704a8de9692c9ea40a96245c22863aeff75b7e40fd",
+      "size": 1048576
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912835981500,
+      "path": "Default\\Account Web Data",
+      "sha256": "b671fc77f2eab823e977a4d842eaa80acefcc4a7fc205a76766a96f5196e65a8",
+      "size": 77824
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912835981500,
+      "path": "Default\\Account Web Data-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912831971600,
+      "path": "Default\\Affiliation Database",
+      "sha256": "687908afd0adf027324f343db40bdaceefe64afec45a24f08286b91f2d1bb181",
+      "size": 53248
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912831971600,
+      "path": "Default\\Affiliation Database-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337596452800,
+      "path": "Default\\AutofillAiModelCache\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125206543100,
+      "path": "Default\\AutofillAiModelCache\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915724038882300,
+      "path": "Default\\AutofillAiModelCache\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337598458100,
+      "path": "Default\\AutofillStrikeDatabase\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125329035600,
+      "path": "Default\\AutofillStrikeDatabase\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915724042506900,
+      "path": "Default\\AutofillStrikeDatabase\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125147153100,
+      "path": "Default\\BookmarkMergedSurfaceOrdering",
+      "sha256": "4489f9e3e454748b3521eb214e0a5694d562cff3d9ff511cb456953c8f534c00",
+      "size": 6
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337610482200,
+      "path": "Default\\BrowsingTopicsSiteData",
+      "sha256": "71a956cf71030a295cc2e0ee4694be069de8739d39150dee5ce685eff32f75b7",
+      "size": 28672
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337611496200,
+      "path": "Default\\BrowsingTopicsSiteData-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339897467200,
+      "path": "Default\\BrowsingTopicsState",
+      "sha256": "6486ca3895b2bb383909f475a675c09e0f1f50de34fd8bfb0be7280c64272e55",
+      "size": 414
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337614499700,
+      "path": "Default\\BudgetDatabase\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125345077300,
+      "path": "Default\\BudgetDatabase\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915724045514300,
+      "path": "Default\\BudgetDatabase\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919124946040300,
+      "path": "Default\\Cache\\Cache_Data\\data_0",
+      "sha256": "35342222be86e2dbbe41eecc244a9aa117f26a90d6d6d4541ce3b6424c28feab",
+      "size": 45056
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142620516800,
+      "path": "Default\\Cache\\Cache_Data\\data_1",
+      "sha256": "c85295af3cd63fc34f072da04ee0da24280ade54c6709e5d183e69387770acc9",
+      "size": 270336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919124935014200,
+      "path": "Default\\Cache\\Cache_Data\\data_2",
+      "sha256": "6fc0752dea456fc8a9d6b7cabc4acc424514b4dce3770c34b94a1eda4ae91fe3",
+      "size": 1056768
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919124935014200,
+      "path": "Default\\Cache\\Cache_Data\\data_3",
+      "sha256": "c8a75414b8155773e40631c49dcf17cdf7a9e693fcc481958b801878572520a2",
+      "size": 4202496
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339103269300,
+      "path": "Default\\Cache\\Cache_Data\\f_000001",
+      "sha256": "4c4794099209294654dcea6cd98e59710d0d82cb30861d888b08be52288085db",
+      "size": 19127
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339200128300,
+      "path": "Default\\Cache\\Cache_Data\\f_000002",
+      "sha256": "53ed35d86c4655827bdf0964ff692788c767c5ef433aa715cecdbffa192a1df5",
+      "size": 235371
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339297990400,
+      "path": "Default\\Cache\\Cache_Data\\f_000003",
+      "sha256": "492a62866f97a435ae424d676e991b4c61fa56a164af41561a7f6c140ac4dd6c",
+      "size": 1941222
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339250462900,
+      "path": "Default\\Cache\\Cache_Data\\f_000004",
+      "sha256": "b9ff2d35a0b97b5e8be40f6e2119646b21abca3a4406219ce64a2aedf6eccdf4",
+      "size": 66762
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340145406400,
+      "path": "Default\\Cache\\Cache_Data\\f_000006",
+      "sha256": "b7a512189ccb4fa667962b05cd2d77361a421e0288dbe9639efb1754bdb08692",
+      "size": 528461
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340384024700,
+      "path": "Default\\Cache\\Cache_Data\\f_000007",
+      "sha256": "fe6ccdbbd8552d9b951a8a55e23b5266599f1c0e67840fb3ef53926502fb8443",
+      "size": 25624
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910342174071300,
+      "path": "Default\\Cache\\Cache_Data\\f_000008",
+      "sha256": "b1cd4093d6225fb0d7e919328ad71ae3156d7db5e25c2e4b51237664f1705937",
+      "size": 1048576
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340621580900,
+      "path": "Default\\Cache\\Cache_Data\\f_000009",
+      "sha256": "e24db8691be0063b0fc3952edb1cb3a45005f25cf59d4f766e27370103d2ce53",
+      "size": 23835
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340632835300,
+      "path": "Default\\Cache\\Cache_Data\\f_00000a",
+      "sha256": "0ffd3b295da711539acc1cb8c00c92297a921e1fc166b6794d817eb0eb25bbfe",
+      "size": 35379
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340636042300,
+      "path": "Default\\Cache\\Cache_Data\\f_00000b",
+      "sha256": "23f24c731c9023f06dfd9ac68201f9dec3a2bc64ee768aac5874a66cd244cc9d",
+      "size": 21027
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340637757700,
+      "path": "Default\\Cache\\Cache_Data\\f_00000c",
+      "sha256": "fe23b2c108b74c4910a782e24b72e7d6005f4b54b7da6e6cec2cced26bf36e3b",
+      "size": 87002
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340638896000,
+      "path": "Default\\Cache\\Cache_Data\\f_00000d",
+      "sha256": "04ee8e0ff905b0824b68622045803dec38dbbf73da37e040b4fae5d7c410688b",
+      "size": 22898
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340641095400,
+      "path": "Default\\Cache\\Cache_Data\\f_00000e",
+      "sha256": "dfa411249ef02832f7113b28c5b762ea479dde5b67aebf08d153c4835442f28e",
+      "size": 139718
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340643100100,
+      "path": "Default\\Cache\\Cache_Data\\f_00000f",
+      "sha256": "59a210df6d96132e920941b55dd537c00d601709d150facbf7f843a181f30563",
+      "size": 25140
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340645577700,
+      "path": "Default\\Cache\\Cache_Data\\f_000010",
+      "sha256": "8ec456522e48894cdd7d9b24908843b1b05859c65f46d0bffc3652072aa057f0",
+      "size": 20597
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340652755400,
+      "path": "Default\\Cache\\Cache_Data\\f_000011",
+      "sha256": "31e47f885d8df0f7dd088d531eb7df11006b2ab3bef99b85667708a26dcd3a77",
+      "size": 129261
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340654681500,
+      "path": "Default\\Cache\\Cache_Data\\f_000012",
+      "sha256": "c72bdc1a92f73ba0a82e484fd6d1511ec281f4ab32e35d38dfdd5566fb3d8204",
+      "size": 39333
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340657279500,
+      "path": "Default\\Cache\\Cache_Data\\f_000013",
+      "sha256": "06b94f2db54b18786528dc7a06f8a9de6065c59a6492aef3135e9e2990d2c41e",
+      "size": 29259
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340658697200,
+      "path": "Default\\Cache\\Cache_Data\\f_000014",
+      "sha256": "00f201bcfc4993a47464f986c4274494afc5125b46d3df9435f8ee412bd5ff70",
+      "size": 49911
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340662744500,
+      "path": "Default\\Cache\\Cache_Data\\f_000015",
+      "sha256": "e205b09ebbd5f163d06fd5f13b847a47969f2929e97ff8184a9672d6e0ed8e45",
+      "size": 30599
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340668540800,
+      "path": "Default\\Cache\\Cache_Data\\f_000016",
+      "sha256": "c5e9434b50ed44a8ec8a36b887f96a3fe87635ce47a9e08520640ca432c13a8a",
+      "size": 95363
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340682225600,
+      "path": "Default\\Cache\\Cache_Data\\f_000017",
+      "sha256": "bfebdf484ec85fb66707610b6328c6c95ea6c1d4a7b50dad14fa28a32874a32f",
+      "size": 29419
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340683228500,
+      "path": "Default\\Cache\\Cache_Data\\f_000018",
+      "sha256": "0fec65649be394e4f74976e819d1f060015b67361b4a2a285b31b86e4fbf4fd4",
+      "size": 27033
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340684231000,
+      "path": "Default\\Cache\\Cache_Data\\f_000019",
+      "sha256": "84ced53781cf2a347f24e57c150c04ad9b05a0ccc14cca78d4ac36fe1bd53be1",
+      "size": 23242
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340686236200,
+      "path": "Default\\Cache\\Cache_Data\\f_00001a",
+      "sha256": "1bfd6dd9134b9ad5e616655c860a2dc6247452fb72407ba4250fcc106bd6a1bf",
+      "size": 28578
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910341099741900,
+      "path": "Default\\Cache\\Cache_Data\\f_00001b",
+      "sha256": "eebfa1fb5966f3d63f4c6f2d119e602960a949d152c400f2e885b7c7e6a0e0a3",
+      "size": 345322
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910341819243000,
+      "path": "Default\\Cache\\Cache_Data\\f_00001c",
+      "sha256": "493db957b40a09cd187a06d2c79172de85004bdff2af735040ece3e60a20c5c9",
+      "size": 27519
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910341820920700,
+      "path": "Default\\Cache\\Cache_Data\\f_00001d",
+      "sha256": "a40c2944bbb582a6d178c7be339fdbb5b86834837b659e1e2640e546be0d6d0a",
+      "size": 34907
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910343834278600,
+      "path": "Default\\Cache\\Cache_Data\\f_00001e",
+      "sha256": "1d5e056ca45d4dfbc210946d1143a23b6c76e79e192724158108d8cf77ef9930",
+      "size": 1048576
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910345354771500,
+      "path": "Default\\Cache\\Cache_Data\\f_00001f",
+      "sha256": "f27d010c0e2b09ffae435d16dff3b6100b681c36e97d61f5e6b443463e28c1ca",
+      "size": 1048576
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910348058562700,
+      "path": "Default\\Cache\\Cache_Data\\f_000020",
+      "sha256": "10716a6268fa0c137934c8e37ff679a3e4601e44378ab4b631dc6ba412ede356",
+      "size": 1048576
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910349917576300,
+      "path": "Default\\Cache\\Cache_Data\\f_000021",
+      "sha256": "14085e5ad58fd603bcbb1e4dd61f08f28efacedc95124e29a7f6ee25e06ff784",
+      "size": 1048576
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910351122746000,
+      "path": "Default\\Cache\\Cache_Data\\f_000022",
+      "sha256": "eb036e595c7cb9bd86f75d67ea7dce73c9e584d1634616785e0802b295ede6b6",
+      "size": 1048576
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354441019600,
+      "path": "Default\\Cache\\Cache_Data\\f_000023",
+      "sha256": "91207ce68e3f066669693fd08d9cfc9da64552c20f49740146ba678b1c44f85f",
+      "size": 279018
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354595323400,
+      "path": "Default\\Cache\\Cache_Data\\f_000024",
+      "sha256": "ac7729dd1b7795251c5fd231bf6dfdb5b0b7ad993152ae176c9386856fdf35ab",
+      "size": 80478
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910355844549100,
+      "path": "Default\\Cache\\Cache_Data\\f_000025",
+      "sha256": "72b7aaa859d7b1bae849169fa2cd9e72283f11163c9e5ee81df71135507b3224",
+      "size": 35170
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910355983340900,
+      "path": "Default\\Cache\\Cache_Data\\f_000026",
+      "sha256": "74d05a75fd3403a6f592d2b870b2d02bc012140a1b0ef155ad38847d679bfea6",
+      "size": 30538
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910355987208000,
+      "path": "Default\\Cache\\Cache_Data\\f_000027",
+      "sha256": "0c5866e2c8ecd742901d884d404e939a88d06c27256de8645a8710550ce98eb7",
+      "size": 23332
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910355989933800,
+      "path": "Default\\Cache\\Cache_Data\\f_000028",
+      "sha256": "883a0c5dc06d6609fbcf3b921b62aef94a540bdeffcb0a2d54746bff9671bd3b",
+      "size": 23339
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910355993620800,
+      "path": "Default\\Cache\\Cache_Data\\f_000029",
+      "sha256": "7b20652d7dc2c05fd001a6b0a8a89c9765c4f02b0c1c84239f7c4d5d9bbe27c6",
+      "size": 24839
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910355994621900,
+      "path": "Default\\Cache\\Cache_Data\\f_00002a",
+      "sha256": "bb812795b92418bbb75d4b3c614185a5097b84e25734aaac15b641bc7f9e53d9",
+      "size": 130377
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910356007982500,
+      "path": "Default\\Cache\\Cache_Data\\f_00002b",
+      "sha256": "9f84a049ef923c4fb157cfdd5655a5b275554eb2d7693f6c51424e8fa4432e23",
+      "size": 43812
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910356026006400,
+      "path": "Default\\Cache\\Cache_Data\\f_00002c",
+      "sha256": "cba760d800b42e964d6cb8f977339d82245c7b52612bd091eed06d7f5ad1b003",
+      "size": 140856
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910356235461500,
+      "path": "Default\\Cache\\Cache_Data\\f_00002d",
+      "sha256": "ae76cf749c8f235e3979e5e0399e0ebe4a2e2e573a323599af4d38fca4aae255",
+      "size": 34027
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718912983700,
+      "path": "Default\\Cache\\Cache_Data\\f_00002e",
+      "sha256": "4c234a78c4decdfffc52055bd66212602d23f8aedcacfcce8ba5ee45d113b581",
+      "size": 22964
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718926618600,
+      "path": "Default\\Cache\\Cache_Data\\f_00002f",
+      "sha256": "f9275e95586ba98bd6bd993297c481cf23331bc3c3ea31b8dd57eb88f3e96e3f",
+      "size": 337318
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721093042400,
+      "path": "Default\\Cache\\Cache_Data\\f_000030",
+      "sha256": "80a403988fdd7aacf5399d17e3fded5089c454466d8c12fbe5cf28b0ed3d4090",
+      "size": 30914
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721109210400,
+      "path": "Default\\Cache\\Cache_Data\\f_000031",
+      "sha256": "6dbed09e6d5225555687851d0bbe0ea70bf34d63c2c76e731b84a13fa34d54ea",
+      "size": 34883
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721742549700,
+      "path": "Default\\Cache\\Cache_Data\\f_000033",
+      "sha256": "b574a415ab5c8c6bd64cfd23d75bccf3c53171e09ea2a9bdcd712281f5426351",
+      "size": 29738
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721743551300,
+      "path": "Default\\Cache\\Cache_Data\\f_000034",
+      "sha256": "0c5866e2c8ecd742901d884d404e939a88d06c27256de8645a8710550ce98eb7",
+      "size": 23332
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721764709900,
+      "path": "Default\\Cache\\Cache_Data\\f_000035",
+      "sha256": "7e83f82b1f547a2c6d2825e6381f7493da83ef834c84a88f56be7ca38ceaafaa",
+      "size": 34722
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721770210800,
+      "path": "Default\\Cache\\Cache_Data\\f_000036",
+      "sha256": "7ae190dcce826d07453d3c76cffb2c7ad73006caf8d0e66439563eaa5a846526",
+      "size": 17016
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721802505600,
+      "path": "Default\\Cache\\Cache_Data\\f_000037",
+      "sha256": "39e925eae5b88f1cbef7e0a4af70f56dd90646dfe7fe80ee068b91d949604a91",
+      "size": 50657
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721804353100,
+      "path": "Default\\Cache\\Cache_Data\\f_000038",
+      "sha256": "e7fb71b7adc3e46101bff8bf7ee1952f57fdd064fa0c02dda7ace9d77bc7752c",
+      "size": 22754
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721807262300,
+      "path": "Default\\Cache\\Cache_Data\\f_000039",
+      "sha256": "883a0c5dc06d6609fbcf3b921b62aef94a540bdeffcb0a2d54746bff9671bd3b",
+      "size": 23339
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721809087300,
+      "path": "Default\\Cache\\Cache_Data\\f_00003a",
+      "sha256": "41589b70297c414ebc262f23c9140eaa988b64234081a6344527f7fc08a7e964",
+      "size": 21443
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721810882500,
+      "path": "Default\\Cache\\Cache_Data\\f_00003b",
+      "sha256": "ae748ddcaad76ce3b0f98fd2c0092c7be8bce0a733f3ac2af2a041c759f15295",
+      "size": 17798
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721812389300,
+      "path": "Default\\Cache\\Cache_Data\\f_00003c",
+      "sha256": "72a0c8692e9fa693f47289e34bc0fe07cc50dc7b5c084ae28832f1312eed3d6a",
+      "size": 23680
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721817495200,
+      "path": "Default\\Cache\\Cache_Data\\f_00003d",
+      "sha256": "7600e13238db373f508f1972fa4078fc513d524d903feefd55464c108d9227fd",
+      "size": 43514
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721819916100,
+      "path": "Default\\Cache\\Cache_Data\\f_00003e",
+      "sha256": "840873025f247f3178a892bba2d053e9289ceda307cb8ec15563a678cb2cc7ec",
+      "size": 57056
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721821732500,
+      "path": "Default\\Cache\\Cache_Data\\f_00003f",
+      "sha256": "7b20652d7dc2c05fd001a6b0a8a89c9765c4f02b0c1c84239f7c4d5d9bbe27c6",
+      "size": 24839
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721823265600,
+      "path": "Default\\Cache\\Cache_Data\\f_000040",
+      "sha256": "24611ccb23c298ad831d66d0c1feff8eb4d08684a6b5e253683c9dc1b7669061",
+      "size": 32807
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721825067000,
+      "path": "Default\\Cache\\Cache_Data\\f_000041",
+      "sha256": "869a95ff44c607ee0c74f0a864cfac56a32963bab1cf5853425160a13b785d08",
+      "size": 69922
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721826000600,
+      "path": "Default\\Cache\\Cache_Data\\f_000042",
+      "sha256": "d09e4e2b2028e38242fb365a0abbe9c2b69d421551049681e2035ee2e5d82ae7",
+      "size": 31341
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721827069600,
+      "path": "Default\\Cache\\Cache_Data\\f_000043",
+      "sha256": "8eb48bb35388e67c39a50caed34f0b8e1457d41eaf2563625b583a1f00482141",
+      "size": 21452
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721829074400,
+      "path": "Default\\Cache\\Cache_Data\\f_000044",
+      "sha256": "4c344359b11afcda11508a42d2eae23f1117543c180df23ce3b2d63573da81f4",
+      "size": 29998
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721833796300,
+      "path": "Default\\Cache\\Cache_Data\\f_000045",
+      "sha256": "b30cb064083465244f6fc4f0ca0ca43898e0afa06274c4524d19572499a2d851",
+      "size": 82153
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721838697600,
+      "path": "Default\\Cache\\Cache_Data\\f_000046",
+      "sha256": "ecbacc3f727d357fccd48a52864b554ccb1e455f93e98d66e8753390d120d512",
+      "size": 27824
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721840727400,
+      "path": "Default\\Cache\\Cache_Data\\f_000047",
+      "sha256": "6dea378fedf579b86874bca957ad6971426d9b955e3ab28927161513e762180d",
+      "size": 22129
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721842520100,
+      "path": "Default\\Cache\\Cache_Data\\f_000048",
+      "sha256": "b87c43f45bd7e8d513d37891e73db006e7525c58e45dd703b772f10b42a97a83",
+      "size": 30805
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721843520300,
+      "path": "Default\\Cache\\Cache_Data\\f_000049",
+      "sha256": "b7ac2fa36c3901a55a42b7331223260b4c27522eae70215722abbe2be24a4dfb",
+      "size": 44397
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721844522800,
+      "path": "Default\\Cache\\Cache_Data\\f_00004a",
+      "sha256": "8eb48bb35388e67c39a50caed34f0b8e1457d41eaf2563625b583a1f00482141",
+      "size": 21452
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721851606700,
+      "path": "Default\\Cache\\Cache_Data\\f_00004b",
+      "sha256": "5ef87cdcbe675c35e8505509bb6e384f694be0ba1840c59e82ac8f081f4073d3",
+      "size": 35204
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721942149400,
+      "path": "Default\\Cache\\Cache_Data\\f_00004c",
+      "sha256": "536a0b5b95aeb48d6ec09e79dfb2bb03bd5df83431df813a1631c94519cf0d38",
+      "size": 28171
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123070475800,
+      "path": "Default\\Cache\\Cache_Data\\f_00004d",
+      "sha256": "c631f6708fa7314a1c8f98110da6cd861105f8daf540b389c5962f6eec006c8e",
+      "size": 26709
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123295064800,
+      "path": "Default\\Cache\\Cache_Data\\f_00004e",
+      "sha256": "4456859c9d80d875d4dd2f070568a909a0539d2c779c25ea4c4b00d89ca8b0c9",
+      "size": 38902
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123297611200,
+      "path": "Default\\Cache\\Cache_Data\\f_00004f",
+      "sha256": "f8b7bbdf6dc60eaa55dbce62d18992909bf430fdade8e2d3f4f4d1e92df86c7c",
+      "size": 23961
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123301272900,
+      "path": "Default\\Cache\\Cache_Data\\f_000050",
+      "sha256": "41589b70297c414ebc262f23c9140eaa988b64234081a6344527f7fc08a7e964",
+      "size": 21443
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123302819500,
+      "path": "Default\\Cache\\Cache_Data\\f_000051",
+      "sha256": "a2c11463890900a7b8bb7095d1cfe282a292f531326284cd743db1e4d61b4bf1",
+      "size": 51639
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123304890700,
+      "path": "Default\\Cache\\Cache_Data\\f_000052",
+      "sha256": "83be6e7e575b0751ac414d3154b64e240c43e04fcd789e47d42dd5a1c616aa81",
+      "size": 21226
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123305559000,
+      "path": "Default\\Cache\\Cache_Data\\f_000053",
+      "sha256": "e66e2918c4e9e71c6f9d8ba687f1211ffa9e8b52e42a2db1df93d96c81a5cadd",
+      "size": 21500
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123308567800,
+      "path": "Default\\Cache\\Cache_Data\\f_000054",
+      "sha256": "3244e19ec7114346d2041dca505309f8b5681f15170f6da354905db0330b6468",
+      "size": 46457
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123310571100,
+      "path": "Default\\Cache\\Cache_Data\\f_000055",
+      "sha256": "af124786706c92dc4c075f25baddbb27e6925d658965507ba4607e2793dbd36d",
+      "size": 18816
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123312366700,
+      "path": "Default\\Cache\\Cache_Data\\f_000056",
+      "sha256": "30f5005d079ce52cfd4573967c48a860121865eda86c725a4e9dc4db3dd9239f",
+      "size": 16840
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123313872500,
+      "path": "Default\\Cache\\Cache_Data\\f_000057",
+      "sha256": "a761a36c09886a96ea0cdecdf85eb4b4d06cb48527082d3912289bad986895dc",
+      "size": 30487
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123317682500,
+      "path": "Default\\Cache\\Cache_Data\\f_000058",
+      "sha256": "8d640c6aa3081173a372295d3a15a468f878efb581ba1f39053d3525a67e5b91",
+      "size": 42946
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123319070200,
+      "path": "Default\\Cache\\Cache_Data\\f_000059",
+      "sha256": "fc8cdea2a1071772e5710e235f86d143a7c8b999fc7fd6c181d625084e2ff73d",
+      "size": 50275
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123320856000,
+      "path": "Default\\Cache\\Cache_Data\\f_00005a",
+      "sha256": "0cb1d06d720ea557cb96c6e0b6b3400b2202bf08593b89ede1e675c35ffc9b79",
+      "size": 35935
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123322293700,
+      "path": "Default\\Cache\\Cache_Data\\f_00005b",
+      "sha256": "d1b80184bc2c8f20592a42863172b041ba69fbbbb4799e6da93f6c42d2986d6b",
+      "size": 29386
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123327204900,
+      "path": "Default\\Cache\\Cache_Data\\f_00005c",
+      "sha256": "d45778ee5e52886a354bc633d0ccb124b24f8de47ff3d646c8efe2e99168ecf8",
+      "size": 17217
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123328254100,
+      "path": "Default\\Cache\\Cache_Data\\f_00005d",
+      "sha256": "abde0423311aa55bedd592fc564a52e7c8bc47e682dc2212c844262c8177c7bc",
+      "size": 45904
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123331280500,
+      "path": "Default\\Cache\\Cache_Data\\f_00005e",
+      "sha256": "af48f7a30833f13890e00dfc5fc1a6d81ce66a7312a9bae34c598db63d59849c",
+      "size": 16825
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123333601100,
+      "path": "Default\\Cache\\Cache_Data\\f_00005f",
+      "sha256": "1fbc2fab3cd9a0043d80dfbcb5297351e36b451f585a8d4d5a7ac1eee6a75f17",
+      "size": 27619
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123335795100,
+      "path": "Default\\Cache\\Cache_Data\\f_000060",
+      "sha256": "b5e6a66ed6d48a5be0e7a32c538c03b7190a71b14472ccbd038528ccd953aea4",
+      "size": 25438
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123338024800,
+      "path": "Default\\Cache\\Cache_Data\\f_000061",
+      "sha256": "53ef51a2955bf13d3f6630d11fd3f98895fc1a490cf4747af979158e02a10005",
+      "size": 23612
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123339343600,
+      "path": "Default\\Cache\\Cache_Data\\f_000062",
+      "sha256": "af730bc9c05a4e42e522827418992cec2fe0e1635deb71a8b6cf163b123819d4",
+      "size": 18660
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123342124000,
+      "path": "Default\\Cache\\Cache_Data\\f_000063",
+      "sha256": "ef7141d8eac998127ea6bdd28032355c460ee60c7bdd63caeda4db9755491466",
+      "size": 22170
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123344673100,
+      "path": "Default\\Cache\\Cache_Data\\f_000064",
+      "sha256": "c4045e7df88b2b6ca8a40abc2f7d9578f4869c011eccaf2197c229e64b49f7d6",
+      "size": 24444
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123345675800,
+      "path": "Default\\Cache\\Cache_Data\\f_000065",
+      "sha256": "b3e2565cbf790904300f5ff1e7c87c352b5cfe7da38c0dd074f05826d57a869f",
+      "size": 34749
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123347680300,
+      "path": "Default\\Cache\\Cache_Data\\f_000066",
+      "sha256": "e2882b7064bc71c4df79e6f27b3b642e84c3b6674a333103114b4662e6277c1e",
+      "size": 30795
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123353813700,
+      "path": "Default\\Cache\\Cache_Data\\f_000067",
+      "sha256": "0cf657c8dbfa10c51f3a105a5736940da775cd1f4d9d5c8d3385c016f8b1b305",
+      "size": 21800
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123370441900,
+      "path": "Default\\Cache\\Cache_Data\\f_000068",
+      "sha256": "b210baac792b09a170de17917729728ced2b15c7f7ff2c8b34f8ce84e99d24cd",
+      "size": 16514
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913034734500,
+      "path": "Default\\Cache\\Cache_Data\\index",
+      "sha256": "7761c7300def692caf9d12ad5293c10ede2bceb1e41383d8d194896489691cd4",
+      "size": 524656
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121953109400,
+      "path": "Default\\Cache\\No_Vary_Search\\journal.baj",
+      "sha256": "9c169428d852e25bd59b27652ed533d2a1f09f96e4c329fa5e06f47e16731543",
+      "size": 4
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913051437600,
+      "path": "Default\\Cache\\No_Vary_Search\\snapshot.baf",
+      "sha256": "0c2dd377ed0cc66161e9db8f89f7d8bcb3ad8c06c4a054bdcba214ab05f58c9a",
+      "size": 20
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912807908500,
+      "path": "Default\\chrome_cart_db\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121779051100,
+      "path": "Default\\chrome_cart_db\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718234057100,
+      "path": "Default\\chrome_cart_db\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912801892200,
+      "path": "Default\\ClientCertificates\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121775041300,
+      "path": "Default\\ClientCertificates\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718233054000,
+      "path": "Default\\ClientCertificates\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354594813500,
+      "path": "Default\\Code Cache\\js\\09d03430a9fddf64_0",
+      "sha256": "38449679e60ec68a043e27eaacdf403916e6e4117d9cefd66af2545f5488c278",
+      "size": 242
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122676892600,
+      "path": "Default\\Code Cache\\js\\11fb718e1145e794_0",
+      "sha256": "623246da71b9509c4e9b637f940e8894a313f1c5f8821de82f06a6ff3e5d1015",
+      "size": 284
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122729069800,
+      "path": "Default\\Code Cache\\js\\13eda760e711df77_0",
+      "sha256": "5bfa62bb4e53fe49ddd6074ec152636de208de399dd63c7ad3d5346c06580214",
+      "size": 165088
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122645061500,
+      "path": "Default\\Code Cache\\js\\14be1128583ad93b_0",
+      "sha256": "ce63f7db411fab3ce25104f4221f2c33f0459189e62d0e5fcf354d6bb203f5f6",
+      "size": 1231168
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122571428900,
+      "path": "Default\\Code Cache\\js\\1f72775b1d23b374_0",
+      "sha256": "29b9d76041effec0d85e051a3d52d80a8556b9417a96e05473c1293517a1343f",
+      "size": 2960
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122676892600,
+      "path": "Default\\Code Cache\\js\\28adeb5801c9d60d_0",
+      "sha256": "815ff80f155664c079d17bab46e2cab5fb0905419662dba04ff23adf1da5697f",
+      "size": 30936
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354692248800,
+      "path": "Default\\Code Cache\\js\\28e393395beecb60_0",
+      "sha256": "d48ac8ea620e18a619a3042c77e6b5a35384fca161ee6347183b0f103704f0cd",
+      "size": 5216168
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354583466700,
+      "path": "Default\\Code Cache\\js\\2999d496bdcaf0e2_0",
+      "sha256": "c6bbed51ab295bd01f458ed781fe111b9f14b344fc6f055bb62e66bcad8723e0",
+      "size": 5600
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354587458600,
+      "path": "Default\\Code Cache\\js\\3a17b0f97c184fb0_0",
+      "sha256": "19e765fd2fc3837bdc7b476e33abf9a8fe2e4905aeb573f8030352be3af5b8b6",
+      "size": 162296
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122676892600,
+      "path": "Default\\Code Cache\\js\\3b35282494b861bf_0",
+      "sha256": "02e7934430fcdeb83ec49ba542cbeb3ff48d3ed42b1df388d6d5d1b7b990c813",
+      "size": 33640
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354597539000,
+      "path": "Default\\Code Cache\\js\\417d9c36c3134c79_0",
+      "sha256": "ba004c086f7b728c4e44f9ef3588af67efd6eb4abdd520df1a5b99eee097b531",
+      "size": 11643
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122644060100,
+      "path": "Default\\Code Cache\\js\\4807d4f51b993037_0",
+      "sha256": "df2ea72af6000fd874fb498602984aa2f42ca3cd7c513bbeab2f135a1ace7585",
+      "size": 259
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122669890200,
+      "path": "Default\\Code Cache\\js\\55d3bc42806bdc15_0",
+      "sha256": "f7afb458cd48572f55707cfbc123e4d5ca71b68c2ce686f421b934156cd5ac7d",
+      "size": 256
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354445548400,
+      "path": "Default\\Code Cache\\js\\640981371eb0a0bd_0",
+      "sha256": "905bee3ca27af9cc6d10fdd80432690fadc5f2a8a9fa0139d2c76e3be28e91c1",
+      "size": 2969
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122669890200,
+      "path": "Default\\Code Cache\\js\\6623d5b4b53b4b9d_0",
+      "sha256": "360cc3f40a2c3dc46a3307cf96b2f3aba2f64fe6567433ed34e21f2b5bd49662",
+      "size": 122568
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354582561300,
+      "path": "Default\\Code Cache\\js\\681d134e8618180f_0",
+      "sha256": "4927143028b96a3d202e99626a1a39181f987f11bca16562d4f34fec3fbf86c0",
+      "size": 250
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910341852547400,
+      "path": "Default\\Code Cache\\js\\6d03d8a4bf80a3cb_0",
+      "sha256": "aa48961e8b1d4c868b343f0fa5034d652f770611aff270fb5dd6b8a9d7b59f07",
+      "size": 221
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910341780612000,
+      "path": "Default\\Code Cache\\js\\71c9e1f346195cef_0",
+      "sha256": "e385efcca5de12759f5a05cbe771c7c255b1cbbd3ec9b0327d00eac584b488e7",
+      "size": 62288
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910341852547400,
+      "path": "Default\\Code Cache\\js\\759f81e3eb9383ea_0",
+      "sha256": "bdfea6c5ef562bd46aa594662b45cd9367747f0313a19ab39305a216a4bbe4a6",
+      "size": 230
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122675889900,
+      "path": "Default\\Code Cache\\js\\8c4acb90630a8253_0",
+      "sha256": "0d7b2f300f65dad7b6f470c34161525637a0679c3c818f2795cd5a5b42630ecc",
+      "size": 241
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354689241300,
+      "path": "Default\\Code Cache\\js\\9e519db3107b762b_0",
+      "sha256": "1e5b29c391c9ee995d83adddd9df2f28b1f9a0437b0b914ebb56ffe54ecbfecb",
+      "size": 267
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354587458600,
+      "path": "Default\\Code Cache\\js\\a8c24a7f6eec1f81_0",
+      "sha256": "5d83153546ac3187d5ecf4440e82339adbe3207b429539da04333066481d79b9",
+      "size": 263
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122675889900,
+      "path": "Default\\Code Cache\\js\\aa9a3d5ae5827139_0",
+      "sha256": "4fff392ac9b9870d3907b6d77336b3817dc35704c37111dd90e8b34affafda2f",
+      "size": 1363
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122677895200,
+      "path": "Default\\Code Cache\\js\\b17482446906de53_0",
+      "sha256": "3af2610a4e0c1846e91208bc6dc4a89634257e0f7f36d52e2ac34ff5e58a41b9",
+      "size": 95824
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122677895200,
+      "path": "Default\\Code Cache\\js\\b69c336f98208258_0",
+      "sha256": "5e1a81a56d64270a16d7adc550e4630f2f218a553c6de4f3453ca7138c8a2246",
+      "size": 289
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335525761000,
+      "path": "Default\\Code Cache\\js\\ba678a2fbd8c358c_0",
+      "sha256": "a761399b7c4f1522df747ac35c2a862cdd161ec60407cd8cdb9af45f8036e924",
+      "size": 298
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354583466700,
+      "path": "Default\\Code Cache\\js\\c26505f3f24c378d_0",
+      "sha256": "1b9c2166405b0cd9bb911e38e41c383245e92eda43e0b5d45517dd9606f87eab",
+      "size": 37288
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122675889900,
+      "path": "Default\\Code Cache\\js\\ce341606731d89b8_0",
+      "sha256": "fa93399c5a2daf2f57d730586ecd1584f9b0d34998b92cdc49ec9bab2d2e2833",
+      "size": 5599
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910346914351200,
+      "path": "Default\\Code Cache\\js\\d375d18a39f85018_0",
+      "sha256": "b5fe46789faf8191469de1919841ca7c79f71c6e4339b4c36bbc27919c5d7e1e",
+      "size": 223
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354599787100,
+      "path": "Default\\Code Cache\\js\\db06924484447e60_0",
+      "sha256": "e4a9d8106347342af8225450b1c4e0ae4c576be99a020ee9c3154f69b367edd4",
+      "size": 297
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910338685263200,
+      "path": "Default\\Code Cache\\js\\df757b33533fe0da_0",
+      "sha256": "921e2bdf5b64131759cb59193077787d3cfcc5087527748a72e0dbf450e5ac09",
+      "size": 229
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354599787100,
+      "path": "Default\\Code Cache\\js\\dfcafa95208fc550_0",
+      "sha256": "87a2a744ace633e267c92fbaba73a374a96c1b16059d1144fbbc96773e01220a",
+      "size": 4094
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910341779610100,
+      "path": "Default\\Code Cache\\js\\e2d681976a71edee_0",
+      "sha256": "a306271cd140bd718ba1993d92c64d29a9155762946aa822f03c86974e248703",
+      "size": 250
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354595323400,
+      "path": "Default\\Code Cache\\js\\e9e0fdb6a65f1e73_0",
+      "sha256": "ff8ae6f3a56a2617f3a4999c6df747571419ae95a62c726b32d8279d3ee53f47",
+      "size": 30960
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122607714200,
+      "path": "Default\\Code Cache\\js\\ebcb472d6a259ee4_0",
+      "sha256": "d5b7982652b1ff4ae9bc636a4e4cfd7d2e895a51c5357035f08be08941a2d5ae",
+      "size": 2753
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122727282600,
+      "path": "Default\\Code Cache\\js\\f0e1b97828cb1773_0",
+      "sha256": "f1c8ab69c91af10c9826c5005adb9e8e5c6f5c8bfd33e553e190b121de083dba",
+      "size": 257
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354599787100,
+      "path": "Default\\Code Cache\\js\\f518bb0e01ae25e3_0",
+      "sha256": "a9b533df0c37e3ee2f2bfc7018ab6efc6b94fb5982e821b72061e1e65c0ce3e8",
+      "size": 22832
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912801892200,
+      "path": "Default\\Code Cache\\js\\index",
+      "sha256": "fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d",
+      "size": 24
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142620516800,
+      "path": "Default\\Code Cache\\js\\index-dir\\the-real-index",
+      "sha256": "0981dca117f0856f51d1e88585f2fa96c2fa0995bb90234f9678c5a6d7fb8cde",
+      "size": 936
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912801892200,
+      "path": "Default\\Code Cache\\wasm\\index",
+      "sha256": "fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d",
+      "size": 24
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912813923900,
+      "path": "Default\\Code Cache\\wasm\\index-dir\\the-real-index",
+      "sha256": "f32bcee7288ae0e406a901497ed8bae2b844d7f93073bd4c50047fea19bbf319",
+      "size": 48
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915723767663700,
+      "path": "Default\\Collaboration\\MessageDB",
+      "sha256": "3b293ab906b31cebccc8116e9c868126111cea713ee3b9264bbbd6410938b27b",
+      "size": 20480
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915723767663700,
+      "path": "Default\\Collaboration\\MessageDB-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912823950800,
+      "path": "Default\\commerce_subscription_db\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121780054400,
+      "path": "Default\\commerce_subscription_db\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718240074100,
+      "path": "Default\\commerce_subscription_db\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915723754628900,
+      "path": "Default\\DataSharing\\DataSharingDB",
+      "sha256": "8dac1f22082cf47bfea57d3f557890fcb94a2f044fbbe83710a4668f8eddd6f4",
+      "size": 20480
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915723754628900,
+      "path": "Default\\DataSharing\\DataSharingDB-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912902741100,
+      "path": "Default\\DawnGraphiteCache\\data_0",
+      "sha256": "d6a5fe39cd672781b256e0e3102f7022635f1d4bb7cfcc90a80fffe4d0f3877e",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142638590500,
+      "path": "Default\\DawnGraphiteCache\\data_1",
+      "sha256": "ebe72779cf578ff944e4e0d2dafa82d452b453732b5921f14cc15e0af5276904",
+      "size": 270336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912907754900,
+      "path": "Default\\DawnGraphiteCache\\data_2",
+      "sha256": "ec1702806f4cc7c42a82fc2b38e89835fde7c64bb32060e0823c9077ca92efb7",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912909759400,
+      "path": "Default\\DawnGraphiteCache\\data_3",
+      "sha256": "e09f42c398d688dce168570291f1f92d079987deda3099a34adb9e8c0522b30c",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912900735200,
+      "path": "Default\\DawnGraphiteCache\\index",
+      "sha256": "342cbee21b6a926abe7d834f07c1ec8de416b237874dbfa8d61cc2f9834993f3",
+      "size": 262512
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912891713000,
+      "path": "Default\\DawnWebGPUCache\\data_0",
+      "sha256": "d6a5fe39cd672781b256e0e3102f7022635f1d4bb7cfcc90a80fffe4d0f3877e",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142638590500,
+      "path": "Default\\DawnWebGPUCache\\data_1",
+      "sha256": "b071e54064071ea5e36294617b893414fa0c317e0a65cee62cb03cc3e3e21d45",
+      "size": 270336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912895723200,
+      "path": "Default\\DawnWebGPUCache\\data_2",
+      "sha256": "ec1702806f4cc7c42a82fc2b38e89835fde7c64bb32060e0823c9077ca92efb7",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912897729500,
+      "path": "Default\\DawnWebGPUCache\\data_3",
+      "sha256": "e09f42c398d688dce168570291f1f92d079987deda3099a34adb9e8c0522b30c",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912889708000,
+      "path": "Default\\DawnWebGPUCache\\index",
+      "sha256": "c5fa5116748e00d31c6fd4daf3c6bd17d2240b2015c581006b610a3b9de41287",
+      "size": 262512
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915742895605900,
+      "path": "Default\\DIPS",
+      "sha256": "14e88d9245b42a1f9d6f160194e273d02a77e15874457bd20c978b4021a844bb",
+      "size": 36864
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912804900200,
+      "path": "Default\\discount_infos_db\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121778048400,
+      "path": "Default\\discount_infos_db\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718235059700,
+      "path": "Default\\discount_infos_db\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912808911400,
+      "path": "Default\\discounts_db\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121780054400,
+      "path": "Default\\discounts_db\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718239070400,
+      "path": "Default\\discounts_db\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910345246282900,
+      "path": "Default\\Download Service\\EntryDB\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910345245766900,
+      "path": "Default\\Download Service\\EntryDB\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912818936700,
+      "path": "Default\\engine_allowlist.bf",
+      "sha256": "63e82eb5c06b4c0057d99777bb9b9b8967a5629d20bf795a24448d79c24be281",
+      "size": 360
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378099696300,
+      "path": "Default\\Extension Rules\\000003.log",
+      "sha256": "5b149d68659ebeab90f1116b8704a32dc240fbf85171bd4a4f70d57a3d8d4bb8",
+      "size": 95
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912823950800,
+      "path": "Default\\Extension Rules\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912813923900,
+      "path": "Default\\Extension Rules\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378098694100,
+      "path": "Default\\Extension Rules\\LOG",
+      "sha256": "8fce41a67cb1d9e6a9ae198ec001d9cb14b82ee6fe07de8f9b1fa9bdc44b921d",
+      "size": 332
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335261087100,
+      "path": "Default\\Extension Rules\\LOG.old",
+      "sha256": "def3e640514a3663f93f2eb7eab6d3602acada50734426f8c6e0c057f64cba8e",
+      "size": 332
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912816933200,
+      "path": "Default\\Extension Rules\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378107733500,
+      "path": "Default\\Extension Scripts\\000003.log",
+      "sha256": "5b149d68659ebeab90f1116b8704a32dc240fbf85171bd4a4f70d57a3d8d4bb8",
+      "size": 95
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912834980000,
+      "path": "Default\\Extension Scripts\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912831971600,
+      "path": "Default\\Extension Scripts\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378107218800,
+      "path": "Default\\Extension Scripts\\LOG",
+      "sha256": "19bdf01e2cb71ea0c06433a7be747159351b2e06b38674943adc756ae01a993f",
+      "size": 336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335272116300,
+      "path": "Default\\Extension Scripts\\LOG.old",
+      "sha256": "ca3f86a12eb452eadaa259d46e83a0c88a1c5e0928199b52823a599ed2fb9ce3",
+      "size": 336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912832975300,
+      "path": "Default\\Extension Scripts\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378264678300,
+      "path": "Default\\Extension State\\000003.log",
+      "sha256": "fff9c841af450dfefe7f284f645d4a26b048e6bd5709ad766b308172bc260a53",
+      "size": 285
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913011592400,
+      "path": "Default\\Extension State\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913008079100,
+      "path": "Default\\Extension State\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121971389800,
+      "path": "Default\\Extension State\\LOG",
+      "sha256": "5d6e87ebd5ae375c93c87ed2e8659f47371ac199f114f5b73ac4c2119dd1f2eb",
+      "size": 332
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718519695200,
+      "path": "Default\\Extension State\\LOG.old",
+      "sha256": "4b45f1126591c6dfe2542ed60f2f492577d798e3cbf68001bbf2da66120b6d92",
+      "size": 332
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913009640500,
+      "path": "Default\\Extension State\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915728854757500,
+      "path": "Default\\Favicons",
+      "sha256": "fd0baa6d3320a23126e8a15d49eb69fd9bbc3587b70244eb3bc9a2392bf96d4a",
+      "size": 28672
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915728854757500,
+      "path": "Default\\Favicons-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337701786700,
+      "path": "Default\\Feature Engagement Tracker\\AvailabilityDB\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125377732500,
+      "path": "Default\\Feature Engagement Tracker\\AvailabilityDB\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915724065565600,
+      "path": "Default\\Feature Engagement Tracker\\AvailabilityDB\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337704934800,
+      "path": "Default\\Feature Engagement Tracker\\EventDB\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125381744400,
+      "path": "Default\\Feature Engagement Tracker\\EventDB\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915724070579500,
+      "path": "Default\\Feature Engagement Tracker\\EventDB\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910341702600200,
+      "path": "Default\\GCM Store\\000003.log",
+      "sha256": "56b8efd0af9b65221ff1a2e3bae06768a0221107591cca2d728acfe53a0312e7",
+      "size": 1157
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337695770000,
+      "path": "Default\\GCM Store\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337691760600,
+      "path": "Default\\GCM Store\\Encryption\\000003.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337685744100,
+      "path": "Default\\GCM Store\\Encryption\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337682737200,
+      "path": "Default\\GCM Store\\Encryption\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337689754100,
+      "path": "Default\\GCM Store\\Encryption\\LOG",
+      "sha256": "dfe5dc38b962d75d8dd000677522dd8cdeae58fb9a5a95acb1e23e7842be849b",
+      "size": 301
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337683742300,
+      "path": "Default\\GCM Store\\Encryption\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337692763000,
+      "path": "Default\\GCM Store\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125096014300,
+      "path": "Default\\GCM Store\\LOG",
+      "sha256": "888007f4a6506b0e2cd88f0f9eb24bd006e73d2304e0edc6f44d4ff3d79f44c5",
+      "size": 320
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915723775684300,
+      "path": "Default\\GCM Store\\LOG.old",
+      "sha256": "471ab331312492aeef87b1952f19ddbe3da5983fb6b676f8c0e31f0bad575439",
+      "size": 320
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337694768400,
+      "path": "Default\\GCM Store\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122748142700,
+      "path": "Default\\GPUCache\\data_0",
+      "sha256": "5e602e19b28737a0685d45be6ec755c88b6660e0bf8ccc69e1cd16ea7ed06923",
+      "size": 45056
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142638590500,
+      "path": "Default\\GPUCache\\data_1",
+      "sha256": "a791966ae7f2affa1d8db01864be98a8c109349369e147123213943b9e2aa215",
+      "size": 270336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122748142700,
+      "path": "Default\\GPUCache\\data_2",
+      "sha256": "4a5cc304a0c7329ea4094df99652067aa00ff9cd5f3c780de67e82cf55dd5d6c",
+      "size": 1056768
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912886699200,
+      "path": "Default\\GPUCache\\data_3",
+      "sha256": "e09f42c398d688dce168570291f1f92d079987deda3099a34adb9e8c0522b30c",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912879681300,
+      "path": "Default\\GPUCache\\index",
+      "sha256": "85c0f4364e3c478dfaa6f9a9da2dbb5ca7596d3309694d96385013c2baf9191b",
+      "size": 262512
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337481073700,
+      "path": "Default\\heavy_ad_intervention_opt_out.db",
+      "sha256": "d44b405304e372a3cf70f2dc1e68c727504a0f28fa186fef47b8450b1527ae68",
+      "size": 16384
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337482076400,
+      "path": "Default\\heavy_ad_intervention_opt_out.db-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142617510400,
+      "path": "Default\\History",
+      "sha256": "7707e571ede8b0c17f3a0633cf8422b86bf2e5a9512e55f35fd30d72195a92aa",
+      "size": 163840
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142617510400,
+      "path": "Default\\History-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919132573431500,
+      "path": "Default\\History_temp",
+      "sha256": "8e11e66a5c1d336ba6535f17905636f115a89e3aa49c649ab27ab0a8606d8345",
+      "size": 163840
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123072479500,
+      "path": "Default\\IndexedDB\\https_m.weibo.cn_0.indexeddb.leveldb\\000003.log",
+      "sha256": "80c85ac6147bc9ed5243e98b455c8282f707011d4844fd1ad39a04f4e5d3358c",
+      "size": 9593
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122588907500,
+      "path": "Default\\IndexedDB\\https_m.weibo.cn_0.indexeddb.leveldb\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122586487400,
+      "path": "Default\\IndexedDB\\https_m.weibo.cn_0.indexeddb.leveldb\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122592917200,
+      "path": "Default\\IndexedDB\\https_m.weibo.cn_0.indexeddb.leveldb\\LOG",
+      "sha256": "4449accc0b51e0e52d6e3be2ca8ba1fa817dbf4f256b2c71639e947f8d32a16d",
+      "size": 353
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122587401600,
+      "path": "Default\\IndexedDB\\https_m.weibo.cn_0.indexeddb.leveldb\\MANIFEST-000001",
+      "sha256": "720a78803b84cbcc8eb204d5cf8ea6ee2f693be0ab2124ddf2b81455de02a3ed",
+      "size": 23
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910338825614200,
+      "path": "Default\\IndexedDB\\https_passport.weibo.com_0.indexeddb.leveldb\\000003.log",
+      "sha256": "e9efdc3ff736a09638a657c904dc1ea926b9e816f21cd8fdddd75b1f994967de",
+      "size": 1354
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910338719242400,
+      "path": "Default\\IndexedDB\\https_passport.weibo.com_0.indexeddb.leveldb\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910338716234000,
+      "path": "Default\\IndexedDB\\https_passport.weibo.com_0.indexeddb.leveldb\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910338723545500,
+      "path": "Default\\IndexedDB\\https_passport.weibo.com_0.indexeddb.leveldb\\LOG",
+      "sha256": "fc99acd91ccb8428670dda4bbb6d3b718857aebe7502cf3c3a38ecfb85670a66",
+      "size": 369
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910338718239400,
+      "path": "Default\\IndexedDB\\https_passport.weibo.com_0.indexeddb.leveldb\\MANIFEST-000001",
+      "sha256": "720a78803b84cbcc8eb204d5cf8ea6ee2f693be0ab2124ddf2b81455de02a3ed",
+      "size": 23
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378152169300,
+      "path": "Default\\Local Storage\\leveldb\\000003.ldb",
+      "sha256": "17d74d75ab4aa9c65fa20d727b85845b28819177007107c9ca2692c63a35f05a",
+      "size": 122958
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919127649024700,
+      "path": "Default\\Local Storage\\leveldb\\000004.log",
+      "sha256": "403046571fac99000c90a6be9309c027ac4c46b821ff68f762d631d6d3c00faf",
+      "size": 485
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912948864100,
+      "path": "Default\\Local Storage\\leveldb\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912932819900,
+      "path": "Default\\Local Storage\\leveldb\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121863236300,
+      "path": "Default\\Local Storage\\leveldb\\LOG",
+      "sha256": "547b23c791dd6ac66f7dfa3e32d391ed4ff0e74426828237f090879f6cff5b86",
+      "size": 344
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718352128400,
+      "path": "Default\\Local Storage\\leveldb\\LOG.old",
+      "sha256": "73e51f159a21051c411ebac8560866f3fce8a2e4781c88849e5154c508ca8d79",
+      "size": 344
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378158280700,
+      "path": "Default\\Local Storage\\leveldb\\MANIFEST-000001",
+      "sha256": "b830146405c33811146047b9a2cd643dd9a832b5f31230de2cd534de36ddc19a",
+      "size": 135
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912814926600,
+      "path": "Default\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121781056600,
+      "path": "Default\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718243081800,
+      "path": "Default\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912810916000,
+      "path": "Default\\Login Data",
+      "sha256": "05e8c5e696093d57d273f916a2c9f2ef9b055eea6cb41f3ae258255409a89012",
+      "size": 40960
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912808911400,
+      "path": "Default\\Login Data For Account",
+      "sha256": "05e8c5e696093d57d273f916a2c9f2ef9b055eea6cb41f3ae258255409a89012",
+      "size": 40960
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912808911400,
+      "path": "Default\\Login Data For Account-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912811918300,
+      "path": "Default\\Login Data-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142623440500,
+      "path": "Default\\Network\\Cookies",
+      "sha256": "5aa0c258ef6b592b0c1fc61a40d7dac81e355c334c864a19fa0c78e9b2f18e8e",
+      "size": 28672
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142623946200,
+      "path": "Default\\Network\\Cookies-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913020700000,
+      "path": "Default\\Network\\Device Bound Sessions",
+      "sha256": "ed90c803dbac3e3d245fe75145506230f1b47dfc7f16274c79dd1565ade4e014",
+      "size": 20480
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913022128600,
+      "path": "Default\\Network\\Device Bound Sessions-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142624947400,
+      "path": "Default\\Network\\Network Persistent State",
+      "sha256": "a45c1229533dbcd2c0592b0586c0cf035fd25d5ebcb6bd819868c576d35935ea",
+      "size": 7425
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912815929400,
+      "path": "Default\\Network\\NetworkDataMigrated",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142623946200,
+      "path": "Default\\Network\\Reporting and NEL",
+      "sha256": "8aa06806d65faa3320f1e5c1dcfd1c0f2f179d885170c0e0111a86bae15fc0f1",
+      "size": 36864
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142624947400,
+      "path": "Default\\Network\\Reporting and NEL-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142621698200,
+      "path": "Default\\Network\\TransportSecurity",
+      "sha256": "a2fb80c765403fc0d995cf04b236f33e07ecd65b37344f017166e88650137757",
+      "size": 856
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913019697100,
+      "path": "Default\\Network\\Trust Tokens",
+      "sha256": "8b5a62a399e316009e0c0ee1727ede327893d7f82f38a136e795422b3f9c333c",
+      "size": 36864
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913020998900,
+      "path": "Default\\Network\\Trust Tokens-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910338508436200,
+      "path": "Default\\Network Action Predictor",
+      "sha256": "e229f1676f9123961e814197fbea469176defec9780bc1d089ffea10d187e6d7",
+      "size": 53248
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910338508436200,
+      "path": "Default\\Network Action Predictor-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337594447600,
+      "path": "Default\\optimization_guide_hint_cache_store\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337594447600,
+      "path": "Default\\optimization_guide_hint_cache_store\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912809913600,
+      "path": "Default\\parcel_tracking_db\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121778048400,
+      "path": "Default\\parcel_tracking_db\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718238067700,
+      "path": "Default\\parcel_tracking_db\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912822947600,
+      "path": "Default\\PersistentOriginTrials\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121782058700,
+      "path": "Default\\PersistentOriginTrials\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718239070400,
+      "path": "Default\\PersistentOriginTrials\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142621698200,
+      "path": "Default\\Preferences",
+      "sha256": "ca5380560b096aa2a7d19e5befae70b72409b78b25e1cfdfffcb918bd8688965",
+      "size": 14095
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337597455700,
+      "path": "Default\\PreferredApps",
+      "sha256": "42b55d126d1e640b1ed7a6bdcb9a46c81df461fa7e131f4f8c7108c2c61c14de",
+      "size": 33
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912775823700,
+      "path": "Default\\README",
+      "sha256": "c43668eec4a8d88a5b3a06a84f8846853fe33e54293c2db56899a5a5dfb4d944",
+      "size": 180
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912822947600,
+      "path": "Default\\Safe Browsing Network\\NetworkDataMigrated",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913012097200,
+      "path": "Default\\Safe Browsing Network\\Safe Browsing Cookies",
+      "sha256": "40cfaef080aad157b7f8e0fade5b8a83ca8eb2a84fcea586458803c1e4d32e5b",
+      "size": 20480
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913013480500,
+      "path": "Default\\Safe Browsing Network\\Safe Browsing Cookies-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919131765065000,
+      "path": "Default\\Secure Preferences",
+      "sha256": "ab1c1f6e4ed6727f68a040922c8382850b2bdbdbbefc3baafd2b173789d0e14f",
+      "size": 13931
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912818936700,
+      "path": "Default\\Segmentation Platform\\SegmentInfoDB\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121781056600,
+      "path": "Default\\Segmentation Platform\\SegmentInfoDB\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718239070400,
+      "path": "Default\\Segmentation Platform\\SegmentInfoDB\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912825955700,
+      "path": "Default\\Segmentation Platform\\SignalDB\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121788075400,
+      "path": "Default\\Segmentation Platform\\SignalDB\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718247091000,
+      "path": "Default\\Segmentation Platform\\SignalDB\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912831971600,
+      "path": "Default\\Segmentation Platform\\SignalStorageConfigDB\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121795469000,
+      "path": "Default\\Segmentation Platform\\SignalStorageConfigDB\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718253108200,
+      "path": "Default\\Segmentation Platform\\SignalStorageConfigDB\\LOG.old",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912811918300,
+      "path": "Default\\ServerCertificate",
+      "sha256": "4d2411474fd0bd7237bae798a21959c422dccc3275d742b8de4440cc244b22ce",
+      "size": 20480
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912812921300,
+      "path": "Default\\ServerCertificate-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123071477200,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\884437e9-7091-4093-ae5a-c11e748c64e9\\6cb9bdec973a77e5_0",
+      "sha256": "774c9b4d41cbbca2c425ab1357b2d71beebf869bffacb2c9264e909b5e5e372e",
+      "size": 170806
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122696315500,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\884437e9-7091-4093-ae5a-c11e748c64e9\\a8c0998953b51818_0",
+      "sha256": "8ce0b5e3cb1995c06a5c7ca5fb950bf816e2f32c892ee78c9e4a9de16869a1a2",
+      "size": 1150
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122754887300,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\884437e9-7091-4093-ae5a-c11e748c64e9\\ed7ada1411347267_0",
+      "sha256": "5fc5eccc6ac1831843c7a2a419d5862ca38d8df0250a7005088e944a1e71c011",
+      "size": 2361
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122689965700,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\884437e9-7091-4093-ae5a-c11e748c64e9\\index",
+      "sha256": "fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d",
+      "size": 24
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142621164900,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\884437e9-7091-4093-ae5a-c11e748c64e9\\index-dir\\the-real-index",
+      "sha256": "fcaa6d47486a86659bfb0bdd5ca53685453ee5c1bdd289862378e776d64ba069",
+      "size": 120
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122674887000,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\2eefdf95c2f03508_0",
+      "sha256": "26d93d79b8df9da10871fb7c3b3bbb3fec51177c94879ff8ee9b68e7b3dfc48b",
+      "size": 97830
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122583480000,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\3b55da522d023580_0",
+      "sha256": "b80b61a76d72a6c8b9f4015308e57b35695415c0b7de46294780975758cddf23",
+      "size": 1095139
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122677895200,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\509382817360df30_0",
+      "sha256": "aa8419574107428ce2317f42be1637020e5399aa0eda5c51bef16745426bf825",
+      "size": 28483
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122669370800,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\73e3b06939d5093a_0",
+      "sha256": "0fce24cbaf28ad4046061ff0c8b00854d4aa8105b767b5675f9160abd8151456",
+      "size": 13638
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122580472500,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\75dac58462165d3c_0",
+      "sha256": "9f781a6d775e400752d784d2790963a6104292dce97ce3fd3964708d0b86cc6d",
+      "size": 80338
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122666886000,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\932ce83e58479732_0",
+      "sha256": "ca26b23c8a73a9e4221df3b66157b6ea0b06f8ba27fa1ba0fa07556e19228675",
+      "size": 23040
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122678897400,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\9a6fa0198d98b152_0",
+      "sha256": "3cb832b88323c8e3f507a07b86fa624c6d27ce5bdbcd3439287612be27e44be3",
+      "size": 167210
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122675889900,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\b6f4f852aba0c8eb_0",
+      "sha256": "b4ec26c98faed08be98d83bedeb1e9dd018ebe6f554eb53537d75251a8aa9a0f",
+      "size": 17566
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122579470900,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\c55378fe6a777558_0",
+      "sha256": "3a96d62a0c78c2721f847b7c3e7f2fba9eaccbd4f329eb96f3b847bc0886b596",
+      "size": 69103
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122671879900,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\d130775d505e9053_0",
+      "sha256": "c4124a5398d6e0d3fb97247ef0ef2ae1dd95c32b670d0524f87995e5fbb90742",
+      "size": 3048
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122576979100,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\dc1263bb8ac54d6f_0",
+      "sha256": "969b026c9d4026243aeee3a854719844e3126579d23a07fc10a79c1d63b85f92",
+      "size": 67342
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122669890200,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\dd1957d3fdf95bc5_0",
+      "sha256": "570525d0a7a31f1a6322818175fbfb96b41de671b8a103671d349a485f1e31dc",
+      "size": 44283
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122559821700,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\index",
+      "sha256": "fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d",
+      "size": 24
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142621164900,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\ca9cc1a0-ccb8-4e75-ae85-9f326b38ae45\\index-dir\\the-real-index",
+      "sha256": "8cd6c531937b38c53300cbf856d8bd5dbb899ae9f180a57875a39da5426348fb",
+      "size": 336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122576979100,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\f48555df-100c-417d-bbd8-aed2ec6b894e\\edb06143f0dbe7e7_0",
+      "sha256": "8d7b1b236a19785e1d1d0dab37c493647eb1d25615e78ff993ae690f2d99f1b6",
+      "size": 68621
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122579470900,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\f48555df-100c-417d-bbd8-aed2ec6b894e\\fc80a19e333793a2_0",
+      "sha256": "612de21a2ef1625b208611428680d0d5907ff42da2e76114b74abe69c3b07ca8",
+      "size": 215538
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919122554807300,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\f48555df-100c-417d-bbd8-aed2ec6b894e\\index",
+      "sha256": "fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d",
+      "size": 24
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142584867200,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\f48555df-100c-417d-bbd8-aed2ec6b894e\\index-dir\\the-real-index",
+      "sha256": "d2e6c2dd3b604a4395bbde5de4dceaf9386badb099425f62ca4a13c24fa45c4f",
+      "size": 96
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142621164900,
+      "path": "Default\\Service Worker\\CacheStorage\\b23839ecea0fc59b8e6207894f1626f8d752bd82\\index.txt",
+      "sha256": "19cff303b233b1552848478d363fdf39f4eccc80863a047026f82763b8b3891c",
+      "size": 259
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919124947042600,
+      "path": "Default\\Service Worker\\Database\\000003.log",
+      "sha256": "446171b680551d6773533449fbb943d217c6f1813488cb4b60f528da1b9ddaf3",
+      "size": 4279
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335394845900,
+      "path": "Default\\Service Worker\\Database\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335388829400,
+      "path": "Default\\Service Worker\\Database\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121783061200,
+      "path": "Default\\Service Worker\\Database\\LOG",
+      "sha256": "7c08334f677eedf41d33d2ec53aee983dd32228c7ad5058a67082b9f364a8983",
+      "size": 348
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718243081800,
+      "path": "Default\\Service Worker\\Database\\LOG.old",
+      "sha256": "5cdc55ab6984523c5983b9782844c66ede0593a34ae1cd49967d6e7bb47d44d7",
+      "size": 348
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335391837700,
+      "path": "Default\\Service Worker\\Database\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722068821700,
+      "path": "Default\\Service Worker\\ScriptCache\\013888a1cda32b90_0",
+      "sha256": "895353902d531eb2bd1047821f8c98768e4107232773b61fa3736265d4a2b3fe",
+      "size": 13357
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722141674800,
+      "path": "Default\\Service Worker\\ScriptCache\\013888a1cda32b90_1",
+      "sha256": "8285119bf4a1ab45fbc097381bdb4a7d70d4a0c242d826a7c0561a22d679079d",
+      "size": 23817
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722136913200,
+      "path": "Default\\Service Worker\\ScriptCache\\08b99d499107ba17_0",
+      "sha256": "5530ee23e7ff5626befabe8edfea491bdb078b44bdfaab184b4fe16d42f4aa7f",
+      "size": 8049
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722084867700,
+      "path": "Default\\Service Worker\\ScriptCache\\297ecea5cebb5dfe_0",
+      "sha256": "2e80c73d5a04e3ab5ab3acce167603213598b06352869dea029e0f622e513057",
+      "size": 10925
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722141674800,
+      "path": "Default\\Service Worker\\ScriptCache\\297ecea5cebb5dfe_1",
+      "sha256": "be7bda00555b8daa2f2a38c9e5394e56b5f8cb5f638a4c670b5150bb4b280aed",
+      "size": 11433
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335410859100,
+      "path": "Default\\Service Worker\\ScriptCache\\2cc80dabc69f58b6_0",
+      "sha256": "7433e2de592bac3d53e34206cd580d140d107eae0defa146b238d209d3b34c87",
+      "size": 472
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335530761600,
+      "path": "Default\\Service Worker\\ScriptCache\\4cb013792b196a35_0",
+      "sha256": "9bfcd210dc08c82ce5d351f0b2e015d246be763173e1310cc3fe651d99c308aa",
+      "size": 10387
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335546803800,
+      "path": "Default\\Service Worker\\ScriptCache\\4cb013792b196a35_1",
+      "sha256": "348252b69779cca24a077f80926307c79508b91887bc734e3ac502699eba9e42",
+      "size": 7217
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722011879400,
+      "path": "Default\\Service Worker\\ScriptCache\\67a473248953641b_0",
+      "sha256": "85da2598768838629dc9410bd7d4a60d1affd2bd6bff255dcb8eb2f7208cc5c2",
+      "size": 8802
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722141674800,
+      "path": "Default\\Service Worker\\ScriptCache\\67a473248953641b_1",
+      "sha256": "b02772be60d60e027eddec78fae284f3e15853391610a2fdc269147e8257fcb9",
+      "size": 3545
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722121362900,
+      "path": "Default\\Service Worker\\ScriptCache\\7b4fd8111178d5b1_0",
+      "sha256": "be10c77f5af594f016d33bb4abbff2a91ac14ef7ba51ef95d8549ca59a862a9b",
+      "size": 10356
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722142675400,
+      "path": "Default\\Service Worker\\ScriptCache\\7b4fd8111178d5b1_1",
+      "sha256": "f68f751950986786b3e6e13ebc166db8243f33f2be5cbc649706c0b1925eff20",
+      "size": 10466
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722050341600,
+      "path": "Default\\Service Worker\\ScriptCache\\b6c28cea6ed9dfc1_0",
+      "sha256": "704382d7ac3862c9b3736873cbff6b469bdd837f583410b46709850ec0ba06de",
+      "size": 11274
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722141674800,
+      "path": "Default\\Service Worker\\ScriptCache\\b6c28cea6ed9dfc1_1",
+      "sha256": "e49f8cf645c2e4ffb4bfd58e0780dfcdf9385bb52f68f8c176670dc06748ca4b",
+      "size": 14921
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721999208000,
+      "path": "Default\\Service Worker\\ScriptCache\\ba23d8ecda68de77_0",
+      "sha256": "427bf48ad70987242b709bb694d6b9156a28a985441bf40de1131676a11d5171",
+      "size": 16623
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722141170300,
+      "path": "Default\\Service Worker\\ScriptCache\\ba23d8ecda68de77_1",
+      "sha256": "7ee09ab1b5820d0a6672f7a169e745e8880919121b58042f9369532549ddfa7b",
+      "size": 9065
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722102132000,
+      "path": "Default\\Service Worker\\ScriptCache\\d0757ff92c7cde0a_0",
+      "sha256": "1e1edd1a2e623544d2f7f6b3a775e95be7d49130ee13662e24c291b338aeef67",
+      "size": 12328
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722141674800,
+      "path": "Default\\Service Worker\\ScriptCache\\d0757ff92c7cde0a_1",
+      "sha256": "c39b8935df52ae97a628527f659115c23f07fe5483d1d3df3800ede44401f40b",
+      "size": 13433
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721970231300,
+      "path": "Default\\Service Worker\\ScriptCache\\f1cdccba37924bda_0",
+      "sha256": "65ea4401c9f23cc35266c771931f657cc31fbe2845416e1ede36a4e5988e7227",
+      "size": 12745
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722142675400,
+      "path": "Default\\Service Worker\\ScriptCache\\f1cdccba37924bda_1",
+      "sha256": "684caf541cf3c563dda59c17d17e367ce99e3adee405faa9e2cbb0743511ead9",
+      "size": 14673
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722032370500,
+      "path": "Default\\Service Worker\\ScriptCache\\fa813c9ad67834ac_0",
+      "sha256": "218916df2c11eb90eab67799b7d3ef273dba4756572b94ff7b83752656fc0f9f",
+      "size": 9359
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915722141674800,
+      "path": "Default\\Service Worker\\ScriptCache\\fa813c9ad67834ac_1",
+      "sha256": "663dbbe78bb94a1f4c0df2bf6d8cacab6285a50f7c4bbb530d5df21dabd847ec",
+      "size": 6033
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335386824900,
+      "path": "Default\\Service Worker\\ScriptCache\\index",
+      "sha256": "fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d",
+      "size": 24
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915742146118100,
+      "path": "Default\\Service Worker\\ScriptCache\\index-dir\\the-real-index",
+      "sha256": "55fe4e6e9e8025a4b77039315973484f9378a008cf4c4342b6a345f2863bd386",
+      "size": 336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142593390100,
+      "path": "Default\\Session Storage\\000003.log",
+      "sha256": "44690173a99fbab802a50a0e5ad1aa414ceaea8300978728c3862dae324553a5",
+      "size": 191
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121929046600,
+      "path": "Default\\Session Storage\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121917542300,
+      "path": "Default\\Session Storage\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121935061500,
+      "path": "Default\\Session Storage\\LOG",
+      "sha256": "7bf2b514c439809a4a1f27d25004b6d00a5eb46fe2b588e3d0cd849fd3458783",
+      "size": 291
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121922555800,
+      "path": "Default\\Session Storage\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915723635423200,
+      "path": "Default\\Sessions\\Session_13430389321018708",
+      "sha256": "0e815b708980a4a1cc6d1b92d35351df2f3723e3096a05c4b080099165c77249",
+      "size": 5946
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919124284104500,
+      "path": "Default\\Sessions\\Session_13430392724283700",
+      "sha256": "f03df8ee778a26aa74065fe26b0a04fca48c47cb573ddab885c38799004e7805",
+      "size": 5135
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915742886708400,
+      "path": "Default\\Sessions\\Tabs_13430389321016444",
+      "sha256": "36a4ef7ff71147a1c1c17cfbfae88dea954f774a3fc986fade040270b168de57",
+      "size": 15874
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142615604100,
+      "path": "Default\\Sessions\\Tabs_13430392724424497",
+      "sha256": "5f93f719f1c5383cbfaad1357291d68e9dc5b1337b211edba9c4719ca3ef2969",
+      "size": 20524
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912998079900,
+      "path": "Default\\Shared Dictionary\\cache\\index",
+      "sha256": "fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d",
+      "size": 24
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913011592400,
+      "path": "Default\\Shared Dictionary\\cache\\index-dir\\the-real-index",
+      "sha256": "7fd055862d01f0a34aae711196438a696d695830cbc772e1703f5f415be9aaa6",
+      "size": 48
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913003648900,
+      "path": "Default\\Shared Dictionary\\db",
+      "sha256": "fbb86c665b2fed35c372ce8996eb1c4e31082aedd6ad5fc6086cfac889c3471b",
+      "size": 45056
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913004640400,
+      "path": "Default\\Shared Dictionary\\db-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125422504800,
+      "path": "Default\\shared_proto_db\\000003.log",
+      "sha256": "ccb12488fcc832bdbedb27936181b314a73c251b1160d8e9dc09b2a8f8555c33",
+      "size": 118418
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913008584600,
+      "path": "Default\\shared_proto_db\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913004640400,
+      "path": "Default\\shared_proto_db\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121936064600,
+      "path": "Default\\shared_proto_db\\LOG",
+      "sha256": "8d8f43e8f4897468477f2e1289197a2ed5ff2c3664d7b3f9115ba0180c2d1be0",
+      "size": 332
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718471865800,
+      "path": "Default\\shared_proto_db\\LOG.old",
+      "sha256": "254b9c0ab5b83a3e94a01d8bb5c3df7c1f9a723d06ba6866738be78299b28fe8",
+      "size": 332
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913005643200,
+      "path": "Default\\shared_proto_db\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121937066900,
+      "path": "Default\\shared_proto_db\\metadata\\000003.log",
+      "sha256": "bf2be8a9ff4623d276d8545d543d43c7719e77f0bdfdcda3ffb48c8eb94cc67c",
+      "size": 1368
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912994982500,
+      "path": "Default\\shared_proto_db\\metadata\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912990972500,
+      "path": "Default\\shared_proto_db\\metadata\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121926565100,
+      "path": "Default\\shared_proto_db\\metadata\\LOG",
+      "sha256": "a703bbbc2d023f11ad99a3de8855f76f0569db6b4c57069503a3b7f8c4211eec",
+      "size": 350
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718448088300,
+      "path": "Default\\shared_proto_db\\metadata\\LOG.old",
+      "sha256": "5a61a202997d3928cc6074f8a0268572434627c5e2f92655e75c3db5c01f64c3",
+      "size": 350
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912992977500,
+      "path": "Default\\shared_proto_db\\metadata\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910338463293100,
+      "path": "Default\\Shortcuts",
+      "sha256": "7766a9b60e33ceb16bfc581390f10a79361348e2271d02235c23f77b744d6b4d",
+      "size": 20480
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910338464313300,
+      "path": "Default\\Shortcuts-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142584867200,
+      "path": "Default\\Site Characteristics Database\\000003.log",
+      "sha256": "e8fbc713dd6dc5a789199a2a7257559afc5356d0789b7d0e87a5db6b0a2bbc93",
+      "size": 316
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912817934400,
+      "path": "Default\\Site Characteristics Database\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912801892200,
+      "path": "Default\\Site Characteristics Database\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121783061200,
+      "path": "Default\\Site Characteristics Database\\LOG",
+      "sha256": "cc9f3b62bbacfc0b72def97e123f21d690c50e93c4f99b6a7558066507462221",
+      "size": 360
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718243081800,
+      "path": "Default\\Site Characteristics Database\\LOG.old",
+      "sha256": "22ca6989022d8f15839c6f498f9f26e6f5e6b4126f9653cf1b95cdfd3b20fac1",
+      "size": 360
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912813923900,
+      "path": "Default\\Site Characteristics Database\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339181907300,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Code Cache\\js\\5dea14b9816ec6d9_0",
+      "sha256": "8b47766783d8234f7fdc2766b0c6ac00597ae17e3d65e277e80f0901aead5b6f",
+      "size": 308
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339015567600,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Code Cache\\js\\index",
+      "sha256": "fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d",
+      "size": 24
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910359196727500,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Code Cache\\js\\index-dir\\the-real-index",
+      "sha256": "3f091a86761741f2fe831856bb7f7c1e8197343b4a429d1416c61057daff1754",
+      "size": 72
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339014566200,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Code Cache\\wasm\\index",
+      "sha256": "fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d",
+      "size": 24
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339017571700,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Code Cache\\wasm\\index-dir\\the-real-index",
+      "sha256": "5960bcb4b3194db9874fa80fb352ef2c3152a330421ad335220f6b49c2ae6585",
+      "size": 48
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339038324600,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnGraphiteCache\\data_0",
+      "sha256": "d6a5fe39cd672781b256e0e3102f7022635f1d4bb7cfcc90a80fffe4d0f3877e",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354205079400,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnGraphiteCache\\data_1",
+      "sha256": "b1e963d702392fb7224786e7d56d43973e9b9efd1b89c17814d7c558ffc0cdec",
+      "size": 270336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339042870000,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnGraphiteCache\\data_2",
+      "sha256": "ec1702806f4cc7c42a82fc2b38e89835fde7c64bb32060e0823c9077ca92efb7",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339045909800,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnGraphiteCache\\data_3",
+      "sha256": "e09f42c398d688dce168570291f1f92d079987deda3099a34adb9e8c0522b30c",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339036296700,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnGraphiteCache\\index",
+      "sha256": "a45626aa88466094206185ec15cb05eeae75c9a3a190c3d350381dcc4aca7042",
+      "size": 262512
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339025595000,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnWebGPUCache\\data_0",
+      "sha256": "d6a5fe39cd672781b256e0e3102f7022635f1d4bb7cfcc90a80fffe4d0f3877e",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354205079400,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnWebGPUCache\\data_1",
+      "sha256": "b1e963d702392fb7224786e7d56d43973e9b9efd1b89c17814d7c558ffc0cdec",
+      "size": 270336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339028601100,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnWebGPUCache\\data_2",
+      "sha256": "ec1702806f4cc7c42a82fc2b38e89835fde7c64bb32060e0823c9077ca92efb7",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339032308800,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnWebGPUCache\\data_3",
+      "sha256": "e09f42c398d688dce168570291f1f92d079987deda3099a34adb9e8c0522b30c",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339022585500,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\DawnWebGPUCache\\index",
+      "sha256": "1e7efe9b0c3bfbdf643d7b80c263d0e055ca750822004aa207651196c1e8dce7",
+      "size": 262512
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339015567600,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\GPUCache\\data_0",
+      "sha256": "d6a5fe39cd672781b256e0e3102f7022635f1d4bb7cfcc90a80fffe4d0f3877e",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354203464500,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\GPUCache\\data_1",
+      "sha256": "b1e963d702392fb7224786e7d56d43973e9b9efd1b89c17814d7c558ffc0cdec",
+      "size": 270336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339018574600,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\GPUCache\\data_2",
+      "sha256": "ec1702806f4cc7c42a82fc2b38e89835fde7c64bb32060e0823c9077ca92efb7",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339019578400,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\GPUCache\\data_3",
+      "sha256": "e09f42c398d688dce168570291f1f92d079987deda3099a34adb9e8c0522b30c",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339013561800,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\GPUCache\\index",
+      "sha256": "a61e2dfd06d98cda352d69dac03bfc483e5fa87a25c6c1dee13a158eaa3b4397",
+      "size": 262512
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378007370200,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\InterestGroups",
+      "sha256": "37e4469b5e739235a8506c33cf43518820947d4800288895efb53975289fd2b5",
+      "size": 4096
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378344778400,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Local Storage\\leveldb\\000003.log",
+      "sha256": "8bd2ea70a0b70c91de138a5b87c7936c6a6fa7c4275c54b97f4ef0ccc5b79bb4",
+      "size": 30
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378298133700,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Local Storage\\leveldb\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378275515900,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Local Storage\\leveldb\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378401280600,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Local Storage\\leveldb\\LOG",
+      "sha256": "61e80d2bae4df52d52cbfb7060d2d44bf61424e346e2bde48ec35cffc8dae702",
+      "size": 442
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378326851500,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Local Storage\\leveldb\\LOG.old",
+      "sha256": "e6d82d822c3625e40cfcc97fda630218101bec51ce4698b071ea0dfc71457f86",
+      "size": 435
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378283536500,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Local Storage\\leveldb\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378304367000,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Network\\Cookies",
+      "sha256": "40cfaef080aad157b7f8e0fade5b8a83ca8eb2a84fcea586458803c1e4d32e5b",
+      "size": 20480
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378305358900,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Network\\Cookies-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339045909800,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Network\\Device Bound Sessions",
+      "sha256": "ed90c803dbac3e3d245fe75145506230f1b47dfc7f16274c79dd1565ade4e014",
+      "size": 20480
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339047326100,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Network\\Device Bound Sessions-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910366328151900,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Network\\Network Persistent State",
+      "sha256": "f5e224a52f6ad7e0c235d238c3e2983c5c0b314c552f20ff2affb4472ac866f5",
+      "size": 111
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339019578400,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Network\\NetworkDataMigrated",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339051566200,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Network\\Trust Tokens",
+      "sha256": "8b5a62a399e316009e0c0ee1727ede327893d7f82f38a136e795422b3f9c333c",
+      "size": 36864
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339052569500,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Network\\Trust Tokens-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378190636400,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\PrivateAggregation",
+      "sha256": "0538ce3366a68c5f652a7c3e24dd00933d9ecca3d2db7c209898a880f5520916",
+      "size": 20480
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378191639400,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\PrivateAggregation-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378358834500,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Session Storage\\000003.log",
+      "sha256": "ace9875fef7e1426d3590993377bc2e4af93c1c323a00266cdca240e91c0c82a",
+      "size": 30
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378325848700,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Session Storage\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378302445500,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Session Storage\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378432608000,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Session Storage\\LOG",
+      "sha256": "c9cc63ae7db551b8171fed593024f1dfc595e24a5ab49accccbbe97c76baaf9f",
+      "size": 427
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378348808900,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Session Storage\\LOG.old",
+      "sha256": "9eab8d2b7e0964587cacc5b479c69728a65fa282c7c5ff50bcacaaed632ef511",
+      "size": 421
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378316340100,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Session Storage\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339028601100,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Shared Dictionary\\cache\\index",
+      "sha256": "fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d",
+      "size": 24
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339035317600,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Shared Dictionary\\cache\\index-dir\\the-real-index",
+      "sha256": "f72f31b298509484160fb682f7986dbe7901b96f65d1869216e2c2fabd8fa4ca",
+      "size": 48
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339036296700,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Shared Dictionary\\db",
+      "sha256": "fbb86c665b2fed35c372ce8996eb1c4e31082aedd6ad5fc6086cfac889c3471b",
+      "size": 45056
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339037325400,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\Shared Dictionary\\db-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910377989993900,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\SharedStorage",
+      "sha256": "0ab48b25cba617ed3a4acca0161813b314c095ef63544bb4af60769eb1012977",
+      "size": 4096
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910378999306700,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\WebStorage\\QuotaManager",
+      "sha256": "372de5cfa423696620a90817f5462484ff19d94a4bfbc10390a65020cfdcc9d1",
+      "size": 40960
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910379000352600,
+      "path": "Default\\Storage\\ext\\nmmhkkegccagdldgiimedpiccmgmieda\\def\\WebStorage\\QuotaManager-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915723918837500,
+      "path": "Default\\Sync Data\\LevelDB\\000003.log",
+      "sha256": "b5cc7cecb402c8ec9ca021d7353dc807a9220ed3706a2c93dfe43c062c373bd5",
+      "size": 6391
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912816933200,
+      "path": "Default\\Sync Data\\LevelDB\\CURRENT",
+      "sha256": "0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443",
+      "size": 16
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912798885100,
+      "path": "Default\\Sync Data\\LevelDB\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121783061200,
+      "path": "Default\\Sync Data\\LevelDB\\LOG",
+      "sha256": "599d7d83458d13ec8c0b08d98f0231dca41c31b79dd22c0003e08111d70fae9c",
+      "size": 336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718243081800,
+      "path": "Default\\Sync Data\\LevelDB\\LOG.old",
+      "sha256": "a4952464c33d715f9dbd8188112cc51f3211d0fd0f8c531914db31cc09744007",
+      "size": 336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912813923900,
+      "path": "Default\\Sync Data\\LevelDB\\MANIFEST-000001",
+      "sha256": "f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4",
+      "size": 41
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915733447930000,
+      "path": "Default\\Top Sites",
+      "sha256": "c406a99cb36deec45f3356c33bf8a71ff032d99874c3a9156fefe4fc8679cef1",
+      "size": 20480
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915733448933900,
+      "path": "Default\\Top Sites-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123416134900,
+      "path": "Default\\trusted_vault.pb",
+      "sha256": "b87bf305aafae1f1ec7dd947176c9529b2a9cbd4a3bf296fce25fc009e725366",
+      "size": 84
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339710555500,
+      "path": "Default\\VideoDecodeStats\\LOCK",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339710555500,
+      "path": "Default\\VideoDecodeStats\\LOG",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919126971277900,
+      "path": "Default\\Web Data",
+      "sha256": "a4981fc71789b81cebfa658b27be03b62c09e3a257da554fab0577794aace17e",
+      "size": 157696
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919126971277900,
+      "path": "Default\\Web Data-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142620516800,
+      "path": "Default\\WebStorage\\QuotaManager",
+      "sha256": "8db3335d39812749fe9a1ae4270dee0d97e4bb0ef06ab2b427a02b415fe6b1be",
+      "size": 40960
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142621164900,
+      "path": "Default\\WebStorage\\QuotaManager-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910345375522800,
+      "path": "extensions_crx_cache\\metadata.json",
+      "sha256": "2771d13c637c267132afff9db67537bef95708534b79ae8d954254c4e64e4e0f",
+      "size": 13
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910335258079600,
+      "path": "First Run",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125420500100,
+      "path": "first_party_sets.db",
+      "sha256": "ac9a0984180d842ffc2e7423533505aafeccbf2dfa1fcd67f4a2aaa3cf108e3b",
+      "size": 49152
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125421502400,
+      "path": "first_party_sets.db-journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913131078300,
+      "path": "GPUPersistentCache\\DawnGraphiteCache\\WRJTYMYAB73RC6HTXXLKRS2FEZVUG6PP\\cache.db",
+      "sha256": "0ab48b25cba617ed3a4acca0161813b314c095ef63544bb4af60769eb1012977",
+      "size": 4096
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913133082000,
+      "path": "GPUPersistentCache\\DawnGraphiteCache\\WRJTYMYAB73RC6HTXXLKRS2FEZVUG6PP\\cache.db-wal",
+      "sha256": "c621e78c71f4fed9cc6953bf11f0d8270a57d69204c1c0917cafa58a7c5d7c7e",
+      "size": 12392
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913132079600,
+      "path": "GPUPersistentCache\\DawnGraphiteCache\\WRJTYMYAB73RC6HTXXLKRS2FEZVUG6PP\\cache.journal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123238928200,
+      "path": "GrShaderCache\\data_0",
+      "sha256": "2d2ca860c558998fec72da96cc635c2a46b431d18121706fc1ca9c104dc46e19",
+      "size": 45056
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142637587900,
+      "path": "GrShaderCache\\data_1",
+      "sha256": "944d4dd891c01ba4db5bf82440bbc4c0b682d6174d367daa48e93e352a694a30",
+      "size": 270336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913134084600,
+      "path": "GrShaderCache\\data_2",
+      "sha256": "ec1702806f4cc7c42a82fc2b38e89835fde7c64bb32060e0823c9077ca92efb7",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123238928200,
+      "path": "GrShaderCache\\data_3",
+      "sha256": "95579e9c0c663442b6d04bfedde8d2abaeb2f71ae5a78f4af717faf74d7772de",
+      "size": 4202496
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913367913200,
+      "path": "GrShaderCache\\f_000001",
+      "sha256": "3eca38e304d04817048907ce0e58c9bf23594dd3cf2f3e88d76b362cbd1d8d8f",
+      "size": 16648
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910336070119100,
+      "path": "GrShaderCache\\f_000002",
+      "sha256": "f74f9bbbed5a8e825c25f8d26651a02d32359e37dbaafe093a3f2cbab91dcbf8",
+      "size": 19340
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910336099195400,
+      "path": "GrShaderCache\\f_000003",
+      "sha256": "261831b7843cf98822f1c4b3bd2c4cfcf2a589a5fc91ae1f32d27a1c8c30129c",
+      "size": 16644
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337654633500,
+      "path": "GrShaderCache\\f_000004",
+      "sha256": "c0584fdfbb3db2261a8b20634731b3862ace8d94c370212ad1914b73b90990f7",
+      "size": 19400
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910337682737200,
+      "path": "GrShaderCache\\f_000005",
+      "sha256": "d8a9ab85331a5f82824fcf689b5318b206dc7de2bc1d278e76f96739fb990372",
+      "size": 19344
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339889480700,
+      "path": "GrShaderCache\\f_000006",
+      "sha256": "2eca8e1ab4c10d14e4b4dddfc1b25be01a59aa7cf48119a8d348a5195298043e",
+      "size": 17368
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910339898469600,
+      "path": "GrShaderCache\\f_000007",
+      "sha256": "b08f2cba4bb7e95f1f9a802a75c7578de587eb0b7c1d8313a165d1fdfa5bb6cf",
+      "size": 16536
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340684231000,
+      "path": "GrShaderCache\\f_000008",
+      "sha256": "54e386f0dae1e1da7b6382620428248b59c746fbd54dcbd7424ec3b798fb89cf",
+      "size": 21056
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910340697020300,
+      "path": "GrShaderCache\\f_000009",
+      "sha256": "1bc2eb326d1576cd0aca70bbc2f199fa4ca7bc5ff493580199a567833eec2744",
+      "size": 18652
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354631608400,
+      "path": "GrShaderCache\\f_00000a",
+      "sha256": "de9d050df90870d60ce7c7637ae57a976a173ae3f42e3d50ef992dedbb715636",
+      "size": 25764
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354661767700,
+      "path": "GrShaderCache\\f_00000b",
+      "sha256": "c21288cc1d856bd5319fe4fa34906f924cd82f13ad6ac9edad282ec657184821",
+      "size": 22312
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910354694719300,
+      "path": "GrShaderCache\\f_00000c",
+      "sha256": "3cefd3eca585cba172d690ed241cea76ba82939cbae0d8420ec4bff76bfa3c7e",
+      "size": 18188
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915718868739300,
+      "path": "GrShaderCache\\f_00000d",
+      "sha256": "675a9b1c933e46399b7b269db6ee62f16950f992c4cb4905d1a7bdede4732118",
+      "size": 18200
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721301629800,
+      "path": "GrShaderCache\\f_00000e",
+      "sha256": "eeae5467224879e853a0b16326d078b4af0f0ef847f2403435ac46f279182ee6",
+      "size": 20172
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721768191900,
+      "path": "GrShaderCache\\f_00000f",
+      "sha256": "cfbc07c10a33ffd6c011f2235490b16d85e4c4308a7e43f1258725ec4989f424",
+      "size": 17724
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785915721798003700,
+      "path": "GrShaderCache\\f_000010",
+      "sha256": "ded78f7f402918ef7128536ec395a6bb3cefad1cbbcfabc02cd7851f2bf9ada1",
+      "size": 17724
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919123235217100,
+      "path": "GrShaderCache\\f_000011",
+      "sha256": "092c25a7df58d9e05f1574e4d18fea80e3111bbad2ba0510af196a250db958ff",
+      "size": 16764
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909913129072400,
+      "path": "GrShaderCache\\index",
+      "sha256": "3952c1d72800c6f02e17c2f9847f5bebe5f02508c250db4f4195acf4fee0c9db",
+      "size": 262512
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919125125094800,
+      "path": "Last Browser",
+      "sha256": "3615498fbef408a96bf30e01c318dac2d5451b054998119080e7faac5995f590",
+      "size": 106
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919121747631400,
+      "path": "Last Version",
+      "sha256": "78807c7b95e0abc2648e6a310354c4010f991a240b1f00c3146f475ab90c6e80",
+      "size": 14
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142626952700,
+      "path": "Local State",
+      "sha256": "f14f923c394fd847a56f5c2bdd790448d4cf1295fe50b0ad2035b17f4e82633f",
+      "size": 464647
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910355416087800,
+      "path": "optimization_guide_model_store\\15\\63922A0C010C80A5\\CFABA02A07CC949B\\model-info.pb",
+      "sha256": "00f81098848e728351ea9cd53ebf8300027d49a52213acc2e6df23b93332d089",
+      "size": 165
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "optimization_guide_model_store\\15\\63922A0C010C80A5\\CFABA02A07CC949B\\model.tflite",
+      "sha256": "329b20f56d6438f20aef784d9bd7b686dd16550dc84967bb5be3dc0a1c29ce18",
+      "size": 2737464
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "optimization_guide_model_store\\15\\63922A0C010C80A5\\CFABA02A07CC949B\\override_list.pb.gz",
+      "sha256": "3ad86e3c79ac3361688f6f0f287a8fbbe83d68c40dd778024f50747bcf4c290b",
+      "size": 467851
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "optimization_guide_model_store\\15\\63922A0C010C80A5\\CFABA02A07CC949B\\VERSION.txt",
+      "sha256": "176033a28b6257a40a7827eae8142610a7e42a7d67bc507512712c186d4612a4",
+      "size": 106
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910350622632500,
+      "path": "optimization_guide_model_store\\2\\63922A0C010C80A5\\26CC9E610523BDF1\\model-info.pb",
+      "sha256": "5887dcfba850053c7d4cc3897c84f73a96baf16e48e00b87eb1e6fbd8e5101e6",
+      "size": 12
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1679292118000000000,
+      "path": "optimization_guide_model_store\\2\\63922A0C010C80A5\\26CC9E610523BDF1\\model.tflite",
+      "sha256": "a0956386dc64fd9f4883c8741f950cd60a56859616b159c9e4251c9eb0ac5534",
+      "size": 392048
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910355419094600,
+      "path": "optimization_guide_model_store\\20\\63922A0C010C80A5\\0B8CAA46A57D6730\\model-info.pb",
+      "sha256": "fd9510efa2478b1709fa685f2c51c4517225ec618971819c808d64c8c49f6c9a",
+      "size": 164
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1783972936000000000,
+      "path": "optimization_guide_model_store\\20\\63922A0C010C80A5\\0B8CAA46A57D6730\\model.tflite",
+      "sha256": "e8c55250b30a5999403e9b7ad1031223ca3297e2a79de5bd169581f734691eab",
+      "size": 31520
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910360131697600,
+      "path": "optimization_guide_model_store\\25\\63922A0C010C80A5\\B6D76E9765EBC797\\model-info.pb",
+      "sha256": "51f2000516ddcfb407f7595409a75b3eb88cf236ed9d5d2c432c4b3ad3bfb8de",
+      "size": 146
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1780992112000000000,
+      "path": "optimization_guide_model_store\\25\\63922A0C010C80A5\\B6D76E9765EBC797\\model.tflite",
+      "sha256": "498e3205bf85da0a8f8b57e292d4bd12b31d691e04039c04bedcde75d1ea7459",
+      "size": 180520
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1780992112000000000,
+      "path": "optimization_guide_model_store\\25\\63922A0C010C80A5\\B6D76E9765EBC797\\visual_model_desktop.tflite",
+      "sha256": "eaea1c7eeb2af4fcb59c7db541df61057c4ccdb8a4d4f70af75776d70aa1850c",
+      "size": 3452826
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910360127685600,
+      "path": "optimization_guide_model_store\\26\\63922A0C010C80A5\\1C9B1E48E8D21E22\\model-info.pb",
+      "sha256": "df5ace9343b9c960993fd8d97a3911d6cdfc2531ecd36d4bba32fef89dd46db3",
+      "size": 416
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1696268326000000000,
+      "path": "optimization_guide_model_store\\26\\63922A0C010C80A5\\1C9B1E48E8D21E22\\model.tflite",
+      "sha256": "92e81784c55f74000441d25a29c895b19ca1bd53efe0177ce3c27fbdb7869fa1",
+      "size": 7112
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910364216657100,
+      "path": "optimization_guide_model_store\\45\\63922A0C010C80A5\\79769F668A56E3B2\\model-info.pb",
+      "sha256": "fab8e53a41540b352b8d58f37f23dc464ac8e0ecc47f65bd5f4be34df792c2e3",
+      "size": 7104
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "optimization_guide_model_store\\45\\63922A0C010C80A5\\79769F668A56E3B2\\model.tflite",
+      "sha256": "4c897707a45592774ffc4c65b207589efee2f1667798f96b4e37245047466e3e",
+      "size": 131736
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785910349008304200,
+      "path": "optimization_guide_model_store\\9\\63922A0C010C80A5\\CB2FDA2E192FB524\\model-info.pb",
+      "sha256": "804b149ba8918e68e78c25d262ba95118b4088e0cf06bf9c9dd821bfc8815dca",
+      "size": 164
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1783972948000000000,
+      "path": "optimization_guide_model_store\\9\\63922A0C010C80A5\\CB2FDA2E192FB524\\model.tflite",
+      "sha256": "21ecf18a9eb18a66870208035d857a536d6d714e0eec47a86d316ade56bb90a4",
+      "size": 31520
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\_metadata\\verified_contents.json",
+      "sha256": "ca863d4d4a724af7d65a2fe265a9980cc0d6c5396606b3b121fb03d34461dddd",
+      "size": 4390
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\classifier_solution_config.binarypb",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\manifest.binarypb",
+      "sha256": "9b5328c94e6deb05575e0d9657be81858b58e4ca454207d7268ad01db35c9ccb",
+      "size": 10820
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\manifest.json",
+      "sha256": "ed5119ad182fbb851ab27bf445337a5e8ef8d212f20726914665f94ec7f550f5",
+      "size": 84
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\prompt_gemma4_12b_solution_config.binarypb",
+      "sha256": "a1b4c3d0b11ff465e1f3781cb1393d42fede06cd615c6edcf8de492e70c4d830",
+      "size": 777
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\prompt_gemma4_4b_solution_config.binarypb",
+      "sha256": "a1b4c3d0b11ff465e1f3781cb1393d42fede06cd615c6edcf8de492e70c4d830",
+      "size": 777
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\prompt_gemma4_solution_config.binarypb",
+      "sha256": "a1b4c3d0b11ff465e1f3781cb1393d42fede06cd615c6edcf8de492e70c4d830",
+      "size": 777
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\prompt_solution_config.binarypb",
+      "sha256": "a1b4c3d0b11ff465e1f3781cb1393d42fede06cd615c6edcf8de492e70c4d830",
+      "size": 777
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\proofreader_small_expert_model_solution_config.binarypb",
+      "sha256": "94a6f0ea0521eb982b2b8bf12a36ca6734d5fc9d59752d5709baeb75c13de152",
+      "size": 493
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\scam_detection_solution_config.binarypb",
+      "sha256": "3adff134a5dce3a061cdeee052a4a61b6cbb2e3ec4ea76063fc858f61a6e5b44",
+      "size": 1010
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\speech_recognition_small_expert_model_solution_config.binarypb",
+      "sha256": "4fa54d5929befd5dcdd3b368a40ec9ff027e6ea2dd2383f39d53b2abce5eef54",
+      "size": 12
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\summarizer_gemma4_12b_solution_config.binarypb",
+      "sha256": "0d7ca33d127d260d3005b680d7e6b40e7ae7f21489415ad38717e60a0c648db2",
+      "size": 15180
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\summarizer_gemma4_4b_solution_config.binarypb",
+      "sha256": "0d7ca33d127d260d3005b680d7e6b40e7ae7f21489415ad38717e60a0c648db2",
+      "size": 15180
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\summarizer_gemma4_solution_config.binarypb",
+      "sha256": "0d7ca33d127d260d3005b680d7e6b40e7ae7f21489415ad38717e60a0c648db2",
+      "size": 15180
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\summarizer_nano_v3_solution_config.binarypb",
+      "sha256": "e4aa476a3cecc8ebee2ad7244aefd6ebbf6d2f84ccfc56552e8be49bb611ed70",
+      "size": 15176
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\summarizer_small_expert_model_solution_config.binarypb",
+      "sha256": "8ddd4b23f9e9e162958cb4a8b71ff24fd4c137437ae166ba74f000e271214c77",
+      "size": 1028
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\writing_assistance_gemma4_12b_solution_config.binarypb",
+      "sha256": "55fff15618c0ab50858df51d1f2270b773c5af2ec12641dcb5d6b60a8df3047c",
+      "size": 11671
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\writing_assistance_gemma4_4b_solution_config.binarypb",
+      "sha256": "55fff15618c0ab50858df51d1f2270b773c5af2ec12641dcb5d6b60a8df3047c",
+      "size": 11671
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\writing_assistance_gemma4_solution_config.binarypb",
+      "sha256": "55fff15618c0ab50858df51d1f2270b773c5af2ec12641dcb5d6b60a8df3047c",
+      "size": 11671
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 315532800000000000,
+      "path": "OptimizationGuideModelsManifest\\1.20260804.1\\writing_assistance_solution_config.binarypb",
+      "sha256": "55fff15618c0ab50858df51d1f2270b773c5af2ec12641dcb5d6b60a8df3047c",
+      "size": 11671
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142618511600,
+      "path": "segmentation_platform\\ukm_db",
+      "sha256": "876ab1e09fc807d64a18a1d6186bb0f784f1c9a2e150a0c68aff3445b5ddc10d",
+      "size": 49152
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912768808100,
+      "path": "ShaderCache\\data_0",
+      "sha256": "d6a5fe39cd672781b256e0e3102f7022635f1d4bb7cfcc90a80fffe4d0f3877e",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142638590500,
+      "path": "ShaderCache\\data_1",
+      "sha256": "d33f3cbe6afc9d19a5c91d269af11ca4a3c01398e7c56c98abc56ebd21ed14c1",
+      "size": 270336
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912771813600,
+      "path": "ShaderCache\\data_2",
+      "sha256": "ec1702806f4cc7c42a82fc2b38e89835fde7c64bb32060e0823c9077ca92efb7",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912772817200,
+      "path": "ShaderCache\\data_3",
+      "sha256": "e09f42c398d688dce168570291f1f92d079987deda3099a34adb9e8c0522b30c",
+      "size": 8192
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785909912766801400,
+      "path": "ShaderCache\\index",
+      "sha256": "93c99881a9f79b777c95b5e500e0d4d82ebb227561c36a92f38aa8325251e173",
+      "size": 262512
+    },
+    {
+      "mode": 438,
+      "mtime_ns": 1785919142610433600,
+      "path": "Variations",
+      "sha256": "b26da4f8c7e283aa74386da0229d66af14a37986b8ca828e054fc932f68dd557",
+      "size": 85
+    }
+  ],
+  "fingerprint": {
+    "git_commit": "b1b18a0267421c90ccf279aa1fc2ea3936766c35",
+    "hostname": "KF-XHL",
+    "media_crawler_collector_module_path": "C:\\Users\\Administrator\\Desktop\\YQ\\backend\\app\\collectors\\media_crawler_weibo_collector.py",
+    "pid": 28508,
+    "project_root": "C:\\Users\\Administrator\\Desktop\\YQ",
+    "python_executable": "C:\\Users\\Administrator\\Desktop\\YQ\\backend\\.venv\\Scripts\\python.exe",
+    "registry_module_path": "C:\\Users\\Administrator\\Desktop\\YQ\\backend\\app\\collectors\\registry.py",
+    "runtime_factory_available": true,
+    "started_at": "2026-08-05T08:56:20.340163+00:00"
+  },
+  "profile": "D:\\code files\\mediaCrawler\\MediaCrawler\\profiles\\scheduler",
+  "root_mode": 511,
+  "root_mtime_ns": 1785919142691390300
+}

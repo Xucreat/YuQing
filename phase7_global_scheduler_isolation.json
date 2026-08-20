@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-08-19T17:10:00+08:00",
+  "phase": "7-阶段3",
+  "scope": "全局 scheduler 与 source 40 隔离决策",
+
+  "facts": {
+    "bb_browser_lane_only_claims_bb_browser": true,
+    "bb_browser_lane_does_not_claim_source40": true,
+    "global_scheduler_still_runs_source40": true,
+    "global_scheduler_runs_source40_reason": "due_scheduled_sources 排除 weibo_octopus 但不排除 weibo_mediacrawler；source 40 enabled+schedule_enabled=true",
+    "source40_recent_scheduled_run": {"id": 21364, "status": "failed", "trigger": "scheduled", "start": "2026-08-19T16:46:58"}
+  },
+
+  "options": {
+    "option1_temporarily_disable_source40": {
+      "action": "临时将 source 40 schedule_enabled=false",
+      "requires_user_authorization": true,
+      "auto_restore_after_gray": false,
+      "note": "灰度结束后需人工恢复；这是「整个系统期间 MediaCrawler 不得运行」的唯一可靠方案"
+    },
+    "option2_global_scheduler_allowlist": {
+      "action": "给全局 scheduler 增加显式 allowlist/exclude，仅灰度命令传入时生效",
+      "default_behavior_unchanged": true,
+      "fail_closed": true,
+      "risk": "可能误伤其他数据源，需谨慎实现"
+    },
+    "option3_separate_scheduler_process": {
+      "action": "独立进程 + 不同 advisory lock",
+      "dedup_verification_required": true,
+      "note": "较重，当前 lane 独立 lock 已足够，无需独立进程"
+    }
+  },
+
+  "decision": {
+    "user_selected_option": null,
+    "current_state": "未选择方案，不修改 source 40，不开启真实灰度",
+    "recommendation": "若仅需「bb-browser 灰度不触发 MediaCrawler」→ 现有 lane 隔离已足够（方案 A）；若需「整个系统期间 MediaCrawler 停止」→ 采用方案 1（临时关闭 source 40，需用户授权）"
+  }
+}

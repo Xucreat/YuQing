@@ -1,0 +1,63 @@
+{
+  "generated_at": "2026-08-19T17:44:00+08:00",
+  "phase": "8",
+  "scope": "最终授权前核验（重跑，只读）",
+
+  "checks": {
+    "1_backend_restarted_after_env_change": {
+      "status": "PASS",
+      "detail": "后端 uvicorn 新进程 pid 3632/42592 启动于 17:34:58，晚于 .env 修改时间 17:21:40"
+    },
+    "2_secret_key_loaded_by_new_process": {
+      "status": "PASS",
+      "detail": "新进程已重启并重新读取 .env（密钥值未输出）"
+    },
+    "3_login_verification": {
+      "status": "PASS",
+      "detail": "admin + 当前密码登录成功：HTTP 200，返回 access_token(len=165)/token_type/role=admin/is_superuser（密码与 token 均未输出）"
+    },
+    "4_runtime_preflight_11_items": {
+      "status": "PASS",
+      "detail": "11/11 通过"
+    },
+    "5_env_bak_removed": {
+      "status": "PASS",
+      "detail": ".env.bak_20260806_152704 不存在"
+    },
+    "6_source_40_state": {
+      "status": "PASS_WITH_NOTE",
+      "enabled": false,
+      "schedule_enabled": false,
+      "note": "source 40 enabled=false 代表整个数据源已禁用（非仅关闭自动调度）。若只想关闭自动调度，应保持 enabled=true、schedule_enabled=false。当前为整个数据源禁用。"
+    },
+    "7_no_new_mediacrawler_scheduled_run": {
+      "status": "PASS",
+      "detail": "最近 scheduled run 为 #21364（16:46:58，关闭前）；db now=17:43:01，关闭后无新 scheduled run"
+    },
+    "8_source_62_schedule_disabled": {
+      "status": "PASS",
+      "detail": "source 62 enabled=true, schedule_enabled=false"
+    },
+    "9_keywords_only_3": {
+      "status": "PASS",
+      "detail": "仅 3 个监测关键词启用：霸州、通山县、慈口乡"
+    }
+  },
+
+  "authorization_gate": {
+    "all_checks_pass": true,
+    "note": "全部核验通过（source 40 为整个数据源禁用，已在报告中说明；若需改为仅关闭调度请另行确认）"
+  },
+
+  "raw_facts": {
+    "backend_uvicorn_pids": [3632, 42592],
+    "backend_uvicorn_start": "2026-08-19T17:34:58+08:00",
+    "env_mtime": "2026-08-19T17:21:40+08:00",
+    "env_bak_exists": false,
+    "source_40": {"enabled": false, "schedule_enabled": false},
+    "source_62": {"enabled": true, "schedule_enabled": false},
+    "keywords_enabled": ["霸州", "通山县", "慈口乡"],
+    "last_mediacrawler_scheduled_run": {"id": 21364, "status": "failed", "start": "2026-08-19T16:46:58+08:00"},
+    "runtime_preflight": "11/11 passed"
+  }
+}

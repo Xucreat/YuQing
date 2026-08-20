@@ -1,0 +1,87 @@
+{
+  "generated_at": "2026-08-19T15:18:00+08:00",
+  "phase": "4A",
+  "note": "只读盘点快照。与 phase3a_recovery_evidence.json 的差异见 phase4_preflight_report.md",
+
+  "runtime": {
+    "python_worker": {
+      "entry": "C:\\Users\\Administrator\\Desktop\\bb-browser 采集器\\collector_exchange_runtime\\collector_exchange\\__main__.py",
+      "sha256": "e83811880f0d3537027abb47ca3525cfca34ec766c6811611ce42124e176f38c",
+      "sha_match": true
+    },
+    "node_cli": {
+      "path": "C:\\Users\\Administrator\\Desktop\\bb-browser 采集器\\bb-browser\\dist\\cli.js",
+      "sha256": "72e9ec031a5fdf272d091d561b85a4a9a39aec8c7e0d458429cdc7ed8b506f59",
+      "version": "0.14.2",
+      "sha_match": true
+    },
+    "bb_sites_head": {
+      "now": "3984c849a0a4ccb6e7d22b5f343faddf22b97f05",
+      "locked": "3984c849a0a4ccb6e7d22b5f343faddf22b97f05",
+      "match": true
+    },
+    "cdp": {"url": "http://127.0.0.1:9222", "reachable": true, "http_status": 200},
+    "daemon": {"url": "http://127.0.0.1:19824", "note": "GET /status 返回 401（需 Bearer token，正常）；Phase 3A 已验证 token 后 running=true"},
+    "chrome_profile": "C:\\cdp-profile",
+    "exchange_root": "C:\\Users\\Administrator\\Desktop\\bb-browser 采集器\\collector_data",
+    "control_root": "C:\\Users\\Administrator\\Desktop\\bb-browser 采集器\\collector_control",
+    "platforms": ["baidu", "hupu", "toutiao", "bilibili", "youtube"]
+  },
+
+  "processes": {
+    "worker": {"pid": 15652, "type": "python", "start": "2026-08-17T18:29:44", "alive": true},
+    "chrome": {"pid": 17776, "start": "2026-08-17T17:21:41", "alive": true},
+    "daemon": {"pid": 28076, "type": "node", "start": "2026-08-17T17:29:34", "alive": true},
+    "uvicorn": [
+      {"pid": 8620, "listening": "0.0.0.0:8000", "start": "2026-08-19T14:17:52"},
+      {"pid": 41336, "listening": null, "start": "2026-08-19T14:17:52", "note": "不监听 8000，疑似重启残留进程"}
+    ]
+  },
+
+  "data_source_62": {
+    "id": 62,
+    "key": "bb_browser",
+    "name": "bb-browser聚合采集",
+    "enabled": true,
+    "schedule_enabled": false,
+    "collection_mode": "national",
+    "timeout_seconds": 240,
+    "poll_interval_seconds": 2,
+    "max_items_per_platform": 20,
+    "allow_weibo": false,
+    "allow_xiaohongshu": false,
+    "platforms": ["baidu", "hupu", "toutiao", "bilibili", "youtube"]
+  },
+
+  "keywords": {
+    "monitoring_enabled": 3,
+    "monitoring_disabled": 54,
+    "sensitive_total": 39,
+    "enabled_words": ["霸州", "通山县", "慈口乡"]
+  },
+
+  "collector_runs_bb_browser": {
+    "success": 5,
+    "failed": 6,
+    "running": 0,
+    "latest_success": 21292,
+    "recent_failed": [21273, 21248, 21127, 21126, 21118, 21045]
+  },
+
+  "running_all_sources": 1,
+  "running_all_sources_note": "running=1 为政府网站源 #21312（scheduled，正常在途），非 bb_browser",
+
+  "directories": {
+    "incoming": 287,
+    "processed": 43,
+    "failed": 0,
+    "processing": 0,
+    "outgoing": 2,
+    "rejected": 6,
+    "stale": 0,
+    "ack_pending": 0,
+    "recovery": 0,
+    "archive": 8
+  },
+  "directory_detail_inventory": "phase4_directory_inventory.json"
+}

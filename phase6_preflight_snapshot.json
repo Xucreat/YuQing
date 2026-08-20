@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-08-19T16:27:00+08:00",
+  "phase": "6-阶段1",
+  "scope": "生产启用前只读复核",
+
+  "data_sources": {
+    "source_62": {
+      "id": 62,
+      "key": "bb_browser",
+      "enabled": true,
+      "schedule_enabled": false,
+      "collection_mode": "national",
+      "platforms": ["baidu", "hupu", "toutiao", "bilibili", "youtube"]
+    },
+    "source_40": {
+      "id": 40,
+      "key": "weibo_mediacrawler",
+      "enabled": true,
+      "schedule_enabled": true
+    }
+  },
+
+  "scheduler_relationship": {
+    "global_scheduler_dispatches_source_40": true,
+    "global_scheduler_reason": "due_scheduled_sources 排除 weibo_octopus 但不排除 weibo_mediacrawler；source 40 enabled=true + schedule_enabled=true",
+    "bb_browser_lane_dispatches_source_40": false,
+    "bb_browser_lane_reason": "allowlist 严格 = {\"bb_browser\"}，_run_collector_tick(include_data_source_keys={\"bb_browser\"}) 只发现/claim bb_browser"
+  },
+
+  "incoming_tool_defects": {
+    "load_run_status_returns_empty_dict": true,
+    "load_run_status_detail": "无条件 return {}，无法建立 manifest->CollectorRun 映射，所有文件 run_status=None 被误判为 orphan -> quarantine_candidate",
+    "apply_moves_manual_review": true,
+    "apply_category_filter": "actions = [a for a in plan if a['category'] in (CATEGORY_QUARANTINE, CATEGORY_MANUAL_REVIEW)] —— manual_review(失败任务)会被 --apply 移动",
+    "violates": [
+      "manual_review 默认只能保留原位",
+      "mapping 缺失时默认不能判为可归档/可移动",
+      "禁止对所有计划项执行 apply 的隐式行为"
+    ]
+  },
+
+  "incoming_count": {
+    "current": 287,
+    "phase5_report": 287,
+    "consistent": true
+  }
+}
