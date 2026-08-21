@@ -34,9 +34,26 @@ from app.core.permissions import expand_permissions
 
 # ---------------------------------------------------------------------------
 # 护栏：严禁本测试触碰生产库 opinion_db
+# 注意：pytest 子进程未必继承 shell 的 DATABASE_URL；必须同时读取应用生效配置
+# （app 从 .env 加载），否则会误判为非生产库，并在 import 期连接生产 opinion_db，
+# 触发模块级 _db_roles() 对生产库的访问（表现为 collection 阶段 hang）。
 # ---------------------------------------------------------------------------
-_DB_URL = os.environ.get("DATABASE_URL", "")
-if "opinion_db" in _DB_URL:
+def _target_db_is_production() -> bool:
+    # 仅依据当前生效的目标库 URL 判断（shell DATABASE_URL 或 app engine 实际绑定地址）。
+    # 注意：conftest 已强制将 DATABASE_URL 重定向到隔离测试库 opinion_test，
+    # 因此此处不可回退读取 .env（其默认值为生产 opinion_db），否则会误判为生产库而跳过。
+    url = os.environ.get("DATABASE_URL", "")
+    if not url or "opinion_db" not in url:
+        try:
+            from app.db.session import SessionLocal
+
+            url = str(SessionLocal().bind.url)
+        except Exception:
+            url = ""
+    return "opinion_db" in url
+
+
+if _target_db_is_production():
     pytest.skip(
         "test_rbac_hardening 仅允许在隔离测试库 opinion_test 运行；检测到生产库 opinion_db，已跳过",
         allow_module_level=True,
@@ -316,11 +333,29 @@ def test_admin_never_forbidden(client: TestClient, admin_headers: dict, method: 
 #    角色不写死，从数据库 roles 表实时读取，新增角色自动纳入覆盖。
 # ===========================================================================
 def _db_roles() -> list[dict]:
-    """从数据库动态读取所有启用角色及其权限码（不含超管 admin）。"""
-    from app.db.session import SessionLocal
+    """从数据库动态读取所有启用角色及其权限码（不含超管 admin）。
+
+    使用独立的短连接超时 engine 进行只读探测：隔离测试库
+    （opinion_test @ :5433）未启动时，connect 会在数秒内失败而非无限阻塞，
+    避免 pytest collection 阶段 hang。失败时返回空列表，动态角色用例自动 skip。
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
     from app.models.role import Role
 
-    db = SessionLocal()
+    url = os.environ.get("DATABASE_URL", "")
+    if not url:
+        try:
+            from app.core.config import settings
+
+            url = getattr(settings, "database_url", "") or ""
+        except Exception:
+            url = ""
+    if not url:
+        return []
+    eng = create_engine(url, connect_args={"connect_timeout": 5})
+    Sess = sessionmaker(bind=eng)
+    db = Sess()
     try:
         rows = []
         for role in db.query(Role).order_by(Role.id).all():
@@ -335,6 +370,7 @@ def _db_roles() -> list[dict]:
         return rows
     finally:
         db.close()
+        eng.dispose()
 
 
 try:
