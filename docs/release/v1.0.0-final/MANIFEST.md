@@ -1,7 +1,7 @@
 # 舆情监测系统 v1.0.0 归档清单（MANIFEST）
 
-> 冻结提交（打标签前）：`4cbf2fa578f42ef1e3eb44c3e4843a1a0653d712`
-> 目标标签：`v1.0.0-final`（annotated，于 main 顶端新提交创建）
+> 冻结提交（main 顶端）：`8fdf516f`（含 `1d9556bc` 测试修复）
+> 标签：`v1.0.0-final`（annotated，已创建并推送）
 > 生成日期：2026-08-21（Asia/Shanghai）
 
 ## 1. 仓库归档（git bundle）
@@ -9,11 +9,12 @@
 | 项 | 值 |
 |---|---|
 | 路径 | `runtime/v1.0.0-final/yq-v1.0.0-final.bundle` |
-| 大小 | 672,575,862 字节（约 641 MiB，含完整历史） |
-| SHA-256（打标签前快照） | `2CA0E8A1E1BC4B713081FA0D1CAE70AD456C1C09BD707EE01EC6076E36776CB0` |
+| 大小 | 672,011,926 字节（约 641 MiB，含完整历史） |
+| SHA-256（含 v1.0.0-final 标签的最终归档） | `7209A62143BF0DEA415E8B459D72DADDA84AB4567281838D0FE8824D83274F95` |
 | 命令 | `git bundle create runtime/v1.0.0-final/yq-v1.0.0-final.bundle --all` |
+| 校验 | `git bundle verify` 通过（“records a complete history”） |
 
-> 说明：bundle 在创建 `v1.0.0-final` 标签后**重新生成**一次，以包含本冻结提交与标签；最终分发以重新生成后的 bundle 为准，其 SHA-256 于后续提交更新至本文件。
+> 说明：bundle 已包含 `v1.0.0-final` 标签与冻结提交 `8fdf516f`，上述 SHA-256 为最终分发版本。
 
 ## 2. 数据库只读备份（pg_dump）
 
