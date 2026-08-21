@@ -1968,10 +1968,13 @@ def collection_logs(
             func.sum(scoped_runs.c.admission_filtered).label("admission_filtered"),
             func.max(scoped_runs.c.ack_status).label("ack_status"),
             func.sum(case((scoped_runs.c.status == "success", 1), else_=0)).label("success_count"),
-            func.sum(case((scoped_runs.c.status == "partial", 1), else_=0)).label("partial_count"),
+            func.sum(case((scoped_runs.c.status.in_(["partial", "partial_success"]), 1), else_=0)).label("partial_count"),
             func.sum(case((scoped_runs.c.status == "warning", 1), else_=0)).label("warning_count"),
             func.sum(case((scoped_runs.c.status.in_(["failed", "error"]), 1), else_=0)).label("failed_count"),
             func.sum(case((scoped_runs.c.status == "running", 1), else_=0)).label("running_count"),
+            # 内部使用：partial_success/skipped 不应被误归类为 success/other；
+            # 仅用于 _batch_status 推导，不进入响应 schema（保持 API 兼容）。
+            func.sum(case((scoped_runs.c.status == "skipped", 1), else_=0)).label("skipped_count"),
             func.max(scoped_runs.c.trigger_type).label("trigger_type"),
             func.max(scoped_runs.c.batch_id).label("batch_id"),
         ).group_by(batch_key)
@@ -1997,6 +2000,8 @@ def collection_logs(
             return "partial"
         if r.warning_count and r.warning_count > 0:
             return "warning"
+        if r.skipped_count and r.skipped_count > 0:
+            return "skipped"
         return "success"
 
     def _to_item(r):

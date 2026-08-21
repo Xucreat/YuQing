@@ -40,6 +40,7 @@ from app.collectors.base import BaseCollector
 # Phase 3A §五-6：稳定错误码来源。bb_browser_runtime 是零依赖叶子模块
 #（只 import 标准库），不会与 service 形成循环 import。
 from app.collectors.bb_browser_runtime import CollectorError
+from app.collectors.bb_browser_collector import BBBrowserCollector
 from app.collectors.government_collector import GovernmentCollector
 from app.collectors.mediacrawler_platform import MEDIACRAWLER_CAPABILITY
 from app.collectors.registry import resolve_collectors, resolve_collectors_verbose
@@ -197,6 +198,8 @@ class CollectorRunResult:
     acknowledged: int = 0
     unconfirmed: int = 0
     ack_status: str = "not_applicable"
+    # Phase 3 overlap gate：本次触发是否因已存在 active BBBrowser logical run 而被跳过。
+    skipped_by_active_run: bool = False
 
     def finalize(self) -> "CollectorRunResult":
         # 失败 = 新增 - 分析成功；失败记录保留在数据库（status=failed）。
@@ -258,6 +261,43 @@ def reclaim_zombie_runs(
     return len(rows)
 
 
+# ---------------------------------------------------------------------------
+# Phase 3：BBBrowser logical-run overlap gate（只读判断，绝不写 CollectorRun）
+# ---------------------------------------------------------------------------
+def _is_bb_browser_collector(collector) -> bool:
+    """判定某个采集器是否属于 BBBrowser（综合采集）。
+
+    同时支持真实 BBBrowserCollector 实例与测试替身（按 source_name 精确匹配）。
+    """
+    if isinstance(collector, BBBrowserCollector):
+        return True
+    return getattr(collector, "source_name", None) == BBBrowserCollector.source_name
+
+
+def _has_active_non_zombie_run(db: Session, collector_name: str) -> bool:
+    """只读判断：是否存在尚未终结（且非 zombie）的 active logical run。
+
+    - 仅 SELECT，不写入任何 CollectorRun；
+    - active = status == "running"（其它 status 均为 terminal）；
+    - zombie 判定复用 settings.collector_run_zombie_timeout_minutes，与 reclaim_zombie_runs
+      保持一致：start_time 早于 cutoff 的 running 视为 zombie，由调度 tick 既有 reclaim 机制回收，
+      本函数不因 zombie 而阻塞新触发（避免永久阻塞 scheduler）。
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        minutes=settings.collector_run_zombie_timeout_minutes
+    )
+    row = (
+        db.query(CollectorRun)
+        .filter(
+            CollectorRun.collector_name == collector_name,
+            CollectorRun.status == "running",
+            CollectorRun.start_time >= cutoff,
+        )
+        .first()
+    )
+    return row is not None
+
+
 class CollectorService:
     """采集闭环服务：fetch → 去重 → 建 Opinion → AI 分析 → 状态流转。"""
 
@@ -279,6 +319,8 @@ class CollectorService:
         # 默认采集器：按 collector_type 选择（government / mock）。
         # 也可显式注入 collectors（测试用），此时 collector_type 仍用于返回标识。
         self._collectors_injected: bool = collectors is not None
+        # Phase 3 overlap gate：最近一次 collect_and_analyze* 是否跳过了 BBBrowser 子采集。
+        self._bb_browser_gate_skipped: bool = False
         self.include_data_source_keys = (
             frozenset(include_data_source_keys)
             if include_data_source_keys is not None
@@ -440,6 +482,32 @@ class CollectorService:
     # ------------------------------------------------------------------
     # 主流程
     # ------------------------------------------------------------------
+    def _apply_bb_browser_overlap_gate(self, db: Session) -> bool:
+        """Phase 3：BBBrowser logical-run 级 overlap gate（只读判断，不写 CollectorRun）。
+
+        若本次触发包含 BBBrowser 采集器，且已存在 active（非 zombie）的 BBBrowser logical run，
+        则将该 BBBrowser 采集器从 ``self.collectors`` 移除（跳过其采集），避免两个 BBBrowser
+        logical run 重叠运行。其它采集器（政府站等）不受影响、照常执行。
+
+        - 仅做 SELECT，绝不插入/更新/删除任何 CollectorRun；
+        - 不修改 scheduler cron / interval，不并发启动第二 logical run；
+        - zombie（超时 running）由调度 tick 既有 reclaim_zombie_runs 回收，本 gate 不因 zombie 阻塞；
+        - 返回 True 表示 BBBrowser 子采集被跳过。
+        """
+        if not any(_is_bb_browser_collector(c) for c in self.collectors):
+            self._bb_browser_gate_skipped = False
+            return False
+        if _has_active_non_zombie_run(db, BBBrowserCollector.source_name):
+            logger.info(
+                "BBBrowser overlap gate：已存在 active logical run，跳过本次 BBBrowser 子采集"
+                "（不启动第二 logical run）"
+            )
+            self.collectors = [c for c in self.collectors if not _is_bb_browser_collector(c)]
+            self._bb_browser_gate_skipped = True
+            return True
+        self._bb_browser_gate_skipped = False
+        return False
+
     def collect_and_analyze(self, db: Session, trigger_type: str = "scheduled") -> CollectorRunResult:
         """执行一次采集 + 自动 AI 分析，返回运行结果（Phase 3 表驱动 + 按区域绑定）。
 
@@ -465,6 +533,10 @@ class CollectorService:
             for f in resolved.failures:
                 self._record_assembly_failure(db, f, run_start, batch_id, trigger_type)
 
+        # Phase 3 overlap gate：BBBrowser logical-run 级互斥（只读判断，不写 CollectorRun）。
+        # 若已存在 active BBBrowser logical run，则跳过本次 BBBrowser 子采集，避免重叠。
+        self._apply_bb_browser_overlap_gate(db)
+
         # 监测关键词（采集过滤唯一权威源 = keywords 表；表空回退配置）。
         # 一次采集运行内只解析一次：
         #  - monitoring_kw：扁平列表，向下兼容 keywords= 旧链路；
@@ -481,6 +553,7 @@ class CollectorService:
                 raise CollectorThrottled("collector running too frequently")
 
         result = CollectorRunResult(collector_type=self.collector_type)
+        result.skipped_by_active_run = self._bb_browser_gate_skipped
         # 采集阶段默认使用规则降级路径生成「系统研判报告」，
         # 不调用 DeepSeek（节省额度；DeepSeek 仅由用户手动「触发 AI 分析」时调用）。
 
@@ -1022,6 +1095,8 @@ class CollectorService:
                 self.collectors = resolved.collectors
                 for f in resolved.failures:
                     self._record_assembly_failure(resolve_db, f, run_start, batch_id, trigger_type)
+                # Phase 3 overlap gate：BBBrowser logical-run 级互斥（只读判断，不写 CollectorRun）。
+                self._apply_bb_browser_overlap_gate(resolve_db)
                 resolve_db.commit()
             finally:
                 resolve_db.close()
@@ -1045,6 +1120,7 @@ class CollectorService:
 
         if not self.collectors:
             result = CollectorRunResult(collector_type=self.collector_type)
+            result.skipped_by_active_run = self._bb_browser_gate_skipped
             result.finalize()
             return result
 
@@ -1116,6 +1192,7 @@ class CollectorService:
                     on_progress(done, total, getattr(collector, "source_name", ""))
 
         merged.finalize()
+        merged.skipped_by_active_run = self._bb_browser_gate_skipped
 
         # 更新内存状态（Phase 3A 临时，重启丢失）
         now = datetime.now(timezone.utc)
