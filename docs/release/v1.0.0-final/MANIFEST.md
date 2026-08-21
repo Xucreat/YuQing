@@ -1,7 +1,7 @@
 # 舆情监测系统 v1.0.0 归档清单（MANIFEST）
 
-> 冻结提交（main 顶端）：`8fdf516f`（含 `1d9556bc` 测试修复）
-> 标签：`v1.0.0-final`（annotated，已创建并推送）
+> 冻结提交（main 顶端）：`df6f89be`（含 `1d9556bc` 测试修复、`8fdf516f` 发布文档、`df6f89be` 凭据脱敏）
+> 标签：`v1.0.0-final`（annotated，已创建并推送至 `df6f89be`）
 > 生成日期：2026-08-21（Asia/Shanghai）
 
 ## 1. 仓库归档（git bundle）
@@ -9,8 +9,8 @@
 | 项 | 值 |
 |---|---|
 | 路径 | `runtime/v1.0.0-final/yq-v1.0.0-final.bundle` |
-| 大小 | 672,011,926 字节（约 641 MiB，含完整历史） |
-| SHA-256（含 v1.0.0-final 标签的最终归档） | `7209A62143BF0DEA415E8B459D72DADDA84AB4567281838D0FE8824D83274F95` |
+| 大小 | 672,014,251 字节（约 641 MiB，含完整历史） |
+| SHA-256（含 v1.0.0-final 标签的最终归档） | `799E5DBF6363DD26C24E7303BD0D965B5879A1BAF6A5612EBA436AB298DD7951` |
 | 命令 | `git bundle create runtime/v1.0.0-final/yq-v1.0.0-final.bundle --all` |
 | 校验 | `git bundle verify` 通过（“records a complete history”） |
 
